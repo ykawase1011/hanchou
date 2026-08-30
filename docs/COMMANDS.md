@@ -80,6 +80,29 @@ hanchou delivery fail <id> --reason ...
 hanchou delivery retry <id>
 ```
 
+### Execution bridge
+
+```bash
+hanchou execution dispatch <bead-id> --json
+hanchou execution inspect <bead-id> --json
+hanchou execution reconcile [<bead-id>] --json
+```
+
+`dispatch` currently accepts a dependency-ready Leaf Bead with valid
+`hanchou.task.v1` metadata and a clean Git top-level `repo_path`. It claims the
+Bead, resolves the provider and model, creates a dedicated Herdr worktree,
+starts the worker, prompts it when ready, and persists a write-ahead execution
+record. First-run trust can return `awaiting_ready` without sending the task;
+after trust is accepted, `reconcile` sends that prompt once. `inspect` combines Beads, execution,
+Herdr, Relay, and Delivery state. `reconcile` repairs safe binding transitions
+but never treats an idle/done Agent as semantic task completion. Settlement
+requires an acknowledged Relay event bound by execution ID, Agent, and role,
+the recorded owner route and depth, plus the assigned report, verification
+evidence, and matching worktree commit. A required delivered Delivery must
+reference that same terminal event.
+Execution updates merge only Hanchou-owned metadata fields and reject a
+different non-empty execution owner or changes to the dispatch identity fields.
+
 ## Direct upstream examples
 
 ### Beads
@@ -115,15 +138,13 @@ These are architecture contracts and must not be assumed available until they
 appear in `hanchou --help`.
 
 ```text
-hanchou execution dispatch <bead-id>
-hanchou execution inspect <bead-id>
 hanchou execution cancel <bead-id>
-hanchou execution reconcile [<bead-id>]
 
 hanchou schedule create/list/show/update/pause/resume/run-now/remove/history/validate
 ```
 
-`hanchou execution` exists only for atomic Beads↔Herdr operations. It does not
-replace ordinary Beads or Herdr commands. `hanchou schedule` exists only for
+Only `hanchou execution cancel` remains planned; dispatch, inspect, and
+reconcile are implemented. `hanchou execution` does not replace ordinary Beads
+or Herdr commands. `hanchou schedule` exists only for
 Hanchou reporting metadata, Task binding, and the `existing-orchestrator`
 target; ordinary fresh-agent Cron remains upstream-owned.

@@ -22,6 +22,8 @@
     "kind": "codex",
     "workspace_id": "w2",
     "pane_id": "w2:p1",
+    "worktree_path": "/Users/example/.local/share/hanchou/work/worktrees/hch-example",
+    "branch": "hanchou/hch-example",
     "provider_session_id": null,
     "binding_state": "live"
   },

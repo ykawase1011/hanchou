@@ -2,8 +2,8 @@
 name: reviewer
 description: "Independently review an assigned diff, artifact, or prose output against acceptance criteria and report actionable findings."
 model: sonnet
-permissionMode: plan
-tools: Read, Grep, Glob, Bash, Skill
+permissionMode: auto
+tools: Read, Write, Grep, Glob, Bash, Skill
 maxTurns: 60
 skills:
   - hanchou-reviewer

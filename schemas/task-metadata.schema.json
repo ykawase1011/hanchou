@@ -91,6 +91,18 @@
             "null"
           ]
         },
+        "worktree_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "provider_session_id": {
           "type": [
             "string",

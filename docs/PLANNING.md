@@ -35,11 +35,12 @@ validation.
 
 ## Phase 2: Beads↔Herdr bridge
 
-- implement planned `hanchou execution` dispatch command;
-- atomic Bead claim and Herdr binding;
+- implemented `hanchou execution dispatch/inspect/reconcile` commands;
+- atomic Bead claim, write-ahead record and Herdr binding;
 - role/model/usage resolution;
 - worktree creation and Agent prompt contract;
-- cancellation and restart reconciliation.
+- fake success/failure/reconcile coverage;
+- live E2E, cancellation and orphan rediscovery remain.
 
 **Exit:** one Bead reliably maps to one visible execution.
 

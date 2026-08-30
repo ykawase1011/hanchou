@@ -17,7 +17,7 @@ upstream tool. Before running a command, identify the source of truth.
 | Usage snapshot and provider routing | `hanchou usage` / `hanchou route` |
 | Relay Inbox, retry, acknowledgement | `hanchou relay` / `hanchou inbox` |
 | User-facing report lifecycle | `hanchou delivery` |
-| Beads↔Herdr atomic dispatch/reconcile | planned `hanchou execution` |
+| Beads↔Herdr WAL-backed dispatch/reconcile | `hanchou execution` |
 | Existing-Orchestrator schedule and reporting contract | planned `hanchou schedule` |
 
 Do not invent a Hanchou wrapper when one upstream system already owns the
@@ -42,12 +42,21 @@ route resolve
 relay emit / relay recover / relay dispatch
 inbox list / claim / show / ack / retry / dead-letter
 delivery create / list / show / mark-rendered / mark-delivered / fail / retry
+execution dispatch / inspect / reconcile
 ```
+
+`execution dispatch` accepts only a ready Leaf Bead with no existing execution
+owner. It pins the validated repository `HEAD`, claims the Bead, and merges only
+the execution-owned metadata fields. If Codex first-run trust leaves the Agent
+blocked, dispatch returns `awaiting_ready`; after the user accepts trust and the
+Agent becomes idle/done, run `execution reconcile <id>` to deliver the prompt
+once. Reconciliation settles only from valid acknowledged execution-bound
+Relay evidence, never from terminal Agent state alone.
 
 ## Planned surfaces
 
-`hanchou execution` and the typed `hanchou schedule` wrapper are design
-contracts until implemented. Check `hanchou --help` before use. Until then:
+`hanchou execution cancel` and the typed `hanchou schedule` wrapper remain
+design contracts. Check `hanchou --help` before use. Until then:
 
 - operate the Beads graph with `bd`;
 - operate Herdr sessions with `herdr`;
@@ -56,7 +65,7 @@ contracts until implemented. Check `hanchou --help` before use. Until then:
 
 ## Why the CLI exists
 
-Skills express policy but cannot guarantee atomic writes, schema validation,
-deduplication, leases, retry state, exit codes, or cross-provider behavior. The
-CLI owns those mechanical guarantees so Claude Code, Codex, humans, plugins and
-scripts share one tested contract.
+Skills express policy but cannot guarantee atomic file operations,
+command-level contract validation, deduplication, leases, retry state, exit
+codes, or cross-provider behavior. The CLI owns those mechanical guarantees so
+Claude Code, Codex, humans, plugins and scripts share one tested contract.

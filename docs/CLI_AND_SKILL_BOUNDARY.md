@@ -41,12 +41,12 @@ component.
 - provider usage snapshots and routing resolution;
 - Relay Inbox emit/claim/ack/retry/recovery;
 - Delivery create/render/deliver/fail/retry;
+- `hanchou execution` dispatch/inspect/reconcile for Beads↔Herdr binding;
 - cross-repository setup and Skill installation.
 
 ### Planned
 
-- `hanchou execution`: atomic Beads↔Herdr dispatch, binding, cancellation and
-  restart reconciliation;
+- `hanchou execution cancel` and automatic orphan rediscovery;
 - `hanchou schedule`: typed Hanchou reporting contract and
   `existing-orchestrator` schedules.
 
@@ -126,6 +126,16 @@ hanchou route resolve \
 ```bash
 hanchou relay emit ... --json
 ```
+
+### Dispatch a delegated Bead
+
+```bash
+hanchou execution dispatch <child-bead-id> --json
+hanchou execution inspect <child-bead-id> --json
+```
+
+Create and populate the Bead first. The execution command owns only the claim,
+route, worktree, Agent binding, worker prompt, and reconciliation transaction.
 
 ### Create an ordinary recurring fresh-agent task
 

@@ -18,9 +18,10 @@
 
 ## M2 — Durable execution bridge
 
-- planned `hanchou execution` Bead dispatch, worktree, Agent binding;
+- implemented `hanchou execution` Bead dispatch, inspect and reconciliation;
+- write-ahead execution record, worktree and Agent binding;
 - completion artifact contract;
-- restart reconciliation.
+- live restart/orphan E2E and cancellation remain.
 
 ## M3 — Later-turn completion reporting
 

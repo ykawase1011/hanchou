@@ -10,8 +10,8 @@ global graph.
 ## Command surface
 
 Use `bd` directly for the Task graph. Hanchou does not add generic Task CRUD.
-The planned `hanchou execution` surface begins only where one operation must
-atomically bind a Bead to a Herdr execution and later reconcile it.
+The `hanchou execution` surface begins only where one operation must
+coordinate a WAL-backed Bead claim and Herdr binding and later reconcile it.
 
 ## Mapping
 

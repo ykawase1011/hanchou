@@ -11,6 +11,10 @@
 - `hanchou route resolve` matched the compatibility routing alias;
 - Relay Inbox lifecycle passed `emit → claim → ack`;
 - Delivery lifecycle passed `create → rendered → delivered`;
+- execution fake E2E passed dependency and ownership rejection, base-pinned
+  dispatch, first-run readiness recovery, role-scoped Codex/Claude startup,
+  prompt redaction, execution-bound Relay evidence, Delivery, settlement, and
+  agent-start failure → blocked/lost → non-destructive reconcile;
 - `hanchou-kingdom` passed secret-free repository checks;
 - old `hanchou-mailbox` files and command names were absent;
 - archive manifests are regenerated during final packaging.
@@ -33,7 +37,7 @@ On a target macOS host, 2026-08-30:
 
 - live Claude agent startup and task completion (the Claude integration itself
   is installed and passes doctor);
-- atomic Beads↔Herdr `hanchou execution` bridge;
+- live Beads↔Herdr execution, Relay wake, and later-turn Delivery loop;
 - completion wake while the user is editing the L0 pane;
 - provider session restoration after crash/reboot;
 - typed Hanchou schedule wrapper and `existing-orchestrator` extension;

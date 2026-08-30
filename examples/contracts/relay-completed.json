@@ -3,6 +3,7 @@
   "event_id": "evt_example",
   "type": "completed",
   "task_id": "hch-example",
+  "execution_id": "exe_example",
   "from_agent": "hch-example-implementer",
   "from_role": "implementer",
   "to_agent": "orchestrator",
@@ -12,7 +13,7 @@
   "summary": "Implementation and tests completed.",
   "detail_ref": "reports/hch-example/final.md",
   "artifacts": [
-    "commit:abc123"
+    "commit:abc1234"
   ],
   "verification": [
     "npm test"

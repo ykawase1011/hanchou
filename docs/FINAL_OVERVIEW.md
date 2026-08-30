@@ -74,13 +74,14 @@ Implemented in the scaffold:
 - provider-neutral Role generation;
 - usage snapshot/routing;
 - Relay Inbox and Delivery state machines;
+- Beads↔Herdr execution dispatch/inspect/reconcile with a write-ahead record;
 - Skills and secret-free deployment configuration;
 - schemas, examples and static tests.
 
 Required before operational replacement:
 
-- live Beads↔Herdr `hanchou execution` bridge;
-- restart reconciliation;
+- live execution/Relay/Delivery E2E on the target Mac;
+- restart/orphan reconciliation hardening and execution cancellation;
 - typed Hanchou schedule wrapper and same-Orchestrator wake;
 - full Core E2E on the target Mac;
 - only then `hanchou-chat` selection and implementation.

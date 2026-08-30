@@ -13,7 +13,7 @@ reasoning_effort = "high"
 
 [claude]
 model = "sonnet"
-permission_mode = "plan"
-tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+permission_mode = "auto"
+tools = ["Read", "Write", "Grep", "Glob", "Bash", "Skill"]
 max_turns = 60
 color = "orange"

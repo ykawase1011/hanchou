@@ -9,6 +9,7 @@
     "event_id",
     "type",
     "task_id",
+    "execution_id",
     "from_agent",
     "from_role",
     "to_agent",
@@ -43,6 +44,12 @@
       ]
     },
     "task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "execution_id": {
       "type": [
         "string",
         "null"

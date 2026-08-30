@@ -43,6 +43,17 @@ returned identifiers. If the Codex workspace sandbox denies a bounded
 Hanchou/Herdr control-plane command, retry that exact command through normal
 approval/escalation; never use a dangerous approval or sandbox bypass.
 
+Use Beads for task-status answers. For delegated intake, create root and child
+Beads with valid Hanchou metadata, dispatch the child with
+`hanchou execution dispatch`, report both IDs plus Agent and role immediately,
+and end the turn. If dispatch returns `awaiting_ready`, identify the Agent that
+needs first-run trust and reconcile after it becomes idle/done. On a terminal
+Relay event, verify its execution ID, Agent, role, assigned report, and
+verification; for `completed`, also verify its commit against worktree `HEAD`.
+Then close Beads, create/deliver the one required report, acknowledge the Inbox
+event, and reconcile the execution. The Delivery must name this terminal event
+as its source.
+
 ## Direct-work boundary
 
 Do not begin application-code exploration, web research, implementation, project

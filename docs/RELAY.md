@@ -25,12 +25,22 @@ Expired processing records return to pending. Acknowledgement occurs only after
 Beads、Decision、or Delivery state is durably updated.
 
 ```bash
-hanchou relay emit ...
+hanchou relay emit --task <bead-id> --execution <execution-id> ...
 hanchou inbox claim --to orchestrator --json
 hanchou inbox show <event-id>
 hanchou inbox ack <event-id> --by orchestrator
 hanchou inbox retry <event-id>
 ```
+
+`--execution` binds an execution-bridge event to one dispatch attempt. Before a
+closed Bead can settle, reconciliation requires an acknowledged terminal event
+whose Task ID, execution ID, producer Agent/role, owner Agent/role, and
+delegation depth match the execution record. It also verifies the assigned
+report path, non-empty verification, and for successful completion the reported
+commit against worktree `HEAD`. When policy requires Delivery, the delivered
+record must be unique and name that same terminal event as `source_event_id`.
+Its `task_terminal` kind, policy, renderer, and destination must also match the
+Task reporting contract.
 
 ## Dispatcher
 

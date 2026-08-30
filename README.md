@@ -81,9 +81,8 @@ always / digest / immediate
 
 Hanchou CLIは必要ですが、`bd`・`herdr`・`herdr-automations`を丸ごと
 包むものではありません。単一systemの通常操作はupstream CLIを直接使い、
-Hanchou CLIはprofile設定、usage routing、Relay／Delivery、将来の
-Beads↔Herdr bridgeなど、Hanchou固有または複数systemをまたぐ処理だけを
-担当します。
+Hanchou CLIはprofile設定、usage routing、Relay／Delivery、Beads↔Herdr
+execution bridgeなど、Hanchou固有または複数systemをまたぐ処理だけを担当します。
 
 ```text
 Task graph             bd

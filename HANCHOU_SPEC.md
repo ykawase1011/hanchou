@@ -127,15 +127,16 @@ Child Taskは原則`parent_only`、root user Taskは`on_terminal`、Decisionは
 
 ## 10. CLI and Skill boundary
 
-Hanchouは薄いCLIを持ちます。Skillはpolicy、CLIはatomicity、schema validation、
-lease、retry、stable JSON outputなどのmechanicsを担当します。
+Hanchouは薄いCLIを持ちます。Skillはpolicy、CLIはatomic file operation、
+command-level contract validation、lease、retry、stable JSON outputなどの
+mechanicsを担当します。
 
 - Task graphの通常操作は`bd`。
 - Agent runtimeの通常操作は`herdr`。
 - 通常のfresh-agent Cronは`herdr-automations`。
 - Profile、routing、Relay、Delivery、cross-system operationは`hanchou`。
 
-GenericなTask／Agent facadeは作りません。今後の`hanchou execution`は
+GenericなTask／Agent facadeは作りません。`hanchou execution`は
 Beads↔Herdrをまたぐdispatch/reconcileに限定し、`hanchou schedule`は
 Hanchou reporting metadataまたは`existing-orchestrator` targetに限定します。
 共通`hanchou-cli` Skillがこの選択規則をCodex／Claude Codeへ配布します。

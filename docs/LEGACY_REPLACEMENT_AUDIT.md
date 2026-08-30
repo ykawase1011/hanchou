@@ -43,7 +43,7 @@
 | durable Task | Beads／Dolt | Covered | central DB per profile |
 | dependency／ready queue | Beads | Covered | native graph |
 | Task GUI | beads-ui + optional herdr-beads | Covered | 二重storeなし |
-| AgentとTaskのbinding | Hanchou execution bridge | Planned | 最優先実装 |
+| AgentとTaskのbinding | Hanchou execution bridge | Implemented／live検証中 | dispatch/inspect/reconcileとWALを実装 |
 | Agent自身がCron登録 | hanchou-schedule + herdr-automations | Covered/Planned | YAML操作は可能、typed CRUDは予定 |
 | cron／interval／one-shot | herdr-automations | Partial | cron中心。one-shot wrapper要検討 |
 | pause／resume／run-now／history | wrapper計画 | Planned | upstream一部機能を統一surfaceへ |
@@ -66,7 +66,7 @@
 
 | 旧要件 | 新生構成 | 判定 | 備考 |
 |---|---|---:|---|
-| workspace越境禁止 | project registry + execution bridge | Planned | Herdr Skillだけではsecurity ACLにならない |
+| workspace越境禁止 | project registry + execution bridge | Partial | clean Git top-levelを強制。registry allowlistは未実装 |
 | Mac/Linux/Lima routing | Herdr remote + Kingdom node plan | Planned | provider lifecycle未実装 |
 | credential分離 | Unix user/VM + provider-native auth + external secret manager | Planned | Kingdomはsecretを保持しない |
 | fail-closed ingress binding | future hanchou-chat allowlist + fixed target | Planned | Core完成後に実装 |

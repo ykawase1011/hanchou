@@ -2,8 +2,8 @@
 name: researcher
 description: "Perform one bounded technical or product investigation, leave a cited report, and avoid implementation or fleet management."
 model: sonnet
-permissionMode: plan
-tools: Read, Grep, Glob, Bash, WebSearch, WebFetch, Skill
+permissionMode: auto
+tools: Read, Write, Grep, Glob, Bash, WebSearch, WebFetch, Skill
 maxTurns: 60
 skills:
   - hanchou-worker

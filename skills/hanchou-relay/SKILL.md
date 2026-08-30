@@ -21,6 +21,7 @@ A Herdr prompt is only a wake hint. The file-backed record is authoritative.
 hanchou relay emit \
   --type completed \
   --task <bead-id> \
+  --execution <execution-id> \
   --from-agent <agent> --from-role <role> \
   --to-agent <owner> --to-role <owner-role> \
   --delegation-depth <1-or-2> \
@@ -30,6 +31,13 @@ hanchou relay emit \
   --verification '<command/result>' \
   --json
 ```
+
+For an execution-bridge assignment, copy the exact Task ID, execution ID,
+Agent, role, owner, report path, and delegation depth from the worker prompt.
+A completed event must reference the assigned durable report, include non-empty
+verification evidence, and contain exactly one `commit:<sha>` matching the
+assigned worktree's current `HEAD`. Reconciliation rejects events that do not
+match that execution binding or its evidence.
 
 Depth-1 leaves report to the Orchestrator. Depth-2 leaves report to their
 Mission Lead. Mission Leads report to the Orchestrator. Do not send raw

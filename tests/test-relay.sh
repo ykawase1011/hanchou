@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 OUT="$(HOME="$TMP" "$ROOT/bin/hanchou" --profile work relay emit \
   --type completed \
   --task hch-test \
+  --execution exe-test \
   --from-agent hch-test-implementer \
   --from-role implementer \
   --to-agent orchestrator \
@@ -23,6 +24,6 @@ CLAIM="$(HOME="$TMP" "$ROOT/bin/hanchou" --profile work inbox claim --to orchest
 printf '%s' "$CLAIM" | python3 -c 'import json,sys; rows=json.load(sys.stdin); assert len(rows)==1 and rows[0]["event_id"]==sys.argv[1]' "$EVENT_ID"
 
 HOME="$TMP" "$ROOT/bin/hanchou" --profile work inbox ack "$EVENT_ID" --by orchestrator --json >/dev/null
-HOME="$TMP" "$ROOT/bin/hanchou" --profile work inbox show "$EVENT_ID" | python3 -c 'import json,sys; row=json.load(sys.stdin); assert row["state"]=="acknowledged"'
+HOME="$TMP" "$ROOT/bin/hanchou" --profile work inbox show "$EVENT_ID" | python3 -c 'import json,sys; row=json.load(sys.stdin); assert row["state"]=="acknowledged" and row["event"]["execution_id"]=="exe-test"'
 
 echo "relay inbox lifecycle ok"
