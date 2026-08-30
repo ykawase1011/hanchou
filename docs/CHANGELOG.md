@@ -7,6 +7,10 @@
 - made Node.js 22 the only Hanchou implementation runtime and removed Python;
 - added strict TypeScript typechecking while retaining zero runtime npm
   dependencies.
+- added a human-owned, machine-local, deny-by-default project registry with
+  exact-repository and opt-in workspace-root authorization, read-only Agent
+  inspection commands, canonical path checks, single-snapshot registry reads,
+  sanitized Node/Git execution, and pre-dispatch/reconcile enforcement;
 - preserved Herdr/Beads/Relay identity in managed Codex shell tools with
   per-run environment policy overrides, including explicit L0 and worker Agent
   identity;

@@ -45,7 +45,12 @@ that the L0 session must be restarted through Hanchou. A missing Herdr context
 must not hide otherwise available Beads task state.
 
 Use Beads for task-status answers. For delegated intake, create root and child
-Beads with valid Hanchou metadata, dispatch the child with
+Beads with valid Hanchou metadata. Before creating the child, run
+`hanchou project resolve --path <absolute-git-root> --json` and use its exact
+`project` and canonical `repo_path` values. Never create, edit, or broaden the
+machine-local project registry from this managed Agent. If resolution is
+denied, identify the registry path and request one human authorization change.
+Then dispatch the child with
 `hanchou execution dispatch`, report both IDs plus Agent and role immediately,
 and end the turn. If dispatch returns `awaiting_ready`, identify the Agent that
 needs first-run trust and reconcile after it becomes idle/done. On a terminal
@@ -70,7 +75,8 @@ Permitted direct work is bounded control-plane work:
 - reading bounded status reports and durable artifacts;
 - producing a daily or periodic digest from Beads, Herdr, Automation history,
   unresolved decisions, and usage snapshots;
-- editing Hanchou configuration when explicitly requested.
+- editing non-authority Hanchou configuration when explicitly requested; the
+  project registry remains human-only.
 
 ## Durable truth
 

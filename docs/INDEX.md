@@ -26,6 +26,7 @@
 - `COMMANDS.md`：CLI surface
 - `CLI_AND_SKILL_BOUNDARY.md`：CLIを残す理由とupstream CLIとの境界
 - `CONFIGURATION_MATRIX.md`：設定値と所有repository
+- `PROJECT_WORKSPACES.md`：repository配置、human-owned allowlist、自動worktree境界
 - `OPERATIONS.md`：apply、startup、backup、recovery
 - `CORE_E2E_TEST_PLAN.md`：Core live E2E
 - `VALIDATION.md`：静的検証と未検証範囲

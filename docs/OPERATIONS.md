@@ -28,16 +28,39 @@ Attach to the named Agent, review the exact sources, and trust only the intended
 Hanchou/Herdr integration. Hanchou never bypasses Codex approvals or sandboxing.
 That first project/hook decision is intentionally not auto-approved.
 
+New project dispatch is separately deny-by-default. A human reviews and edits
+`~/.config/hanchou/<profile>/projects.local.toml`; managed Agents only use
+`hanchou project list/show/resolve/doctor`. Do not authorize `$HOME` or a mixed
+directory containing secrets. Prefer exact repositories, or one dedicated
+secret-free repository shelf with
+`trust = "descendant-git-repositories"`. See `PROJECT_WORKSPACES.md`.
+The production `bin/hanchou` wrapper starts Bash with `-p` (startup hardening;
+it grants no OS privilege) so caller-provided `BASH_ENV`/inherited functions
+cannot replace its sanitization.
+It removes Node preload options, normalizes HOME/XDG/mise roots to the effective
+OS user, and resolves the pinned runtime only below that user's standard mise
+install root after owner/mode checks. Registry authority independently opens
+the effective-user file without following a final symlink and parses/hashes one
+file snapshot. Managed Agent start/execution also rejects a custom
+`--config-root` or `HANCHOU_CONFIG_ROOT`; planning and test-only rendering may
+still use an alternate configuration root. Project inspection also
+sanitizes Git environment overrides and disables optional locks/fsmonitor/hooks.
+Configured clean/smudge/process filters are readiness blockers because Git may
+execute them during status checks; configured hooks and fsmonitor are reported
+for human review without executing them during readiness checks.
+
 An Agent that was already running before an `apply` does not gain new launch
 arguments. Open it with `hanchou open orchestrator <profile>`, enter `/exit`,
 then rerun `hanchou start-orchestrator <profile>`. The fresh Agent receives the
 managed environment and reloads the project-local command policy.
 
-Routine Inbox commands use the checked-in project policy at
-`.codex/rules/hanchou.rules`. It automatically allows only the canonical
-`hanchou inbox list/show/claim/ack` forms in this trusted checkout. `retry` and
-`dead-letter` still prompt because they alter delivery semantics, and unknown
-future Inbox commands receive no blanket permission. Never add a user-global
+Routine control commands use the checked-in project policy at
+`.codex/rules/hanchou.rules`. It automatically allows the read-only
+`hanchou project list/show/resolve/doctor` commands and only the canonical
+`hanchou inbox list/show/claim/ack` forms in this trusted checkout. Project
+trust mutation commands do not exist. Inbox `retry` and `dead-letter` still
+prompt because they alter delivery semantics, and unknown future commands
+receive no blanket permission. Never add a user-global
 `prefix_rule(pattern=["hanchou", "inbox"], decision="allow")`: it also allows
 destructive and future subcommands in unrelated Codex projects. Back up and
 remove such a remembered rule from `~/.codex/rules/default.rules`, then restart
@@ -90,6 +113,8 @@ herdr --session personal
 `hanchou doctor` should verify:
 
 - mise and the pinned Herdr/Node.js versions;
+- project registry structure/ownership/mode (an absent registry is safe
+  deny-all; use `hanchou project doctor` for repository readiness);
 - Beads, Codex and Claude Code binaries;
 - Herdr Codex/Claude integrations, herdr-automations and beads-ui;
 - Hanchou Skills freshness;
@@ -99,8 +124,8 @@ herdr --session personal
 - Automation config, daemon, misses, repeated failures;
 - beads-ui endpoint;
 - generated agent and Skill freshness;
-- the project-local Codex Inbox policy and absence of a broad user-level Inbox
-  allow rule.
+- the project-local Codex control policy and absence of a broad user-level
+  Inbox allow rule.
 
 ## Backup and recovery
 

@@ -14,6 +14,7 @@ upstream tool. Before running a command, identify the source of truth.
 | Agent, pane, workspace, worktree, liveness | `herdr` |
 | Ordinary `new-agent` recurring job and history | `herdr-automations` |
 | Profile setup, health, UI opening | `hanchou` |
+| Human-owned project authorization inspection | `hanchou project` |
 | Usage snapshot and provider routing | `hanchou usage` / `hanchou route` |
 | Relay Inbox, retry, acknowledgement | `hanchou relay` / `hanchou inbox` |
 | User-facing report lifecycle | `hanchou delivery` |
@@ -37,6 +38,7 @@ command, or broaden its target.
 ```text
 plan / apply / status / doctor / start-orchestrator / open
 render-agents / handoff
+project list / project show / project resolve / project doctor
 usage set / usage show
 route resolve
 relay emit / relay recover / relay dispatch
@@ -46,7 +48,10 @@ execution dispatch / inspect / reconcile
 ```
 
 `execution dispatch` accepts only a ready Leaf Bead with no existing execution
-owner. It pins the validated repository `HEAD`, claims the Bead, and merges only
+owner. It first revalidates the Bead's project identity and canonical repository
+against the human-owned machine-local deny-by-default registry. Managed Agents
+must never edit or broaden that registry. It then pins the validated repository
+`HEAD`, claims the Bead, and merges only
 the execution-owned metadata fields. If Codex first-run trust leaves the Agent
 blocked, dispatch returns `awaiting_ready`; after the user accepts trust and the
 Agent becomes idle/done, run `execution reconcile <id>` to deliver the prompt

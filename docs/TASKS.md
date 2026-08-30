@@ -41,13 +41,16 @@ open → in_progress → blocked / closed
 
 Hanchou adds operational checks:
 
-1. Create the Bead before visible Agent spawn.
-2. Bind Herdr IDs after successful spawn.
-3. Worker emits Relay event and artifact.
-4. Owner verifies acceptance criteria.
-5. Update/close Bead.
-6. If reporting policy requires output, create/publish Delivery.
-7. Acknowledge the Inbox event.
+1. Resolve human-owned project authority and copy its exact project ID and
+   canonical repository into the child Bead.
+2. Create the Bead before visible Agent spawn.
+3. Revalidate authority before dispatch WAL, claim, Git, or Herdr effects.
+4. Bind Herdr IDs after successful spawn.
+5. Worker emits Relay event and artifact.
+6. Owner verifies acceptance criteria.
+7. Update/close Bead.
+8. If reporting policy requires output, create/publish Delivery.
+9. Acknowledge the Inbox event.
 
 A root user Task with `on_terminal` is not operationally finished until its
 terminal outcome has been delivered or explicitly waived.

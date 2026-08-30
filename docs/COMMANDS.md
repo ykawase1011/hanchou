@@ -53,6 +53,22 @@ hanchou route resolve \
 `hanchou usage recommend` is retained only as a compatibility alias in the
 scaffold. New Skills and documentation use `hanchou route resolve`.
 
+### Project authorization
+
+```bash
+hanchou project list --json
+hanchou project show <project-or-root-id> --json
+hanchou project resolve --path /absolute/git/top-level --json
+hanchou project doctor [<project-or-root-id>] --json
+```
+
+These commands only inspect the fixed, human-owned machine-local registry at
+`~/.config/hanchou/<profile>/projects.local.toml`. There is intentionally no
+Agent-callable command to add a repository or broaden a workspace root. Exact
+repository entries are the default; a human may opt into one
+`descendant-git-repositories` root containing only Agent-safe repositories.
+See `PROJECT_WORKSPACES.md`.
+
 ### Relay Inbox
 
 ```bash
@@ -89,7 +105,10 @@ hanchou execution reconcile [<bead-id>] --json
 ```
 
 `dispatch` currently accepts a dependency-ready Leaf Bead with valid
-`hanchou.task.v1` metadata and a clean Git top-level `repo_path`. It claims the
+`hanchou.task.v1` metadata and a clean Git top-level `repo_path`. Before any WAL,
+claim, Git command, or Herdr worktree side effect, it re-resolves the
+human-owned registry and requires the Bead project identity, canonical path,
+and profile to match. It claims the
 Bead, resolves the provider and model, creates a dedicated Herdr worktree,
 starts the worker, prompts it when ready, and persists a write-ahead execution
 record. First-run trust can return `awaiting_ready` without sending the task;

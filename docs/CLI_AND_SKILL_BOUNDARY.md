@@ -37,6 +37,7 @@ component.
 ### Implemented
 
 - profile plan/apply/doctor/status/open;
+- human-owned project authorization inspection and dispatch enforcement;
 - Orchestrator startup and generated Agent definitions;
 - provider usage snapshots and routing resolution;
 - Relay Inbox emit/claim/ack/retry/recovery;
@@ -120,6 +121,15 @@ hanchou route resolve \
   --task-kind code \
   --json
 ```
+
+### Resolve a target repository
+
+```bash
+hanchou project resolve --path /absolute/git/top-level --json
+```
+
+The registry is human-owned and deny-by-default. Agents may inspect it but no
+Hanchou command exposed to them can broaden it.
 
 ### Record a worker completion
 

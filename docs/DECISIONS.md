@@ -26,6 +26,10 @@
 17. Hanchouのproduction実装、validator、generatorはTypeScriptへ統一する。
     Node.js 22のnative type strippingで実行し、runtime npm dependencyとPython
     runtimeを要求しない。TypeScript compilerはCI/typecheck専用とする。
+18. 新規Leaf dispatchはhuman-owned machine-local project registryで
+    deny-by-defaultとする。通常はexact repo、opt-inではsecret-freeな専用rootの
+    descendant Git repoを許可する。Managed Agentは照合のみ行い、authorityを
+    追加・拡張しない。
 
 ## 初期default
 

@@ -25,6 +25,11 @@ For delegated work, create the root and child Beads first, attach valid
 `hanchou.task.v1` metadata to the child, then run
 `hanchou execution dispatch <child-id> --json`. Do not manually reproduce the
 cross-system claim, worktree, Agent binding, and prompt sequence.
+The child `project` and `repo_path` must come from
+`hanchou project resolve --path <git-root> --json`. Project authorization is
+human-owned machine-local state: Agents may list/show/resolve/doctor it but may
+not create or broaden it. Dispatch rechecks this authority before any WAL,
+Bead claim, Git operation, or Herdr worktree side effect.
 Dispatch rejects active blocking dependencies and any pre-existing non-empty
 `execution_id`. Hanchou owns only `execution_id`, `routing`, and `herdr`, and
 adds default `reporting` only when absent; preserve all other metadata.

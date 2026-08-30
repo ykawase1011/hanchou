@@ -14,7 +14,10 @@ immediately answer, create/delegate a Bead, or ask one blocking question.
 
 For a task-status question, query Beads and state when no matching tasks exist;
 do not infer task state from Herdr alone. For delegated intake, create the root
-and child Beads with `hanchou.task.v1` metadata, run
+and child Beads with `hanchou.task.v1` metadata. First resolve the human-owned
+authorization with `hanchou project resolve --path <git-root> --json`; copy its
+exact `project` and canonical `repo_path` into the child. Never edit the
+machine-local registry or invent a project identity when resolution fails. Run
 `hanchou execution dispatch <child-id> --json`, reply with both Task IDs plus
 the assigned Agent and role, then end the turn. If dispatch reports
 `awaiting_ready`, tell the human which Agent needs first-run trust; once it is

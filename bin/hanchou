@@ -1,5 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -euo pipefail
+
+# Do not let a caller-controlled PATH replace the utilities used to locate this
+# checkout. Homebrew locations remain available for normal macOS/Linux setups.
+PATH="/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
 
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SCRIPT_SOURCE" ]]; do
@@ -7,11 +12,123 @@ while [[ -L "$SCRIPT_SOURCE" ]]; do
   SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
   [[ "$SCRIPT_SOURCE" != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
 done
-ROOT="$(cd "$(dirname "$SCRIPT_SOURCE")/.." && pwd)"
+ROOT="$(cd "$(dirname "$SCRIPT_SOURCE")/.." && pwd -P)"
 
-if ! command -v mise >/dev/null 2>&1; then
-  echo "hanchou: mise is required; install it with: brew install mise" >&2
+case "$(uname -s)" in
+  Darwin)
+    HANCHOU_PASSWD_RECORD="$(/usr/bin/id -P)"
+    IFS=: read -r _ _ _ _ _ _ _ _ HANCHOU_OPERATOR_HOME _ <<< "$HANCHOU_PASSWD_RECORD"
+    ;;
+  Linux)
+    if [[ -x /usr/bin/getent ]]; then
+      HANCHOU_PASSWD_RECORD="$(/usr/bin/getent passwd "$(/usr/bin/id -u)")"
+    else
+      HANCHOU_PASSWD_RECORD="$(/usr/bin/awk -F: -v uid="$(/usr/bin/id -u)" '$3 == uid { print; exit }' /etc/passwd)"
+    fi
+    IFS=: read -r _ _ _ _ _ HANCHOU_OPERATOR_HOME _ <<< "$HANCHOU_PASSWD_RECORD"
+    ;;
+  *)
+    echo "hanchou: unsupported operating system for effective-user home lookup" >&2
+    exit 127
+    ;;
+esac
+
+if [[ -z "${HANCHOU_OPERATOR_HOME:-}" || "$HANCHOU_OPERATOR_HOME" != /* || ! -d "$HANCHOU_OPERATOR_HOME" ]]; then
+  echo "hanchou: could not resolve the effective OS user's home directory" >&2
+  exit 127
+fi
+HANCHOU_OPERATOR_HOME="$(cd "$HANCHOU_OPERATOR_HOME" && pwd -P)"
+
+HANCHOU_NODE_PIN="$(/usr/bin/awk '
+  /^\[tools\][[:space:]]*$/ { tools = 1; next }
+  /^\[/ { tools = 0 }
+  tools && /^[[:space:]]*node[[:space:]]*=/ {
+    value = $0
+    sub(/^[^=]*=[[:space:]]*/, "", value)
+    gsub(/[[:space:]\"]/, "", value)
+    print value
+    exit
+  }
+' "$ROOT/mise.toml")"
+if [[ ! "$HANCHOU_NODE_PIN" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+  echo "hanchou: mise.toml must contain a simple pinned Node.js version" >&2
   exit 127
 fi
 
-exec mise -C "$ROOT" exec -- node --experimental-strip-types "$ROOT/libexec/hanchou.ts" "$@"
+# mise's install root is derived from the effective OS user, never HOME,
+# XDG_DATA_HOME, MISE_DATA_DIR, or MISE_INSTALLS_DIR supplied by the caller.
+HANCHOU_NODE_ROOT="$HANCHOU_OPERATOR_HOME/.local/share/mise/installs/node"
+HANCHOU_NODE_BIN="$HANCHOU_NODE_ROOT/$HANCHOU_NODE_PIN/bin/node"
+if [[ ! -f "$HANCHOU_NODE_BIN" || ! -x "$HANCHOU_NODE_BIN" || -L "$HANCHOU_NODE_BIN" ]]; then
+  echo "hanchou: pinned Node.js is not installed; run: mise install" >&2
+  exit 127
+fi
+
+HANCHOU_NODE_ROOT_REAL="$(cd "$HANCHOU_NODE_ROOT" && pwd -P)"
+HANCHOU_NODE_PARENT_REAL="$(cd "$(dirname "$HANCHOU_NODE_BIN")" && pwd -P)"
+if [[ "$HANCHOU_NODE_ROOT_REAL" != "$HANCHOU_NODE_ROOT" ]]; then
+  echo "hanchou: mise Node install root must not contain symlink components" >&2
+  exit 127
+fi
+case "$HANCHOU_NODE_PARENT_REAL/node" in
+  "$HANCHOU_NODE_ROOT_REAL"/*/bin/node) ;;
+  *)
+    echo "hanchou: pinned Node.js resolves outside the effective user's mise install root" >&2
+    exit 127
+    ;;
+esac
+HANCHOU_NODE_BIN="$HANCHOU_NODE_PARENT_REAL/node"
+
+hanchou_validate_runtime_path() {
+  local candidate="$1"
+  local metadata owner mode
+  case "$(uname -s)" in
+    Darwin) metadata="$(/usr/bin/stat -f '%u %Lp' "$candidate")" ;;
+    Linux) metadata="$(/usr/bin/stat -c '%u %a' "$candidate")" ;;
+  esac
+  read -r owner mode <<< "$metadata"
+  if [[ "$owner" != "$(/usr/bin/id -u)" ]]; then
+    echo "hanchou: pinned Node path must be owned by the effective OS user: $candidate" >&2
+    exit 127
+  fi
+  if (( (8#$mode & 022) != 0 )); then
+    echo "hanchou: pinned Node path must not be group/world writable: $candidate" >&2
+    exit 127
+  fi
+}
+
+for HANCHOU_RUNTIME_PATH in \
+  "$HANCHOU_OPERATOR_HOME/.local" \
+  "$HANCHOU_OPERATOR_HOME/.local/share" \
+  "$HANCHOU_OPERATOR_HOME/.local/share/mise" \
+  "$HANCHOU_OPERATOR_HOME/.local/share/mise/installs" \
+  "$HANCHOU_NODE_ROOT_REAL" \
+  "$(dirname "$HANCHOU_NODE_PARENT_REAL")" \
+  "$HANCHOU_NODE_PARENT_REAL" \
+  "$HANCHOU_NODE_BIN"; do
+  hanchou_validate_runtime_path "$HANCHOU_RUNTIME_PATH"
+done
+
+# Hanchou's user-level state and managed upstream tools belong to the effective
+# OS user. Caller-selected HOME/XDG/mise roots must not redirect them.
+HOME="$HANCHOU_OPERATOR_HOME"
+XDG_CONFIG_HOME="$HANCHOU_OPERATOR_HOME/.config"
+XDG_DATA_HOME="$HANCHOU_OPERATOR_HOME/.local/share"
+XDG_CACHE_HOME="$HANCHOU_OPERATOR_HOME/.cache"
+MISE_DATA_DIR="$HANCHOU_OPERATOR_HOME/.local/share/mise"
+MISE_INSTALLS_DIR="$MISE_DATA_DIR/installs"
+PATH="$HANCHOU_NODE_PARENT_REAL:$HANCHOU_OPERATOR_HOME/.local/bin:$HANCHOU_OPERATOR_HOME/.local/share/mise/bin:$PATH"
+export HOME XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME MISE_DATA_DIR MISE_INSTALLS_DIR PATH
+
+unset NODE_OPTIONS NODE_PATH
+
+HANCHOU_NODE_VERSION="$($HANCHOU_NODE_BIN --version)"
+case "$HANCHOU_NODE_VERSION" in
+  "v$HANCHOU_NODE_PIN"|"v$HANCHOU_NODE_PIN".*) ;;
+  *)
+    echo "hanchou: expected Node.js $HANCHOU_NODE_PIN, got $HANCHOU_NODE_VERSION" >&2
+    exit 127
+    ;;
+esac
+
+exec "$HANCHOU_NODE_BIN" --experimental-strip-types "$ROOT/libexec/hanchou.ts" "$@"

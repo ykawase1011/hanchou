@@ -21,17 +21,29 @@
   evidence; versioned Inbox retry and lease-recovery replay covered every
   source/move crash shape without double-incrementing counts or journals, and
   non-finite lease deadlines were recovered instead of becoming stuck;
-- Codex project rules resolved `list/show/claim/ack` to `allow`,
-  `retry/dead-letter` to `prompt`, and an unknown future Inbox command to no
-  match;
+- Codex project rules resolved project `list/show/resolve/doctor` and Inbox
+  `list/show/claim/ack` to `allow`, Inbox `retry/dead-letter` to `prompt`, and
+  unknown or trust-mutating project commands to no match;
+- project authorization tests passed exact-repository and trusted-root resolve,
+  fixed effective-user registry lookup despite a spoofed process `HOME`,
+  profile/project mismatch rejection, path-prefix and symlink escape rejection,
+  external Git-common-directory and dirty-repository rejection, registry file
+  and parent/project/root permissions, broad HOME authorization rejection,
+  ID/root-overlap validation, disabled configured fsmonitor execution, external
+  local/included/worktree Git-filter rejection before status, sanitized
+  production Node/Bash preload options, effective-user HOME/XDG/mise root
+  normalization, managed-runtime custom-config rejection, and safe
+  missing-registry deny-all behavior;
 - Delivery lifecycle passed `create → rendered → delivered`, including
   traversal/symlink rejection and duplicate concurrent-create exclusion;
   queue reconciliation preserved staged render/failure evidence, prevented a
   failed record from being rendered or delivered, repaired current and legacy
   retry crash shapes without duplicate states/journal rows, and rejected retry
   on a never-failed pending record;
-- execution fake E2E passed dependency and ownership rejection, base-pinned
-  dispatch, first-run readiness recovery, role-scoped Codex/Claude startup,
+- execution fake E2E passed dependency, ownership, and unauthorized-project
+  rejection without a WAL/Bead/branch/Herdr side effect, base-pinned dispatch,
+  first-run readiness recovery, authorization-revocation rejection before the
+  first prompt, role-scoped Codex/Claude startup,
   prompt redaction, execution-bound Relay evidence, Delivery, settlement, and
   agent-start failure → blocked/lost → non-destructive reconcile; its strict
   Herdr 0.8.2 surface verifies workspace/tab-level environment injection and

@@ -30,7 +30,7 @@
 | Head/Maid/Manager/Worker固定階層 | L0／optional Mission Lead／Leaf | Changed | 伝言ゲームを減らす可変深度 |
 | planning／implementation／review | Role + Beads child tasks | Planned | runtime強制bridgeが必要 |
 | ClaudeとCodexの混在 | Herdr Agent kind + generated roles | Covered | artifact handoffを推奨 |
-| project別worktree | Herdr worktree | Covered | Task bridgeから作成予定 |
+| project別worktree | Herdr worktree | Covered | execution bridgeが許可済みrepoからtask別branch/worktreeを作成 |
 | max depth／step／loop | profile + role policy | Planned | central enforcement未実装 |
 | no-progress／wedge検知 | Herdr state + reconcile | Planned | Firstmate相当の深い監視は未実装 |
 | 再起動後の継続 | Herdr restore + Beads + Relay | Planned | E2E failure test未完了 |
@@ -66,7 +66,7 @@
 
 | 旧要件 | 新生構成 | 判定 | 備考 |
 |---|---|---:|---|
-| workspace越境禁止 | project registry + execution bridge | Partial | clean Git top-levelを強制。registry allowlistは未実装 |
+| workspace越境禁止 | human-owned project registry + execution bridge | Covered locally | exact repo / trusted descendant-Git rootをdispatch前にfail-closed照合。host read isolationはVM境界 |
 | Mac/Linux/Lima routing | Herdr remote + Kingdom node plan | Planned | provider lifecycle未実装 |
 | credential分離 | Unix user/VM + provider-native auth + external secret manager | Planned | Kingdomはsecretを保持しない |
 | fail-closed ingress binding | future hanchou-chat allowlist + fixed target | Planned | Core完成後に実装 |

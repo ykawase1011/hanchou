@@ -31,6 +31,7 @@ check: typecheck
 	mise exec -- node --experimental-strip-types scripts/validate.ts
 	mise exec -- bash tests/test-relay.sh
 	mise exec -- bash tests/test-delivery.sh
+	mise exec -- bash tests/test-projects.sh
 	mise exec -- bash tests/test-execution.sh
 	mise exec -- bash tests/test-cli.sh
 	mise exec -- node --experimental-strip-types scripts/manifest.ts check

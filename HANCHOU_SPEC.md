@@ -86,6 +86,13 @@ single writerです。WorkerはTask graphを直接変更せず、Relay eventで�
 Herdrの`idle/done`だけではBeadをcloseしません。Acceptance criteriaとdurable
 artifactを検証します。
 
+新規dispatchはmachine-local project registryでdeny-by-defaultとします。
+人間がexact Git repositoryまたはsecret-freeな専用workspace rootを許可し、
+Agentは`list/show/resolve/doctor`のみ行います。Beadのproject ID、canonical
+repository path、profileをdispatch前に再照合し、Agent自身が許可範囲を広げる
+commandは提供しません。Leafごとのworktreeは許可照合後に自動生成します。
+これはGit作業分離であり、host上のsecret read isolationではありません。
+
 ## 7. Scheduler
 
 Cronの正本はherdr-automationsです。
@@ -135,6 +142,7 @@ mechanicsを担当します。
 - Agent runtimeの通常操作は`herdr`。
 - 通常のfresh-agent Cronは`herdr-automations`。
 - Profile、routing、Relay、Delivery、cross-system operationは`hanchou`。
+- machine-local project authorizationの照合は`hanchou project`。
 
 GenericなTask／Agent facadeは作りません。`hanchou execution`は
 Beads↔Herdrをまたぐdispatch/reconcileに限定し、`hanchou schedule`は

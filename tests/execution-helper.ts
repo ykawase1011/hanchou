@@ -422,6 +422,7 @@ function initialize(args: readonly string[]): void {
     "hch-researcher": task("hch-researcher", "Claude researcher dispatch", repository, "researcher"),
     "hch-conflict": task("hch-conflict", "Reconcile ownership conflict", repository),
     "hch-trust": task("hch-trust", "Codex first-run trust recovery", repository),
+    "hch-revoked": task("hch-revoked", "Authorization revoked before first prompt", repository),
     "hch-trust-fail": task(
       "hch-trust-fail",
       "Ready reconcile prompt failure",
@@ -438,6 +439,9 @@ function initialize(args: readonly string[]): void {
       "Never expose SENTINEL-HANCHOU-PROMPT-SECRET-4c221d.",
     ),
   };
+  const unauthorized = task("hch-unauthorized", "Unauthorized project metadata", repository);
+  unauthorized.metadata.project = "wrong-project";
+  tasks["hch-unauthorized"] = unauthorized;
   const blocked = task("hch-blocked", "Dependency-blocked dispatch", repository);
   blocked.dependencies = [
     { id: "hch-prereq", title: "Open prerequisite", status: "open", dependency_type: "blocks" },
@@ -478,6 +482,27 @@ function assertForeign(inspectPath: string, herdrPath: string): void {
   assert.equal(herdr.counter, 0);
   assert.deepEqual(herdr.worktrees, []);
   assert.deepEqual(herdr.starts, []);
+}
+
+function assertUnauthorized(args: readonly string[]): void {
+  const [inspectPath, bdPath, herdrPath, repository] = args;
+  assert.ok(inspectPath && bdPath && herdrPath && repository);
+  const inspect = readJson(inspectPath);
+  const bdState = readJson(bdPath);
+  const herdr = readJson(herdrPath);
+  assert.equal(inspect.bead.status, "open");
+  assert.equal(inspect.task_metadata.project, "wrong-project");
+  assert.equal(inspect.task_metadata.execution_id, null);
+  assert.equal(inspect.execution, null);
+  assert.ok(!bdState.metadata_updates.some((row: JsonObject) => row.task_id === "hch-unauthorized"));
+  assert.equal(herdr.counter, 0);
+  assert.deepEqual(herdr.worktrees, []);
+  assert.deepEqual(herdr.starts, []);
+  assert.deepEqual(herdr.prompts, []);
+  const branches = execFileSync("git", ["-C", repository, "branch", "--format=%(refname:short)"], {
+    encoding: "utf8",
+  }).trim().split("\n").filter(Boolean);
+  assert.deepEqual(branches, ["main"]);
 }
 
 function assertDispatchSuccess(): void {
@@ -545,7 +570,10 @@ function assertInspectOk(args: readonly string[]): void {
   assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_WORKSPACE_ID"), inspect.execution.workspace_id);
   assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_TAB_ID"), inspect.execution.tab_id);
   assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_SOCKET_PATH"), join(rawHome, ".config/herdr/sessions/work/herdr.sock"));
-  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_BIN_PATH"), join(requiredEnvironment("FAKE_BIN"), "herdr"));
+  assert.equal(
+    codexConfig(start, "shell_environment_policy.set.HERDR_BIN_PATH"),
+    join(requiredEnvironment("HANCHOU_TEST_OPERATOR_HOME"), ".local/share/mise/installs/herdr/0.8.2/herdr"),
+  );
   assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_AGENT_ID"), inspect.execution.agent_name);
   assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_PROFILE"), "work");
   assert.equal(
@@ -577,7 +605,10 @@ function assertOrchestratorEnvironment(herdrPath: string, rawHome: string): void
   assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_WORKSPACE_ID"), agent.workspace_id);
   assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_TAB_ID"), agent.tab_id);
   assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_SOCKET_PATH"), join(rawHome, ".config/herdr/sessions/work/herdr.sock"));
-  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_BIN_PATH"), join(requiredEnvironment("FAKE_BIN"), "herdr"));
+  assert.equal(
+    codexConfig(start, "shell_environment_policy.set.HERDR_BIN_PATH"),
+    join(requiredEnvironment("HANCHOU_TEST_OPERATOR_HOME"), ".local/share/mise/installs/herdr/0.8.2/herdr"),
+  );
   assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_AGENT_ID"), "orchestrator");
   assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_PROFILE"), "work");
   assert.equal(
@@ -619,6 +650,31 @@ function readyTrust(bdPath: string, herdrPath: string, agentName: string, failin
   writeJson(herdrPath, herdr);
 }
 
+function readyAgent(herdrPath: string, agentName: string): void {
+  const herdr = readJson(herdrPath);
+  const agent = herdr.agents[agentName];
+  assert.ok(agent);
+  assert.equal(agent.agent_status, "blocked");
+  agent.agent_status = "idle";
+  agent.state_change_seq += 1;
+  writeJson(herdrPath, herdr);
+}
+
+function assertReconcileRevoked(args: readonly string[]): void {
+  const [reconcilePath, inspectPath, bdPath, herdrPath] = args;
+  assert.ok(reconcilePath && inspectPath && bdPath && herdrPath);
+  const row = readJson(reconcilePath);
+  const inspect = readJson(inspectPath);
+  const bead = readJson(bdPath).beads["hch-revoked"];
+  const herdr = readJson(herdrPath);
+  assert.equal(row.phase, "attention_required");
+  assert.ok(row.actions.includes("awaiting-ready-prompt-blocked"));
+  assert.ok(row.anomalies.some((item: string) => item.includes("project registry not found")));
+  assert.equal(inspect.execution.failed_phase, "awaiting_ready_authorization_or_prompt");
+  assert.equal(bead.status, "blocked");
+  assert.ok(!herdr.prompts.some((entry: JsonObject) => entry.prompt.includes("Task ID: hch-revoked")));
+}
+
 function assertReconcileTrust(args: readonly string[]): void {
   const [firstPath, secondPath, herdrPath, bdPath] = args;
   assert.ok(firstPath && secondPath && herdrPath && bdPath);
@@ -646,8 +702,8 @@ function assertReconcileTrustFail(reconcilePath: string, bdPath: string): void {
   const row = readJson(reconcilePath);
   const bead = readJson(bdPath).beads["hch-trust-fail"];
   assert.equal(row.phase, "attention_required");
-  assert.ok(row.actions.includes("awaiting-ready-prompt-failed"));
-  assert.ok(row.anomalies.some((item: string) => item.includes("redacted task prompt failed")));
+  assert.ok(row.actions.includes("awaiting-ready-prompt-blocked"));
+  assert.ok(row.anomalies.some((item: string) => item.includes("authorization or prompt delivery failed")));
   assert.equal(bead.status, "blocked");
   assert.ok(!JSON.stringify(row).includes("SENTINEL-HANCHOU-READY-SECRET-8b319e"));
 }
@@ -655,7 +711,7 @@ function assertReconcileTrustFail(reconcilePath: string, bdPath: string): void {
 function assertInspectTrustFail(path: string): void {
   const execution = readJson(path).execution;
   assert.equal(execution.phase, "attention_required");
-  assert.equal(execution.failed_phase, "prompting");
+  assert.equal(execution.failed_phase, "awaiting_ready_authorization_or_prompt");
   assert.ok(execution.error.includes("<redacted-prompt>"));
   assert.ok(execution.error.includes("<command output redacted>"));
   assert.ok(!JSON.stringify(execution).includes("SENTINEL-HANCHOU-READY-SECRET-8b319e"));
@@ -751,7 +807,7 @@ function assertInspectClaude(inspectPath: string, herdrPath: string): void {
   const addDirs = start.flatMap((value, index) => (value === "--add-dir" ? [start[index + 1] as string] : []));
   const expected = [
     dirname(inspect.execution.report_path as string),
-    resolve(realpathSync(requiredEnvironment("HOME")), ".local/share/hanchou/work/relay"),
+    resolve(realpathSync(requiredEnvironment("HANCHOU_TEST_OPERATOR_HOME")), ".local/share/hanchou/work/relay"),
   ].sort();
   assert.deepEqual([...new Set(addDirs)].sort(), expected);
   assert.equal(addDirs.length, 2);
@@ -822,12 +878,15 @@ function main(args: readonly string[]): number {
     case "file-field": jsonField(readJson(rest[0] as string), rest[1] as string); break;
     case "assert-blocked": assertBlocked(rest[0] as string); break;
     case "assert-foreign": assertForeign(rest[0] as string, rest[1] as string); break;
+    case "assert-unauthorized": assertUnauthorized(rest); break;
     case "assert-dispatch-success": assertDispatchSuccess(); break;
     case "assert-inspect-ok": assertInspectOk(rest); break;
     case "assert-awaiting": assertAwaiting(); break;
     case "ready-trust": readyTrust(rest[0] as string, rest[1] as string, rest[2] as string, false); break;
     case "ready-trust-fail": readyTrust(rest[0] as string, rest[1] as string, rest[2] as string, true); break;
+    case "ready-agent": readyAgent(rest[0] as string, rest[1] as string); break;
     case "assert-reconcile-trust": assertReconcileTrust(rest); break;
+    case "assert-reconcile-revoked": assertReconcileRevoked(rest); break;
     case "assert-inspect-trust": assertInspectTrust(rest[0] as string); break;
     case "assert-reconcile-trust-fail": assertReconcileTrustFail(rest[0] as string, rest[1] as string); break;
     case "assert-inspect-trust-fail": assertInspectTrustFail(rest[0] as string); break;

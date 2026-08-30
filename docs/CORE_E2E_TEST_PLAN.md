@@ -9,10 +9,13 @@
 
 ## B. Visible worker
 
-1. Dispatch a Leaf.
-2. Verify Herdr worktree/workspace/Agent binding metadata.
-3. Verify correct Role and Terra/Sonnet route.
-4. Verify worker cannot mutate global Task/Schedule state by policy.
+1. Resolve the target through the human-owned project registry.
+2. Verify an unregistered/mismatched repo fails before WAL, Bead claim, Git, or
+   Herdr effects.
+3. Dispatch an authorized Leaf.
+4. Verify Herdr worktree/workspace/Agent binding metadata.
+5. Verify correct Role and Terra/Sonnet route.
+6. Verify worker cannot mutate global Task/Schedule state by policy.
 
 ## C. Later-turn completion
 

@@ -7,12 +7,89 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 export HOME="$TMP/home"
-mkdir -p "$HOME"
+export HANCHOU_TEST_OPERATOR_HOME="$TMP/operator"
+MOCK_USER_INFO="$TMP/mock-user-info.cjs"
+mkdir -p "$HOME" "$HANCHOU_TEST_OPERATOR_HOME"
+printf '%s\n' \
+  'const os = require("node:os");' \
+  'const original = os.userInfo;' \
+  'os.userInfo = () => ({ ...original(), homedir: process.env.HANCHOU_TEST_OPERATOR_HOME });' \
+  > "$MOCK_USER_INFO"
 
-"$ROOT/bin/hanchou" --help | grep -q 'route'
-"$ROOT/bin/hanchou" --help | grep -q 'bootstrap'
-"$ROOT/bin/hanchou" plan work | grep -q 'mise.toml: Herdr 0.8.2, Node.js 22'
-"$ROOT/bin/hanchou" plan work | grep -q '.codex/rules/hanchou.rules'
+hanchou_test() {
+  NODE_OPTIONS="--require=$MOCK_USER_INFO" node --experimental-strip-types \
+    "$ROOT/libexec/hanchou.ts" "$@"
+}
+
+PRELOAD_PROBE="$TMP/preload-probe.cjs"
+PRELOAD_MARKER="$TMP/preload-loaded"
+printf '%s\n' \
+  'require("node:fs").writeFileSync(process.env.HANCHOU_PRELOAD_MARKER, "loaded");' \
+  > "$PRELOAD_PROBE"
+NODE_OPTIONS="--require=$PRELOAD_PROBE" HANCHOU_PRELOAD_MARKER="$PRELOAD_MARKER" \
+  "$ROOT/bin/hanchou" --help > "$TMP/wrapper-help.out"
+grep -q 'route' "$TMP/wrapper-help.out"
+grep -q 'bootstrap' "$TMP/wrapper-help.out"
+if [[ -e "$PRELOAD_MARKER" ]]; then
+  echo "production wrapper executed caller-controlled NODE_OPTIONS" >&2
+  exit 1
+fi
+
+BASH_ENV_PROBE="$TMP/bash-env.sh"
+BASH_ENV_MARKER="$TMP/bash-env-preload-loaded"
+printf 'unset() { :; }\n' > "$BASH_ENV_PROBE"
+BASH_ENV="$BASH_ENV_PROBE" NODE_OPTIONS="--require=$PRELOAD_PROBE" \
+  HANCHOU_PRELOAD_MARKER="$BASH_ENV_MARKER" \
+  "$ROOT/bin/hanchou" --help > "$TMP/bash-env-help.out"
+grep -q 'bootstrap' "$TMP/bash-env-help.out"
+if [[ -e "$BASH_ENV_MARKER" ]]; then
+  echo "production wrapper allowed BASH_ENV to override preload sanitization" >&2
+  exit 1
+fi
+
+FAKE_MISE_DATA="$TMP/fake-mise-data"
+FAKE_MISE_INSTALLS="$TMP/fake-mise-installs"
+FAKE_MISE_DATA_MARKER="$TMP/fake-mise-data-node-executed"
+FAKE_MISE_INSTALLS_MARKER="$TMP/fake-mise-installs-node-executed"
+mkdir -p "$FAKE_MISE_DATA/installs/node/22/bin" "$FAKE_MISE_INSTALLS/node/22/bin"
+printf '#!/bin/sh\n/usr/bin/touch "%s"\nexit 97\n' "$FAKE_MISE_DATA_MARKER" \
+  > "$FAKE_MISE_DATA/installs/node/22/bin/node"
+printf '#!/bin/sh\n/usr/bin/touch "%s"\nexit 98\n' "$FAKE_MISE_INSTALLS_MARKER" \
+  > "$FAKE_MISE_INSTALLS/node/22/bin/node"
+chmod +x "$FAKE_MISE_DATA/installs/node/22/bin/node" \
+  "$FAKE_MISE_INSTALLS/node/22/bin/node"
+MISE_DATA_DIR="$FAKE_MISE_DATA" "$ROOT/bin/hanchou" --help > "$TMP/mise-data-help.out"
+MISE_INSTALLS_DIR="$FAKE_MISE_INSTALLS" "$ROOT/bin/hanchou" --help > "$TMP/mise-installs-help.out"
+grep -q 'bootstrap' "$TMP/mise-data-help.out"
+grep -q 'bootstrap' "$TMP/mise-installs-help.out"
+if [[ -e "$FAKE_MISE_DATA_MARKER" || -e "$FAKE_MISE_INSTALLS_MARKER" ]]; then
+  echo "production wrapper executed a caller-selected mise install" >&2
+  exit 1
+fi
+MISE_DATA_DIR="$FAKE_MISE_DATA" MISE_INSTALLS_DIR="$FAKE_MISE_INSTALLS" \
+  node --experimental-strip-types --input-type=module - "$ROOT/libexec/hanchou.ts" <<'JS'
+import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
+import { userInfo } from "node:os";
+import { basename, join, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+const { codexManagedEnvironmentArgs, loadProfile, trustedMiseExecutable } = await import(pathToFileURL(process.argv[2]).href);
+assert.equal(basename(trustedMiseExecutable()), "mise");
+const [, profile] = loadProfile("work");
+const args = codexManagedEnvironmentArgs("work", profile, "test-agent", "p1", "w1", "t1");
+const assignment = args.find((value) => value.startsWith("shell_environment_policy.set.HERDR_BIN_PATH="));
+assert.ok(assignment);
+const herdr = JSON.parse(assignment.slice(assignment.indexOf("=") + 1));
+const root = realpathSync(join(userInfo().homedir, ".local/share/mise/installs/herdr"));
+assert.ok(herdr.startsWith(`${root}${sep}`));
+assert.ok(herdr.endsWith(`${sep}0.8.2${sep}herdr`));
+JS
+/bin/bash -px "$ROOT/bin/hanchou" --help > "$TMP/traced-wrapper-help.out" 2> "$TMP/traced-wrapper.err"
+grep -q 'bootstrap' "$TMP/traced-wrapper-help.out"
+grep -E -q 'PATH=.*/installs/node/.*/bin:.*\.local/bin:.*\.local/share/mise/bin:' "$TMP/traced-wrapper.err"
+grep -E -q 'hanchou_validate_runtime_path .*/installs/node/.*/bin/node' "$TMP/traced-wrapper.err"
+hanchou_test plan work | grep -q 'mise.toml: Herdr 0.8.2, Node.js 22'
+hanchou_test plan work | grep -q '.codex/rules/hanchou.rules'
 ln -s "$ROOT/bin/hanchou" "$TMP/hanchou"
 export PATH="$TMP:$PATH"
 "$TMP/hanchou" --help | grep -q 'bootstrap'
@@ -24,6 +101,7 @@ if (/pattern\s*=\s*\[\s*["']hanchou["']\s*,\s*["']inbox["']\s*\]/.test(source)) 
   throw new Error("Inbox rules must not allow the whole command family");
 }
 for (const expected of [
+  '["hanchou", "project", ["list", "show", "resolve", "doctor"]]',
   '["hanchou", "inbox", ["list", "show"]]',
   '["hanchou", "inbox", ["claim", "ack"]]',
   '["hanchou", "inbox", ["retry", "dead-letter"]]',
@@ -38,6 +116,11 @@ if command -v codex >/dev/null 2>&1; then
 import { spawnSync } from "node:child_process";
 const rules = process.argv[2];
 const cases = [
+  [["hanchou", "project", "list", "--json"], "allow"],
+  [["hanchou", "project", "show", "example-app", "--json"], "allow"],
+  [["hanchou", "project", "resolve", "--path", "/workspace/example-app", "--json"], "allow"],
+  [["hanchou", "project", "doctor"], "allow"],
+  [["hanchou", "project", "add", "example-app", "--path", "/workspace/example-app"], null],
   [["hanchou", "inbox", "list", "--json"], "allow"],
   [["hanchou", "inbox", "show", "evt_example"], "allow"],
   [["hanchou", "inbox", "claim", "--to", "orchestrator", "--json"], "allow"],
@@ -63,7 +146,7 @@ printf '%s\n' \
   "  justification='decision=\"prompt\" is only text'," \
   '  # decision="prompt" is only a comment; the real default is allow' \
   ')' > "$TMP/codex-home/rules/nested/legacy.rules"
-CODEX_HOME="$TMP/codex-home" "$ROOT/bin/hanchou" plan work | grep -q 'nested/legacy.rules'
+CODEX_HOME="$TMP/codex-home" hanchou_test plan work | grep -q 'nested/legacy.rules'
 
 mkdir -p "$TMP/policy-user/nested" "$TMP/policy-project/nested"
 printf 'prefix_rule(pattern=["user", "one"])\n' > "$TMP/policy-user/default.rules"
@@ -86,31 +169,44 @@ assert.ok(paths.some((path) => path.endsWith("extra.rules")));
 assert.ok(paths.every((path) => !path.endsWith("ignored.rules")));
 JS
 
-if "$ROOT/bin/hanchou" >/dev/null 2>"$TMP/no-command.err"; then
+if hanchou_test >/dev/null 2>"$TMP/no-command.err"; then
   echo "expected a missing-command parser failure" >&2
   exit 1
 fi
 grep -q 'hanchou: error: the following arguments are required: command' "$TMP/no-command.err"
 
-if "$ROOT/bin/hanchou" usage show --json=true >/dev/null 2>"$TMP/boolean-value.err"; then
+hanchou_test project --help | grep -q '{list,show,resolve,doctor}'
+if hanchou_test project resolve >/dev/null 2>"$TMP/project-path.err"; then
+  echo "expected a missing project path parser failure" >&2
+  exit 1
+fi
+grep -q 'the following arguments are required: --path' "$TMP/project-path.err"
+
+if hanchou_test project add example --path /tmp/example >/dev/null 2>"$TMP/project-add.err"; then
+  echo "expected an unsupported project mutation command" >&2
+  exit 1
+fi
+grep -q "argument project_command: invalid choice: 'add'" "$TMP/project-add.err"
+
+if hanchou_test usage show --json=true >/dev/null 2>"$TMP/boolean-value.err"; then
   echo "expected an explicit boolean value parser failure" >&2
   exit 1
 fi
 grep -q "argument --json: ignored explicit argument 'true'" "$TMP/boolean-value.err"
 
-if "$ROOT/bin/hanchou" usage set codex --weekly-remaining= >/dev/null 2>"$TMP/empty-float.err"; then
+if hanchou_test usage set codex --weekly-remaining= >/dev/null 2>"$TMP/empty-float.err"; then
   echo "expected an empty float parser failure" >&2
   exit 1
 fi
 grep -q "argument --weekly-remaining: invalid float value: ''" "$TMP/empty-float.err"
 
-if "$ROOT/bin/hanchou" usage set codex --weekly-remaining=0x10 >/dev/null 2>"$TMP/hex-float.err"; then
+if hanchou_test usage set codex --weekly-remaining=0x10 >/dev/null 2>"$TMP/hex-float.err"; then
   echo "expected a non-decimal float parser failure" >&2
   exit 1
 fi
 grep -q "argument --weekly-remaining: invalid float value: '0x10'" "$TMP/hex-float.err"
 
-if "$ROOT/bin/hanchou" route resolve --role --json >/dev/null 2>"$TMP/missing-option-value.err"; then
+if hanchou_test route resolve --role --json >/dev/null 2>"$TMP/missing-option-value.err"; then
   echo "expected a missing option value parser failure" >&2
   exit 1
 fi
@@ -120,6 +216,12 @@ CUSTOM_CONFIG="$TMP/config"
 mkdir -p "$CUSTOM_CONFIG/profiles"
 cp "$ROOT/config/profiles/work.toml" "$CUSTOM_CONFIG/profiles/work.toml"
 cp "$ROOT/config/model-routing.toml" "$CUSTOM_CONFIG/model-routing.toml"
+if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test execution inspect hch-example >/dev/null 2>"$TMP/custom-runtime-config.err"; then
+  echo "expected managed runtime custom-config rejection" >&2
+  exit 1
+fi
+grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
+  "$TMP/custom-runtime-config.err"
 node - "$CUSTOM_CONFIG/profiles/work.toml" <<'JS'
 const fs = require("node:fs");
 const path = process.argv[2];
@@ -133,11 +235,13 @@ text = text.replace(
 );
 fs.writeFileSync(path, text);
 JS
-env -u HANCHOU_UNDEFINED HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" \
-  "$ROOT/bin/hanchou" plan work >"$TMP/unexpanded-vars.out"
+(
+  unset HANCHOU_UNDEFINED
+  HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test plan work
+) >"$TMP/unexpanded-vars.out"
 grep -Fq '$HANCHOU_UNDEFINED/hanchou/work' "$TMP/unexpanded-vars.out"
 grep -Fq '${HANCHOU_UNDEFINED}/hanchou/work/relay' "$TMP/unexpanded-vars.out"
-"$ROOT/bin/hanchou" --profile work route resolve \
+hanchou_test --profile work route resolve \
   --role implementer --task-kind code --json > "$TMP/route.json"
 node --input-type=module - "$TMP/route.json" <<'TS'
 import { readFileSync } from "node:fs";
@@ -149,7 +253,7 @@ if (!new Set(["codex", "claude"]).has(obj.provider)) {
 if (!obj.model) throw new Error("missing model");
 TS
 
-"$ROOT/bin/hanchou" --profile work usage recommend \
+hanchou_test --profile work usage recommend \
   --role implementer --task-kind code --json > "$TMP/alias.json"
 node --input-type=module - "$TMP/route.json" "$TMP/alias.json" <<'TS'
 import { readFileSync } from "node:fs";

@@ -108,6 +108,17 @@ make check
 ./bin/hanchou status work
 ```
 
+新規projectのdispatchはdeny-by-defaultです。人間が通常terminalから
+`~/.config/hanchou/work/projects.local.toml`へ、対象Git repositoryを明示登録するか、
+secretを含まない専用repository rootを1つ許可します。Managed Agentは
+`hanchou project list/show/resolve/doctor`で照合できますが、許可範囲を追加・変更
+する通常のHanchou commandはありません。同一OS userに対するhard boundaryでは
+ないため、配置と設定例は`docs/PROJECT_WORKSPACES.md`を参照してください。
+
+Leaf Taskをdispatchすると、固有branchと
+`~/.local/share/hanchou/<profile>/worktrees/<task>/<execution>/`が自動生成されます。
+merge、push、PR作成、worktree削除は自動ではありません。
+
 Herdr 0.8.2とNode.js 22は`mise.toml`で管理します。HerdrをHomebrewから直接
 installしたり、`latest`へ自動追従させたりしません。`herdr-beads`はoptional、
 Beadsのstandalone Dolt serverは初期構成では不要です。Core CLI、validator、

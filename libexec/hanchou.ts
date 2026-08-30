@@ -23,11 +23,12 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import { get as httpGet } from "node:http";
-import { homedir, platform, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { platform, tmpdir, userInfo } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readToml } from "../lib/toml.ts";
+import { parseToml, readToml } from "../lib/toml.ts";
 
 type JsonObject = Record<string, any>;
 type RunResult = { returncode: number; stdout: string; stderr: string };
@@ -59,11 +60,51 @@ const DELIVERY_KINDS = new Set(["task_terminal", "decision", "schedule_report", 
 const EVENT_ID_PATTERN = /^evt_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const DELIVERY_ID_PATTERN = /^dly_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const PROJECT_ID_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/;
 const INBOX_STATES = new Set(["pending", "processing", "acknowledged", "dead-letter"]);
 const DELIVERY_STATES = new Set(["pending", "rendered", "delivered", "failed"]);
 const CODEX_RULES_PATH = join(ROOT, ".codex", "rules", "hanchou.rules");
 const TERMINAL_JOURNAL_SCHEMA = "hanchou.relay-terminal-journal.v1";
 const INBOX_TRANSITION_JOURNAL_SCHEMA = "hanchou.relay-inbox-transition-journal.v1";
+
+type ProjectEntry = {
+  id: string;
+  path: string;
+  canonical_path: string;
+  allowed_profiles: string[];
+  default_leaf_role?: string;
+  default_leaf_kind?: string;
+  labels?: string[];
+};
+
+type WorkspaceRootEntry = {
+  id: string;
+  path: string;
+  canonical_path: string;
+  allowed_profiles: string[];
+  trust: "descendant-git-repositories";
+};
+
+type ProjectRegistry = {
+  schema_version: 1;
+  default_policy: "deny";
+  registry_path: string;
+  registry_digest: string | null;
+  projects: ProjectEntry[];
+  workspace_roots: WorkspaceRootEntry[];
+};
+
+type ProjectAuthorization = {
+  schema: "hanchou.project-authorization.v1";
+  profile: string;
+  project: string;
+  repo_path: string;
+  source_kind: "project" | "workspace_root";
+  source_id: string;
+  workspace_root: string | null;
+  registry_path: string;
+  registry_digest: string;
+};
 
 export class CommandError extends Error {
   constructor(message: string) {
@@ -94,9 +135,11 @@ function sleep(milliseconds: number): void {
 }
 
 function expand(value: string): string {
-  let rendered = value.replace(/^~(?=$|\/)/, homedir());
+  let rendered = value.replace(/^~(?=$|\/)/, operatorHome());
   rendered = rendered.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, braced, plain) => {
-    return process.env[braced || plain] ?? match;
+    const key = braced || plain;
+    if (key === "HOME") return operatorHome();
+    return process.env[key] ?? match;
   });
   const lexical = resolve(rendered);
   const suffix: string[] = [];
@@ -142,6 +185,90 @@ function which(name: string): string | null {
   return null;
 }
 
+function trustedSearchPath(): string {
+  return [
+    join(operatorHome(), ".local", "bin"),
+    join(operatorHome(), ".local", "share", "mise", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/home/linuxbrew/.linuxbrew/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+  ].join(":");
+}
+
+export function trustedMiseExecutable(): string {
+  const candidates = [
+    "/opt/homebrew/bin/mise",
+    "/usr/local/bin/mise",
+    "/home/linuxbrew/.linuxbrew/bin/mise",
+    "/usr/bin/mise",
+    join(operatorHome(), ".local", "share", "mise", "bin", "mise"),
+    join(operatorHome(), ".local", "bin", "mise"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const resolved = realpathSync(candidate);
+      const info = statSync(resolved);
+      const ownerAllowed = typeof process.getuid !== "function" || info.uid === process.getuid() || info.uid === 0;
+      if (info.isFile() && (info.mode & 0o111) !== 0 && (info.mode & 0o022) === 0 && ownerAllowed) return resolved;
+    } catch { /* try the next fixed location */ }
+  }
+  throw new CommandError("required command not found in a trusted location: mise (install it with `brew install mise`)");
+}
+
+function trustedMiseEnvironment(): NodeJS.ProcessEnv {
+  const home = operatorHome();
+  const data = join(home, ".local", "share", "mise");
+  const env: NodeJS.ProcessEnv = {
+    HOME: home,
+    PATH: trustedSearchPath(),
+    MISE_DATA_DIR: data,
+    MISE_INSTALLS_DIR: join(data, "installs"),
+  };
+  for (const key of [
+    "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "LC_CTYPE",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "GITHUB_TOKEN", "GH_TOKEN", "CI",
+  ]) if (process.env[key] !== undefined) env[key] = process.env[key];
+  return env;
+}
+
+function pinnedMiseToolPath(name: "herdr" | "node" | "npm" | "npx"): string {
+  if (name === "npm" || name === "npx") pinnedMiseToolPath("node");
+  const tools = miseTools();
+  const family = name === "herdr" ? "herdr" : "node";
+  const version = tools[family];
+  if (!version || !/^[A-Za-z0-9._+-]+$/.test(version)) {
+    throw new CommandError(`mise.toml requires a simple pinned ${family} version`);
+  }
+  const familyRoot = join(operatorHome(), ".local", "share", "mise", "installs", family);
+  const candidate = name === "herdr"
+    ? join(familyRoot, version, "herdr")
+    : join(familyRoot, version, "bin", name);
+  let resolvedRoot: string;
+  let resolvedTool: string;
+  let info: Stats;
+  try {
+    resolvedRoot = realpathSync(familyRoot);
+    resolvedTool = realpathSync(candidate);
+    info = statSync(resolvedTool);
+  } catch {
+    throw new CommandError(`pinned ${name} is not installed at ${candidate}; run \`mise install\``);
+  }
+  if (!pathWithin(resolvedRoot, resolvedTool)) {
+    throw new CommandError(`pinned ${name} resolves outside the effective user's mise install root: ${resolvedTool}`);
+  }
+  if (!info.isFile() || (info.mode & 0o111) === 0) throw new CommandError(`pinned ${name} is not executable: ${resolvedTool}`);
+  if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+    throw new CommandError(`pinned ${name} must be owned by the effective OS user: ${resolvedTool}`);
+  }
+  if ((info.mode & 0o022) !== 0) throw new CommandError(`pinned ${name} must not be group/world writable: ${resolvedTool}`);
+  return name === "npm" || name === "npx" ? candidate : resolvedTool;
+}
+
 function shellQuote(value: string): string {
   if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) return value;
   return `'${value.replace(/'/g, `'"'"'`)}'`;
@@ -179,13 +306,8 @@ export function run(argv: string[], options: RunOptions = {}): RunResult {
 }
 
 function commandPath(name: string): string {
-  if (new Set(["herdr", "node", "npm", "npx"]).has(name) && existsSync(MISE_CONFIG)) {
-    const mise = which("mise");
-    if (mise) {
-      const proc = run([mise, "-C", ROOT, "which", name], { capture: true, check: false });
-      if (proc.returncode === 0 && proc.stdout.trim()) return proc.stdout.trim();
-    }
-  }
+  if (name === "mise") return trustedMiseExecutable();
+  if (name === "herdr" || name === "node" || name === "npm" || name === "npx") return pinnedMiseToolPath(name);
   const found = which(name);
   if (!found) throw new CommandError(`required command not found: ${name}`);
   return found;
@@ -213,6 +335,269 @@ function profilePaths(profile: JsonObject): Record<string, string> {
   return result;
 }
 
+function operatorHome(): string {
+  const configured = userInfo().homedir;
+  if (!isAbsolute(configured) || !isDirectory(configured)) {
+    throw new CommandError(`cannot resolve the operator home directory from the effective OS user: ${configured}`);
+  }
+  return realpathSync(configured);
+}
+
+function projectRegistryPath(name: string): string {
+  return join(operatorHome(), ".config", "hanchou", name, "projects.local.toml");
+}
+
+function validateAuthorityComponent(path: string, label: string, requireFile: boolean): void {
+  let info;
+  try { info = lstatSync(path); }
+  catch (error) { throw new CommandError(`cannot inspect ${label} ${path}: ${error}`); }
+  validateAuthorityMetadata(info, path, label, requireFile);
+}
+
+function validateAuthorityMetadata(info: Stats, path: string, label: string, requireFile: boolean): void {
+  if (info.isSymbolicLink() || (requireFile ? !info.isFile() : !info.isDirectory())) {
+    throw new CommandError(`${label} must be a regular non-symlink ${requireFile ? "file" : "directory"}: ${path}`);
+  }
+  if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+    throw new CommandError(`${label} must be owned by the effective OS user: ${path}`);
+  }
+  if ((info.mode & 0o022) !== 0) {
+    throw new CommandError(`${label} must not be group/world writable: ${path}`);
+  }
+}
+
+function validateAuthorityPath(path: string): void {
+  const home = operatorHome();
+  const configHome = join(home, ".config");
+  const hanchouHome = join(configHome, "hanchou");
+  const profileHome = dirname(path);
+  for (const [candidate, label] of [
+    [configHome, "operator config directory"],
+    [hanchouHome, "Hanchou config directory"],
+    [profileHome, "Hanchou profile config directory"],
+  ] as Array<[string, string]>) {
+    if (existsSync(candidate)) validateAuthorityComponent(candidate, label, false);
+  }
+  validateAuthorityComponent(path, "project registry", true);
+}
+
+function readProjectRegistrySnapshot(path: string): { source: string; raw: JsonObject } {
+  validateAuthorityPath(path);
+  let descriptor: number;
+  try {
+    descriptor = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  } catch (error) {
+    throw new CommandError(`cannot securely open project registry ${path}: ${error}`);
+  }
+  try {
+    validateAuthorityMetadata(fstatSync(descriptor), path, "project registry", true);
+    const source = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(descriptor));
+    let raw: JsonObject;
+    try { raw = parseToml(source) as JsonObject; }
+    catch (error) { throw new CommandError(`cannot read TOML ${path}: ${error}`); }
+    return { source, raw };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function validateStringArray(value: unknown, label: string, allowed: Set<string> | null = null): string[] {
+  if (!Array.isArray(value) || !value.length || !value.every((item) => typeof item === "string" && item.length > 0)) {
+    throw new CommandError(`${label} must be a non-empty string array`);
+  }
+  const rows = value.map(String);
+  if (new Set(rows).size !== rows.length) throw new CommandError(`${label} contains duplicate values`);
+  if (allowed) {
+    const unsupported = rows.filter((item) => !allowed.has(item));
+    if (unsupported.length) throw new CommandError(`${label} contains unsupported values: ${unsupported.join(", ")}`);
+  }
+  return rows;
+}
+
+function registryCanonicalPath(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new CommandError(`${label} must be a non-empty path without control characters`);
+  }
+  if (value.includes("$")) throw new CommandError(`${label} must not contain environment-variable expansion`);
+  const home = operatorHome();
+  const rendered = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
+  if (!isAbsolute(rendered)) throw new CommandError(`${label} must be absolute or start with ~/`);
+  const lexical = resolve(rendered);
+  if (!isDirectory(lexical)) throw new CommandError(`${label} directory not found: ${lexical}`);
+  const canonical = realpathSync(lexical);
+  if (canonical !== lexical) throw new CommandError(`${label} must not contain symlink components: ${lexical} resolves to ${canonical}`);
+  return canonical;
+}
+
+function validateAuthorizedDirectory(canonical: string, label: string): void {
+  const home = operatorHome();
+  if (pathWithin(canonical, home, true)) {
+    throw new CommandError(`${label} must not be filesystem root, HOME, or an ancestor of HOME: ${canonical}`);
+  }
+  validateAuthorityComponent(canonical, label, false);
+}
+
+function pathWithin(root: string, target: string, allowEqual = false): boolean {
+  const suffix = relative(root, target);
+  if (!suffix) return allowEqual;
+  return !isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`);
+}
+
+function encodedRelativeProjectPath(root: string, repository: string): string {
+  return relative(root, repository).split(/[\\/]+/).map((part) => encodeURIComponent(part)).join("/");
+}
+
+function dynamicRootProjectId(root: WorkspaceRootEntry, repository: string): string {
+  return `root:${root.id}/${encodedRelativeProjectPath(root.canonical_path, repository)}`;
+}
+
+function validateRegistryId(value: unknown, label: string): string {
+  if (typeof value !== "string" || !PROJECT_ID_PATTERN.test(value)) {
+    throw new CommandError(`${label} must match ${PROJECT_ID_PATTERN.source}`);
+  }
+  return value;
+}
+
+function loadProjectRegistry(name: string, allowMissing = true): ProjectRegistry {
+  const path = projectRegistryPath(name);
+  if (!existsSync(path)) {
+    if (!allowMissing) {
+      throw new CommandError(`project registry not found for profile ${name}: ${path}; new dispatch is denied until a human creates this file`);
+    }
+    return { schema_version: 1, default_policy: "deny", registry_path: path, registry_digest: null, projects: [], workspace_roots: [] };
+  }
+  const { source, raw } = readProjectRegistrySnapshot(path);
+  const allowedTopLevel = new Set(["schema_version", "default_policy", "projects", "workspace_roots"]);
+  const unknownTopLevel = Object.keys(raw).filter((key) => !allowedTopLevel.has(key));
+  if (unknownTopLevel.length) throw new CommandError(`project registry has unsupported top-level keys: ${unknownTopLevel.join(", ")}`);
+  if (raw.schema_version !== 1) throw new CommandError("project registry schema_version must be 1");
+  if (raw.default_policy !== "deny") throw new CommandError('project registry default_policy must be "deny"');
+  const projectRows = raw.projects ?? [];
+  const rootRows = raw.workspace_roots ?? [];
+  if (!Array.isArray(projectRows)) throw new CommandError("project registry projects must be an array of tables");
+  if (!Array.isArray(rootRows)) throw new CommandError("project registry workspace_roots must be an array of tables");
+
+  const projects: ProjectEntry[] = projectRows.map((row: any, index: number) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new CommandError(`projects[${index}] must be a table`);
+    const allowedKeys = new Set(["id", "path", "allowed_profiles", "default_leaf_role", "default_leaf_kind", "labels"]);
+    const unknown = Object.keys(row).filter((key) => !allowedKeys.has(key));
+    if (unknown.length) throw new CommandError(`projects[${index}] has unsupported keys: ${unknown.join(", ")}`);
+    const canonical = registryCanonicalPath(row.path, `projects[${index}].path`);
+    validateAuthorizedDirectory(canonical, `projects[${index}].path`);
+    const entry: ProjectEntry = {
+      id: validateRegistryId(row.id, `projects[${index}].id`),
+      path: String(row.path ?? ""),
+      canonical_path: canonical,
+      allowed_profiles: validateStringArray(row.allowed_profiles, `projects[${index}].allowed_profiles`, VALID_PROFILES),
+    };
+    if (row.default_leaf_role !== undefined) {
+      if (typeof row.default_leaf_role !== "string" || !new Set(["researcher", "implementer", "reviewer", "writer", "editor"]).has(row.default_leaf_role)) {
+        throw new CommandError(`projects[${index}].default_leaf_role must be a supported Leaf role`);
+      }
+      entry.default_leaf_role = row.default_leaf_role;
+    }
+    if (row.default_leaf_kind !== undefined) {
+      if (typeof row.default_leaf_kind !== "string" || !new Set(["codex", "claude"]).has(row.default_leaf_kind)) throw new CommandError(`projects[${index}].default_leaf_kind must be codex or claude`);
+      entry.default_leaf_kind = row.default_leaf_kind;
+    }
+    if (row.labels !== undefined) entry.labels = validateStringArray(row.labels, `projects[${index}].labels`);
+    return entry;
+  });
+
+  const workspaceRoots: WorkspaceRootEntry[] = rootRows.map((row: any, index: number) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new CommandError(`workspace_roots[${index}] must be a table`);
+    const allowedKeys = new Set(["id", "path", "allowed_profiles", "trust"]);
+    const unknown = Object.keys(row).filter((key) => !allowedKeys.has(key));
+    if (unknown.length) throw new CommandError(`workspace_roots[${index}] has unsupported keys: ${unknown.join(", ")}`);
+    const canonical = registryCanonicalPath(row.path, `workspace_roots[${index}].path`);
+    validateAuthorizedDirectory(canonical, `workspace_roots[${index}].path`);
+    if (row.trust !== "descendant-git-repositories") throw new CommandError(`workspace_roots[${index}].trust must be descendant-git-repositories`);
+    return {
+      id: validateRegistryId(row.id, `workspace_roots[${index}].id`),
+      path: String(row.path),
+      canonical_path: canonical,
+      allowed_profiles: validateStringArray(row.allowed_profiles, `workspace_roots[${index}].allowed_profiles`, VALID_PROFILES),
+      trust: "descendant-git-repositories",
+    };
+  });
+
+  const duplicate = (values: string[]): string | null => {
+    const seen = new Set<string>();
+    for (const value of values) { if (seen.has(value)) return value; seen.add(value); }
+    return null;
+  };
+  const duplicateProjectId = duplicate(projects.map((item) => item.id));
+  if (duplicateProjectId) throw new CommandError(`project registry contains duplicate project id: ${duplicateProjectId}`);
+  const duplicateProjectPath = duplicate(projects.map((item) => item.canonical_path));
+  if (duplicateProjectPath) throw new CommandError(`project registry contains duplicate project path: ${duplicateProjectPath}`);
+  const duplicateAuthorityId = duplicate([...projects.map((item) => item.id), ...workspaceRoots.map((item) => item.id)]);
+  if (duplicateAuthorityId) throw new CommandError(`project registry contains duplicate project/workspace-root id: ${duplicateAuthorityId}`);
+  for (let left = 0; left < workspaceRoots.length; left += 1) {
+    for (let right = left + 1; right < workspaceRoots.length; right += 1) {
+      const first = workspaceRoots[left] as WorkspaceRootEntry;
+      const second = workspaceRoots[right] as WorkspaceRootEntry;
+      if (pathWithin(first.canonical_path, second.canonical_path, true) || pathWithin(second.canonical_path, first.canonical_path, true)) {
+        throw new CommandError(`workspace roots must not overlap: ${first.id} (${first.canonical_path}) and ${second.id} (${second.canonical_path})`);
+      }
+    }
+  }
+  return {
+    schema_version: 1,
+    default_policy: "deny",
+    registry_path: path,
+    registry_digest: createHash("sha256").update(source).digest("hex"),
+    projects,
+    workspace_roots: workspaceRoots,
+  };
+}
+
+function resolveCandidateRepository(repoValue: string): string {
+  if (typeof repoValue !== "string" || !repoValue || /[\u0000-\u001f\u007f]/.test(repoValue)) throw new CommandError("repo_path must be a non-empty path without control characters");
+  if (repoValue.includes("$") || !isAbsolute(repoValue)) throw new CommandError("repo_path must be an absolute path without environment-variable expansion");
+  const lexical = resolve(repoValue);
+  if (!isDirectory(lexical)) throw new CommandError(`repository directory not found: ${lexical}`);
+  const canonical = realpathSync(lexical);
+  if (canonical !== lexical) throw new CommandError(`repo_path must not contain symlink components: ${lexical} resolves to ${canonical}`);
+  return canonical;
+}
+
+function authorizeProjectRepository(name: string, projectId: string | null, repoValue: string): ProjectAuthorization {
+  const registry = loadProjectRegistry(name, false);
+  const repository = resolveCandidateRepository(repoValue);
+  validateAuthorizedDirectory(repository, "repository");
+  const explicit = registry.projects.find((item) => item.canonical_path === repository);
+  let sourceKind: "project" | "workspace_root";
+  let sourceId: string;
+  let resolvedProject: string;
+  let workspaceRoot: string | null = null;
+  if (explicit) {
+    if (!explicit.allowed_profiles.includes(name)) throw new CommandError(`project "${explicit.id}" is not allowed for profile "${name}"`);
+    if (projectId !== null && projectId !== explicit.id) {
+      throw new CommandError(`repo_path is registered as project "${explicit.id}", but Bead metadata.project is "${projectId}"`);
+    }
+    sourceKind = "project"; sourceId = explicit.id; resolvedProject = explicit.id;
+  } else {
+    const root = registry.workspace_roots.find((item) => item.allowed_profiles.includes(name) && pathWithin(item.canonical_path, repository));
+    if (!root) throw new CommandError(`repository is not authorized for profile "${name}": ${repository}; a human must edit ${registry.registry_path}`);
+    const expected = dynamicRootProjectId(root, repository);
+    if (projectId !== null && projectId !== expected) {
+      throw new CommandError(`repo_path is authorized by workspace root "${root.id}", but metadata.project must be "${expected}"`);
+    }
+    sourceKind = "workspace_root"; sourceId = root.id; resolvedProject = expected; workspaceRoot = root.canonical_path;
+  }
+  return {
+    schema: "hanchou.project-authorization.v1",
+    profile: name,
+    project: resolvedProject,
+    repo_path: repository,
+    source_kind: sourceKind,
+    source_id: sourceId,
+    workspace_root: workspaceRoot,
+    registry_path: registry.registry_path,
+    registry_digest: registry.registry_digest as string,
+  };
+}
+
 function miseTools(): Record<string, string> {
   if (!existsSync(MISE_CONFIG)) throw new CommandError(`mise config not found: ${MISE_CONFIG}`);
   const tools = loadToml(MISE_CONFIG).tools;
@@ -222,11 +607,33 @@ function miseTools(): Record<string, string> {
 
 function profileEnv(name: string, profile: JsonObject): NodeJS.ProcessEnv {
   const paths = profilePaths(profile);
+  const inherited = { ...process.env };
+  const home = operatorHome();
+  const gitPathOverrides = new Set([
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_CONFIG",
+    "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT", "GIT_EXEC_PATH",
+  ]);
+  for (const key of Object.keys(inherited)) {
+    if (gitPathOverrides.has(key) || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key) || key === "NODE_OPTIONS" || key === "NODE_PATH") delete inherited[key];
+  }
+  inherited.HOME = home;
+  inherited.XDG_CONFIG_HOME = join(home, ".config");
+  inherited.XDG_DATA_HOME = join(home, ".local", "share");
+  inherited.XDG_CACHE_HOME = join(home, ".cache");
+  inherited.MISE_DATA_DIR = join(home, ".local", "share", "mise");
+  inherited.MISE_INSTALLS_DIR = join(home, ".local", "share", "mise", "installs");
+  try {
+    inherited.PATH = `${dirname(pinnedMiseToolPath("node"))}:${inherited.PATH ?? trustedSearchPath()}`;
+  } catch {
+    // bootstrap installs the pinned runtime before any managed npm/npx command;
+    // doctor reports the missing runtime without hiding the rest of its checks.
+  }
   return {
-    ...process.env,
+    ...inherited,
     HANCHOU_PROFILE: name,
     HANCHOU_HOME: paths.root,
-    HANCHOU_CONFIG_HOME: join(homedir(), ".config", "hanchou", name),
+    HANCHOU_CONFIG_HOME: join(home, ".config", "hanchou", name),
     HANCHOU_CONFIG_ROOT: CONFIG_ROOT,
     HANCHOU_REPO_ROOT: ROOT,
     HANCHOU_BEADS_DIR: paths.beads_dir,
@@ -256,7 +663,7 @@ export function codexManagedEnvironmentArgs(
   tabId: string,
 ): string[] {
   const profileEnvironment = profileEnv(name, profile);
-  const sessionDirectory = join(homedir(), ".config", "herdr", "sessions", name);
+  const sessionDirectory = join(operatorHome(), ".config", "herdr", "sessions", name);
   const values: Record<string, string> = {
     HERDR_ENV: "1",
     HERDR_SESSION: name,
@@ -289,7 +696,7 @@ export function codexManagedEnvironmentArgs(
  * not enforced.
  */
 export function codexManagedNetworkArgs(name: string): string[] {
-  const socketPath = join(homedir(), ".config", "herdr", "sessions", name, "herdr.sock");
+  const socketPath = join(operatorHome(), ".config", "herdr", "sessions", name, "herdr.sock");
   return [
     "-c", "sandbox_workspace_write.network_access=true",
     "-c", "features.network_proxy.enabled=true",
@@ -369,7 +776,7 @@ function ensureState(name: string, profile: JsonObject): void {
     mkdirSync(target, { recursive: true });
     safeRelayDirectory(paths.relay_dir, ...part.split("/"));
   }
-  const configHome = join(homedir(), ".config", "hanchou", name);
+  const configHome = join(operatorHome(), ".config", "hanchou", name);
   mkdirSync(join(configHome, "generated"), { recursive: true });
   const target = join(configHome, "skills.toml");
   if (!existsSync(target)) {
@@ -824,6 +1231,7 @@ function usageRecommend(args: JsonObject, name: string, profile: JsonObject): vo
 function printPlan(name: string, profile: JsonObject): void {
   const paths = profilePaths(profile);
   const tools = miseTools();
+  const projects = loadProjectRegistry(name, true);
   console.log(`Hanchou apply plan: ${name}`);
   console.log(`  config root: ${CONFIG_ROOT}`);
   console.log(`  orchestrator: ${profile.orchestrator.kind} / ${profile.orchestrator.model || "provider-default"} / logical agent ${profile.orchestrator.agent_name}`);
@@ -845,6 +1253,7 @@ function printPlan(name: string, profile: JsonObject): void {
   console.log("  backup + render/install ~/Library/LaunchAgents entries for Herdr and beads-ui");
   console.log(`  model routing: ${routingPolicyPath(profile)}`);
   console.log(`  usage snapshot: ${usageSnapshotPath(profile)}`);
+  console.log(`  project registry: ${projects.registry_path} (${projects.projects.length} explicit, ${projects.workspace_roots.length} trusted roots${projects.registry_digest ? "" : "; absent means dispatch deny-all"})`);
   for (const broadRule of broadUserInboxRulePaths()) console.log(`  WARNING: remove overly broad user rule [\"hanchou\", \"inbox\"] from ${broadRule} after making a backup`);
 }
 
@@ -887,7 +1296,7 @@ function seedAutomationsConfig(profile: JsonObject, env: NodeJS.ProcessEnv): voi
 }
 
 function installSkillSources(name: string, profile: JsonObject, env: NodeJS.ProcessEnv): void {
-  const configHome = join(homedir(), ".config", "hanchou", name);
+  const configHome = join(operatorHome(), ".config", "hanchou", name);
   const sourceConfigs: Array<[JsonObject, boolean]> = [[loadToml(join(configHome, "skills.toml")), false]];
   const localOverlay = profile.skills?.local_overlay_file;
   if (localOverlay) {
@@ -895,7 +1304,7 @@ function installSkillSources(name: string, profile: JsonObject, env: NodeJS.Proc
     if (existsSync(localPath)) sourceConfigs.push([loadToml(localPath), true]);
   }
   const cliVersion = loadToml(join(ROOT, "config", "versions.toml")).components.skills_cli.version;
-  const cacheRoot = join(homedir(), ".cache", "hanchou", "skills");
+  const cacheRoot = join(operatorHome(), ".cache", "hanchou", "skills");
   const sources: Array<[JsonObject, boolean]> = [];
   for (const [config, machineLocal] of sourceConfigs) for (const source of config.sources ?? []) sources.push([source, machineLocal]);
   for (const [source, machineLocal] of sources) {
@@ -929,10 +1338,9 @@ function installSkillSources(name: string, profile: JsonObject, env: NodeJS.Proc
 }
 
 function bootstrapProfile(name: string, profile: JsonObject): void {
-  const mise = which("mise");
-  if (!mise) throw new CommandError("required command not found: mise (install it with `brew install mise`)");
+  const mise = trustedMiseExecutable();
   for (const prerequisite of ["git", "gh", "bd", "codex", "claude"]) if (!which(prerequisite)) throw new CommandError(`required bootstrap prerequisite not found: ${prerequisite}`);
-  run([mise, "-C", ROOT, "install"], { cwd: ROOT });
+  run([mise, "-C", ROOT, "install"], { cwd: ROOT, env: trustedMiseEnvironment() });
   applyProfile(name, profile, true, true);
 }
 
@@ -943,10 +1351,10 @@ function applyProfile(name: string, profile: JsonObject, yes: boolean, installUp
   const env = profileEnv(name, profile);
   renderAgents();
   installAgentDefinitions();
-  const herdrConfig = join(homedir(), ".config", "herdr", "config.toml");
+  const herdrConfig = join(operatorHome(), ".config", "herdr", "config.toml");
   const changed = backupAndWrite(herdrConfig, renderHerdrConfig(name, profile));
   console.log(`Herdr config: ${changed ? "updated" : "current"} (${herdrConfig})`);
-  const localBin = join(homedir(), ".local", "bin", "hanchou");
+  const localBin = join(operatorHome(), ".local", "bin", "hanchou");
   mkdirSync(dirname(localBin), { recursive: true });
   if (lexists(localBin)) unlinkSync(localBin);
   symlinkSync(join(ROOT, "bin", "hanchou"), localBin);
@@ -968,7 +1376,10 @@ function applyProfile(name: string, profile: JsonObject, yes: boolean, installUp
     installSkillSources(name, profile, env);
     renderLaunchd(name, profile, true);
   } else console.log("upstream install skipped; run `hanchou bootstrap` or add --install-upstream to install integrations, plugins, Beads UI, skills, and LaunchAgents");
-  if (changed && which("herdr")) run(herdrArgv(name, "server", "reload-config"), { env, check: false, capture: true });
+  if (changed) {
+    try { run(herdrArgv(name, "server", "reload-config"), { env, check: false, capture: true }); }
+    catch { /* apply without upstream installation leaves reload for bootstrap */ }
+  }
   console.log("apply complete");
 }
 
@@ -2230,13 +2641,60 @@ function updateBeadMetadata(name: string, profile: JsonObject, taskId: string, m
   bdRun(name, profile, argv, actor);
 }
 
-function validateRepo(repoValue: string): string {
-  const repo = expand(repoValue);
+function gitInspectionEnvironment(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT"]) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  env.HOME = operatorHome();
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_CONFIG_GLOBAL = process.platform === "win32" ? "NUL" : "/dev/null";
+  env.GIT_ATTR_NOSYSTEM = "1";
+  env.GIT_OPTIONAL_LOCKS = "0";
+  env.GIT_TERMINAL_PROMPT = "0";
+  return env;
+}
+
+function inspectGit(repo: string, args: string[], check = true, safeRuntime = true): RunResult {
+  const runtime = safeRuntime ? ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"] : [];
+  return run([commandPath("git"), ...runtime, "-C", repo, ...args], {
+    env: gitInspectionEnvironment(),
+    capture: true,
+    check,
+  });
+}
+
+function configuredExternalGitFilters(repo: string): string[] {
+  const proc = inspectGit(
+    repo,
+    ["config", "--includes", "--get-regexp", "^filter\\..*\\.(clean|smudge|process)$"],
+    false,
+    false,
+  );
+  if (proc.returncode === 1) return [];
+  if (proc.returncode !== 0) {
+    const detail = (proc.stderr || proc.stdout).trim();
+    throw new CommandError(`cannot inspect repository Git filters${detail ? `: ${detail}` : ""}`);
+  }
+  return proc.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+function validateRepo(repo: string): string {
   if (!isDirectory(repo)) throw new CommandError(`repository directory not found: ${repo}`);
-  const top = realpathSync(run([commandPath("git"), "-C", repo, "rev-parse", "--show-toplevel"], { capture: true }).stdout.trim());
+  const top = realpathSync(inspectGit(repo, ["rev-parse", "--show-toplevel"]).stdout.trim());
   if (top !== realpathSync(repo)) throw new CommandError(`repo_path must be the Git top level: ${repo} (top level is ${top})`);
-  run([commandPath("git"), "-C", repo, "rev-parse", "--verify", "HEAD"], { capture: true });
-  if (run([commandPath("git"), "-C", repo, "status", "--porcelain"], { capture: true }).stdout.trim()) throw new CommandError(`repository must be clean before dispatch: ${repo}`);
+  inspectGit(repo, ["rev-parse", "--verify", "HEAD"]);
+  const commonValue = inspectGit(repo, ["rev-parse", "--git-common-dir"]).stdout.trim();
+  const commonPath = realpathSync(isAbsolute(commonValue) ? commonValue : resolve(repo, commonValue));
+  if (!pathWithin(repo, commonPath, true)) {
+    throw new CommandError(`repository Git common directory must stay inside the authorized repository: ${commonPath}`);
+  }
+  validateAuthorityComponent(commonPath, "repository Git common directory", false);
+  const filters = configuredExternalGitFilters(repo);
+  if (filters.length) {
+    throw new CommandError(`repository has external Git clean/smudge/process filters; remove them before dispatch: ${filters.join(", ")}`);
+  }
+  if (inspectGit(repo, ["status", "--porcelain", "--untracked-files=normal", "--no-ahead-behind"]).stdout.trim()) throw new CommandError(`repository must be clean before dispatch: ${repo}`);
   return repo;
 }
 
@@ -2363,7 +2821,7 @@ export function workerAgentArgv(
     if (!Array.isArray(tools) || !tools.length || !tools.every((tool) => typeof tool === "string" && tool)) throw new CommandError(`role ${role} requires non-empty claude.tools`);
     return [...argv, "--model", route.model, "--permission-mode", permissionMode, "--tools", tools.join(","), "--add-dir", dirname(reportPath), "--add-dir", paths.relay_dir];
   }
-  const sessionDirectory = join(homedir(), ".config", "herdr", "sessions", name);
+  const sessionDirectory = join(operatorHome(), ".config", "herdr", "sessions", name);
   if (typeof workspaceId !== "string" || !workspaceId || typeof tabId !== "string" || !tabId) {
     throw new CommandError("Codex worker startup requires Herdr workspace and tab IDs");
   }
@@ -2497,8 +2955,8 @@ function completionEvidenceAnomalies(event: JsonObject, record: JsonObject): str
   const worktreePath = expand(worktreeValue);
   if (!isDirectory(worktreePath)) { anomalies.push(`${prefix} execution worktree does not exist`); return anomalies; }
   try {
-    const head = run([commandPath("git"), "-C", worktreePath, "rev-parse", "--verify", "HEAD^{commit}"], { capture: true }).stdout.trim();
-    const reported = run([commandPath("git"), "-C", worktreePath, "rev-parse", "--verify", `${commitRef}^{commit}`], { capture: true }).stdout.trim();
+    const head = inspectGit(worktreePath, ["rev-parse", "--verify", "HEAD^{commit}"]).stdout.trim();
+    const reported = inspectGit(worktreePath, ["rev-parse", "--verify", `${commitRef}^{commit}`]).stdout.trim();
     if (reported !== head) anomalies.push(`${prefix} commit artifact does not match worktree HEAD`);
   } catch (error) { anomalies.push(`${prefix} commit artifact cannot be verified: ${error instanceof Error ? error.message : error}`); }
   return anomalies;
@@ -2527,8 +2985,9 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
     if (bead.status !== "open") throw new CommandError(`Bead ${taskId} must be open before dispatch (status=${bead.status})`);
     const blockers = activeBeadBlockers(bead);
     if (blockers.length) throw new CommandError(`Bead ${taskId} has active blockers: ${blockers.join(", ")}`);
-    const repo = validateRepo(String(metadata.repo_path));
-    const baseCommit = run([commandPath("git"), "-C", repo, "rev-parse", "--verify", "HEAD^{commit}"], { capture: true }).stdout.trim();
+    const projectAuthorization = authorizeProjectRepository(name, String(metadata.project), String(metadata.repo_path));
+    const repo = validateRepo(projectAuthorization.repo_path);
+    const baseCommit = inspectGit(repo, ["rev-parse", "--verify", "HEAD^{commit}"]).stdout.trim();
     if (!baseCommit) throw new CommandError(`cannot resolve repository HEAD commit: ${repo}`);
     const role = String(metadata.role);
     const taskKind = String(metadata.routing?.task_kind || DEFAULT_TASK_KINDS[role]);
@@ -2544,6 +3003,7 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
     const record: JsonObject = {
       schema: "hanchou.execution.v1", execution_id: executionId, task_id: taskId, phase: "created", created_at: utcnow(),
       repo_path: repo, base_commit: baseCommit, worktree_path: worktreePath, branch, report_path: reportPath,
+      project_authorization: projectAuthorization,
       role, owner_role: metadata.owner_role, owner_agent: metadata.owner_agent, task_identity: taskIdentity,
       route: taskRoutingMetadata(route, profile), herdr_session: name, agent_name: agentName, kind,
       workspace_id: null, tab_id: null, pane_id: null, provider_session_id: null,
@@ -2599,6 +3059,7 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
     const result = {
       ok: true, task_id: taskId, execution_id: executionId, phase: record.phase, agent_name: agentName,
       workspace_id: record.workspace_id, tab_id: record.tab_id, pane_id: record.pane_id, worktree_path: worktreePath, branch,
+      project_authorization: projectAuthorization,
       record_path: path, agent_status: findAgentStatus(agent), requires_ready_reconcile: record.phase === "awaiting_ready",
     };
     if (args.json) jsonPrint(result); else if (record.phase === "awaiting_ready") console.log(`worker ${agentName} is awaiting readiness/trust review in ${record.workspace_id} (${executionId})`); else console.log(`dispatched ${taskId} as ${agentName} in ${record.workspace_id} (${executionId})`);
@@ -2688,22 +3149,24 @@ function reconcileExecution(name: string, profile: JsonObject, taskId: string): 
     if (record.phase === "awaiting_ready") {
       if (!agent) anomalies.push("worker awaiting readiness is no longer live");
       else if (new Set(["idle", "done"]).has(status ?? "")) {
-        herdr.binding_state = "live";
-        herdr.workspace_id = record.workspace_id || herdr.workspace_id;
-        herdr.tab_id = record.tab_id || herdr.tab_id;
-        herdr.pane_id = record.pane_id || herdr.pane_id;
-        herdr.provider_session_id = providerSessionId(agent) || record.provider_session_id;
-        metadata.herdr = herdr;
-        metadata = patchExecutionMetadata(name, profile, taskId, expectedExecutionId, metadata, expectedIdentity, false, bead.status !== "in_progress" ? "in_progress" : null);
-        herdr = metadata.herdr; record.phase = "agent_started"; delete record.start_error; saveExecution(profile, record);
         try {
+          record.project_authorization = authorizeProjectRepository(name, String(metadata.project), String(metadata.repo_path));
+          herdr.binding_state = "live";
+          herdr.workspace_id = record.workspace_id || herdr.workspace_id;
+          herdr.tab_id = record.tab_id || herdr.tab_id;
+          herdr.pane_id = record.pane_id || herdr.pane_id;
+          herdr.provider_session_id = providerSessionId(agent) || record.provider_session_id;
+          metadata.herdr = herdr;
+          metadata = patchExecutionMetadata(name, profile, taskId, expectedExecutionId, metadata, expectedIdentity, false, bead.status !== "in_progress" ? "in_progress" : null);
+          herdr = metadata.herdr; record.phase = "agent_started"; delete record.start_error; saveExecution(profile, record);
           promptWorkerAgent(name, profile, bead, metadata, record, agent);
           actions.push("awaiting-ready-prompted"); binding = "live";
           agent = getAgentInfo(name, agentName, true); status = agent ? findAgentStatus(agent) : null;
         } catch (error) {
-          record.phase = "attention_required"; record.failed_phase = "prompting"; record.error = error instanceof Error ? error.message : String(error); saveExecution(profile, record);
+          const detail = error instanceof Error ? error.message : String(error);
+          record.phase = "attention_required"; record.failed_phase = "awaiting_ready_authorization_or_prompt"; record.error = detail; saveExecution(profile, record);
           metadata = patchExecutionMetadata(name, profile, taskId, expectedExecutionId, metadata, expectedIdentity, false, "blocked");
-          herdr = metadata.herdr; actions.push("awaiting-ready-prompt-failed"); anomalies.push("worker became ready but the redacted task prompt failed");
+          herdr = metadata.herdr; actions.push("awaiting-ready-prompt-blocked"); anomalies.push(`worker became ready but authorization or prompt delivery failed: ${detail}`);
         }
       } else anomalies.push(`worker is awaiting readiness (agent status=${status || "unknown"})`);
     }
@@ -2795,12 +3258,12 @@ function startOrchestrator(name: string, profile: JsonObject): void {
   if (kind === "codex") {
     if (!argv.includes("--")) argv.push("--");
     const paths = profilePaths(profile);
-    const sessionDirectory = join(homedir(), ".config", "herdr", "sessions", name);
+    const sessionDirectory = join(operatorHome(), ".config", "herdr", "sessions", name);
     argv.push(
       "--approve-for-me",
       "--add-dir", paths.root,
       "--add-dir", sessionDirectory,
-      "--add-dir", join(homedir(), ".config", "herdr", "plugins", "config"),
+      "--add-dir", join(operatorHome(), ".config", "herdr", "plugins", "config"),
       ...codexManagedNetworkArgs(name),
       ...codexManagedEnvironmentArgs(name, profile, agentName, paneId, workspaceId, tabId),
     );
@@ -2833,8 +3296,145 @@ function openTarget(name: string, profile: JsonObject, target: string): never | 
   throw new CommandError(`unknown open target: ${target}`);
 }
 
+function projectRegistryView(registry: ProjectRegistry): JsonObject {
+  return {
+    schema_version: registry.schema_version,
+    default_policy: registry.default_policy,
+    registry_path: registry.registry_path,
+    registry_digest: registry.registry_digest,
+    projects: registry.projects.map((item) => ({
+      id: item.id,
+      path: item.path,
+      canonical_path: item.canonical_path,
+      allowed_profiles: item.allowed_profiles,
+      default_leaf_role: item.default_leaf_role ?? null,
+      default_leaf_kind: item.default_leaf_kind ?? null,
+      labels: item.labels ?? [],
+    })),
+    workspace_roots: registry.workspace_roots.map((item) => ({
+      id: item.id,
+      path: item.path,
+      canonical_path: item.canonical_path,
+      allowed_profiles: item.allowed_profiles,
+      trust: item.trust,
+    })),
+  };
+}
+
+function projectReadiness(repository: string): JsonObject {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  let head: string | null = null;
+  let topLevel: string | null = null;
+  let commonDirectory: string | null = null;
+  let clean = false;
+  try {
+    topLevel = realpathSync(inspectGit(repository, ["rev-parse", "--show-toplevel"]).stdout.trim());
+    if (topLevel !== repository) problems.push(`not the Git top level (top level is ${topLevel})`);
+    head = inspectGit(repository, ["rev-parse", "--verify", "HEAD^{commit}"]).stdout.trim() || null;
+    const commonValue = inspectGit(repository, ["rev-parse", "--git-common-dir"]).stdout.trim();
+    commonDirectory = realpathSync(isAbsolute(commonValue) ? commonValue : resolve(repository, commonValue));
+    if (!pathWithin(repository, commonDirectory, true)) problems.push(`Git common directory escapes the repository: ${commonDirectory}`);
+    else validateAuthorityComponent(commonDirectory, "repository Git common directory", false);
+    const hooksPath = inspectGit(repository, ["config", "--includes", "--get", "core.hooksPath"], false, false).stdout.trim();
+    if (hooksPath) warnings.push(`core.hooksPath is configured: ${hooksPath}`);
+    const fsmonitor = inspectGit(repository, ["config", "--includes", "--get", "core.fsmonitor"], false, false).stdout.trim();
+    if (fsmonitor) warnings.push(`core.fsmonitor is configured: ${fsmonitor}`);
+    const filters = configuredExternalGitFilters(repository);
+    if (filters.length) problems.push(`external Git clean/smudge/process filters must be removed before readiness checks: ${filters.join(", ")}`);
+    const hooksDirectory = join(commonDirectory, "hooks");
+    if (isDirectory(hooksDirectory)) {
+      const executableHooks = readdirSync(hooksDirectory).filter((entry) => {
+        if (entry.endsWith(".sample")) return false;
+        try { const info = statSync(join(hooksDirectory, entry)); return info.isFile() && (info.mode & 0o111) !== 0; }
+        catch { return false; }
+      });
+      if (executableHooks.length) warnings.push(`executable Git hooks are present: ${executableHooks.sort().join(", ")}`);
+    }
+    if (!filters.length) {
+      clean = !inspectGit(repository, ["status", "--porcelain", "--untracked-files=normal", "--no-ahead-behind"]).stdout.trim();
+      if (!clean) problems.push("repository is not clean");
+    }
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  return { repo_path: repository, git_top_level: topLevel, git_common_dir: commonDirectory, head, clean, dispatch_ready: problems.length === 0, problems, warnings };
+}
+
+function projectList(args: JsonObject, name: string): void {
+  const registry = loadProjectRegistry(name, true);
+  const result = projectRegistryView(registry);
+  if (args.json) jsonPrint(result, true);
+  else {
+    console.log(`registry: ${registry.registry_path}`);
+    console.log(`policy:   deny by default`);
+    console.log(`projects: ${registry.projects.length}`);
+    for (const item of registry.projects) console.log(`  ${item.id}: ${item.canonical_path} [${item.allowed_profiles.join(",")}]`);
+    console.log(`workspace roots: ${registry.workspace_roots.length}`);
+    for (const item of registry.workspace_roots) console.log(`  ${item.id}: ${item.canonical_path} (${item.trust}) [${item.allowed_profiles.join(",")}]`);
+    if (!registry.registry_digest) console.log("new dispatch: denied until a human creates the registry");
+  }
+}
+
+function projectShow(args: JsonObject, name: string): void {
+  const registry = loadProjectRegistry(name, false);
+  const id = String(args.project_id);
+  const project = registry.projects.find((item) => item.id === id);
+  const root = registry.workspace_roots.find((item) => item.id === id);
+  if (!project && !root) throw new CommandError(`project or workspace root not found: ${id}`);
+  const result = project ? { kind: "project", ...project } : { kind: "workspace_root", ...root };
+  if (args.json) jsonPrint(result, true); else console.log(JSON.stringify(result, null, 2));
+}
+
+function projectResolve(args: JsonObject, name: string): void {
+  const authorization = authorizeProjectRepository(name, args.project_id ? String(args.project_id) : null, String(args.path));
+  const readiness = projectReadiness(authorization.repo_path);
+  const result = { ...authorization, ...readiness };
+  if (args.json) jsonPrint(result, true);
+  else {
+    console.log(`project:        ${authorization.project}`);
+    console.log(`repository:     ${authorization.repo_path}`);
+    console.log(`authorization:  ${authorization.source_kind} / ${authorization.source_id}`);
+    console.log(`HEAD:           ${readiness.head ?? "-"}`);
+    console.log(`dispatch ready: ${readiness.dispatch_ready ? "yes" : "no"}`);
+    for (const problem of readiness.problems) console.log(`FAIL ${problem}`);
+    for (const warning of readiness.warnings) console.log(`WARN ${warning}`);
+  }
+  if (!readiness.dispatch_ready) process.exitCode = 1;
+}
+
+function projectDoctor(args: JsonObject, name: string): void {
+  const registry = loadProjectRegistry(name, true);
+  const selectedId = args.project_id ? String(args.project_id) : null;
+  if (!registry.registry_digest) {
+    const result = { ok: true, deny_all: true, registry_path: registry.registry_path, projects: [], workspace_roots: [] };
+    if (args.json) jsonPrint(result, true); else console.log(`ok   project registry absent; dispatch is deny-all: ${registry.registry_path}`);
+    return;
+  }
+  const projects = registry.projects.filter((item) => selectedId === null || item.id === selectedId);
+  const roots = registry.workspace_roots.filter((item) => selectedId === null || item.id === selectedId);
+  if (selectedId !== null && !projects.length && !roots.length) throw new CommandError(`project or workspace root not found: ${selectedId}`);
+  const projectResults = projects.map((item) => {
+    try {
+      const authorization = authorizeProjectRepository(name, item.id, item.canonical_path);
+      return { id: item.id, ok: true, authorization, readiness: projectReadiness(item.canonical_path) };
+    } catch (error) { return { id: item.id, ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  const rootResults = roots.map((item) => ({ id: item.id, ok: item.allowed_profiles.includes(name), path: item.canonical_path, trust: item.trust }));
+  const ok = projectResults.every((item: any) => item.ok && item.readiness.dispatch_ready) && rootResults.every((item) => item.ok);
+  const result = { ok, registry_path: registry.registry_path, registry_digest: registry.registry_digest, projects: projectResults, workspace_roots: rootResults };
+  if (args.json) jsonPrint(result, true);
+  else {
+    console.log(`registry: ${registry.registry_path}`);
+    for (const item of projectResults as any[]) console.log(`${item.ok && item.readiness?.dispatch_ready ? "ok  " : "FAIL"} project ${item.id}${item.error ? `: ${item.error}` : ""}`);
+    for (const item of rootResults) console.log(`${item.ok ? "ok  " : "FAIL"} workspace root ${item.id}: ${item.path}`);
+  }
+  if (!ok) process.exitCode = 1;
+}
+
 function statusCommand(name: string, profile: JsonObject, asJson: boolean): void {
   const paths = profilePaths(profile);
+  const projects = loadProjectRegistry(name, true);
   const agent = profile.orchestrator.agent_name;
   const pendingDeliveries = existsSync(paths.relay_dir) ? withDeliveryTransition(paths.relay_dir, () => {
     reconcileDeliveryTransitionsUnlocked(paths.relay_dir);
@@ -2848,6 +3448,7 @@ function statusCommand(name: string, profile: JsonObject, asJson: boolean): void
     pending_deliveries: pendingDeliveries,
     task_ui: `http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`,
     usage_snapshot: usageSnapshotPath(profile),
+    project_registry: { path: projects.registry_path, configured: Boolean(projects.registry_digest), projects: projects.projects.length, workspace_roots: projects.workspace_roots.length, default_policy: "deny" },
     commands: { herdr: `herdr --session ${name}`, orchestrator: `herdr --session ${name} agent attach ${agent}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}` },
   };
   if (asJson) jsonPrint(result, true);
@@ -2856,6 +3457,7 @@ function statusCommand(name: string, profile: JsonObject, asJson: boolean): void
     console.log(`orchestrator:  ${result.orchestrator.kind} / ${result.orchestrator.model || "provider-default"} / ${agent} / ${result.orchestrator.status || "not-running"}`);
     console.log(`Herdr:        herdr --session ${name}`); console.log(`Task UI:      ${result.task_ui}`); console.log(`Beads:        ${paths.beads_dir}`); console.log(`Relay:        ${paths.relay_dir}`);
     console.log(`Inbox pending: ${result.pending_inbox}`); console.log(`Delivery pending: ${result.pending_deliveries}`); console.log(`Usage:        ${result.usage_snapshot}`);
+    console.log(`Projects:     ${projects.registry_path} / ${projects.projects.length} explicit / ${projects.workspace_roots.length} roots${projects.registry_digest ? "" : " / deny-all"}`);
   }
 }
 
@@ -2872,6 +3474,13 @@ function endpointOk(url: string, timeout: number): Promise<boolean> {
 async function doctor(name: string, profile: JsonObject): Promise<number> {
   const env = profileEnv(name, profile);
   let failures = 0;
+  try {
+    const registry = loadProjectRegistry(name, true);
+    console.log(`ok   project registry: ${registry.projects.length} explicit / ${registry.workspace_roots.length} workspace roots${registry.registry_digest ? "" : " / deny-all"}`);
+  } catch (error) {
+    console.log(`FAIL project registry: ${error instanceof Error ? error.message : error}`);
+    failures += 1;
+  }
   const checkCommand = (label: string, binary: string, args: string[]): RunResult | null => {
     try {
       const proc = run([commandPath(binary), ...args], { env, cwd: ROOT, check: false, capture: true, timeout: 15_000 });
@@ -2929,14 +3538,17 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
   try {
     const info = lstatSync(CODEX_RULES_PATH);
     const ok = info.isFile() && !info.isSymbolicLink();
-    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex Inbox rules: ${CODEX_RULES_PATH}`);
+    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex control rules: ${CODEX_RULES_PATH}`);
     if (!ok) failures += 1;
   } catch (error) {
-    console.log(`FAIL Hanchou Codex Inbox rules: ${error instanceof Error ? error.message : error}`);
+    console.log(`FAIL Hanchou Codex control rules: ${error instanceof Error ? error.message : error}`);
     failures += 1;
   }
   try {
     const cases: Array<[string[], string | null]> = [
+      [["hanchou", "project", "list", "--json"], "allow"],
+      [["hanchou", "project", "resolve", "--path", ROOT, "--json"], "allow"],
+      [["hanchou", "project", "add", "example", "--path", ROOT], null],
       [["hanchou", "inbox", "list", "--json"], "allow"],
       [["hanchou", "inbox", "claim", "--to", String(profile.orchestrator.agent_name), "--json"], "allow"],
       [["hanchou", "inbox", "ack", "evt_example", "--by", String(profile.orchestrator.agent_name)], "allow"],
@@ -2951,10 +3563,10 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
       return { command, expected, decision };
     });
     const ok = observed.every((item) => item.expected === item.decision);
-    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex Inbox rule decisions`);
+    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex control rule decisions`);
     if (!ok) failures += 1;
   } catch (error) {
-    console.log(`FAIL Hanchou Codex Inbox rule decisions: ${error instanceof Error ? error.message : error}`);
+    console.log(`FAIL Hanchou Codex control rule decisions: ${error instanceof Error ? error.message : error}`);
     failures += 1;
   }
   const broadRules = broadUserInboxRulePaths();
@@ -3032,12 +3644,12 @@ function choice(value: any, values: Set<string>, label: string): void {
 
 function printHelp(): void {
   console.log(`usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,usage,route,execution,relay,inbox,delivery} ...
+               {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
 
 Herdr-first Hanchou control utility
 
 positional arguments:
-  {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,usage,route,execution,relay,inbox,delivery}
+  {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
 
 options:
   -h, --help            show this help message and exit
@@ -3102,6 +3714,42 @@ options:
   -h, --help  show this help message and exit
   --check`,
   handoff: noArgumentHelp("handoff"),
+  project: `usage: hanchou project [-h] {list,show,resolve,doctor} ...
+
+positional arguments:
+  {list,show,resolve,doctor}
+
+options:
+  -h, --help            show this help message and exit`,
+  "project list": `usage: hanchou project list [-h] [--json]
+
+options:
+  -h, --help  show this help message and exit
+  --json`,
+  "project show": `usage: hanchou project show [-h] [--json] project_id
+
+positional arguments:
+  project_id
+
+options:
+  -h, --help  show this help message and exit
+  --json`,
+  "project resolve": `usage: hanchou project resolve [-h] --path PATH
+                               [--project PROJECT_ID] [--json]
+
+options:
+  -h, --help            show this help message and exit
+  --path PATH
+  --project PROJECT_ID  require this exact authorized project identity
+  --json`,
+  "project doctor": `usage: hanchou project doctor [-h] [--json] [project_id]
+
+positional arguments:
+  project_id
+
+options:
+  -h, --help  show this help message and exit
+  --json`,
   usage: `usage: hanchou usage [-h] {set,show,recommend} ...
 
 positional arguments:
@@ -3388,7 +4036,7 @@ function helpSurfaceKey(argv: string[]): string | null {
     if (commands.length === 2) break;
   }
   if (!commands.length) return "";
-  const nested = new Set(["usage", "route", "execution", "relay", "inbox", "delivery"]);
+  const nested = new Set(["project", "usage", "route", "execution", "relay", "inbox", "delivery"]);
   return nested.has(commands[0]) && commands.length > 1 ? `${commands[0]} ${commands[1]}` : commands[0];
 }
 
@@ -3433,13 +4081,22 @@ function parseCliUnchecked(argv: string[]): JsonObject {
   }
   if (result.command === "render-agents") { const parsed = parseOptionTokens(rest, definitions([["check", "boolean"]])); positionals(parsed, 0); return { ...result, ...parsed }; }
   if (result.command === "handoff") { const parsed = parseOptionTokens(rest, {}); positionals(parsed, 0); return { ...result, ...parsed }; }
-  if (new Set(["usage", "route", "execution", "relay", "inbox", "delivery"]).has(result.command)) {
+  if (new Set(["project", "usage", "route", "execution", "relay", "inbox", "delivery"]).has(result.command)) {
     if (!rest.length) throw new CommandError(`the following arguments are required: ${result.command}_command`);
     const subcommand = rest[0]; const tokens = rest.slice(1); result[`${result.command}_command`] = subcommand;
     const routing = (): JsonObject => {
       const parsed = parseOptionTokens(tokens, definitions([["role", "string"], ["task-kind", "string"], ["japanese", "boolean"], ["json", "boolean"]]));
       positionals(parsed, 0); requireOptions(parsed, ["role"]); parsed.task_kind ??= "general"; choice(parsed.role, new Set(["orchestrator", "mission-lead", "researcher", "implementer", "writer", "editor", "reviewer"]), "--role"); return { ...result, ...parsed };
     };
+    if (result.command === "project") {
+      if (subcommand === "list") { const parsed = parseOptionTokens(tokens, definitions([["json", "boolean"]])); positionals(parsed, 0); return { ...result, ...parsed }; }
+      if (subcommand === "show") { const parsed = parseOptionTokens(tokens, definitions([["json", "boolean"]])); const rows = positionals(parsed, 1); parsed.project_id = rows[0]; return { ...result, ...parsed }; }
+      if (subcommand === "resolve") {
+        const parsed = parseOptionTokens(tokens, definitions([["path", "string"], ["project", "string"], ["json", "boolean"]])); positionals(parsed, 0); requireOptions(parsed, ["path"]); parsed.project_id = parsed.project ?? null; delete parsed.project; return { ...result, ...parsed };
+      }
+      if (subcommand === "doctor") { const parsed = parseOptionTokens(tokens, definitions([["json", "boolean"]])); const rows = positionals(parsed, 0, 1); parsed.project_id = rows[0] ?? null; return { ...result, ...parsed }; }
+      throw new CommandError(`unknown project command: ${subcommand}`);
+    }
     if (result.command === "usage") {
       if (subcommand === "set") {
         const parsed = parseOptionTokens(tokens, definitions([["weekly-remaining", "float"], ["session-remaining", "float"], ["reset-at", "string"], ["source", "string"], ["json", "boolean"]]));
@@ -3508,20 +4165,20 @@ function parseCliUnchecked(argv: string[]): JsonObject {
 }
 
 const SUBCOMMAND_CHOICES: Record<string, string[]> = {
-  usage: ["set", "show", "recommend"], route: ["resolve"], execution: ["dispatch", "inspect", "reconcile"],
+  project: ["list", "show", "resolve", "doctor"], usage: ["set", "show", "recommend"], route: ["resolve"], execution: ["dispatch", "inspect", "reconcile"],
   relay: ["emit", "recover", "dispatch", "daemon"], inbox: ["list", "claim", "show", "ack", "retry", "dead-letter"],
   delivery: ["create", "list", "show", "mark-rendered", "mark-delivered", "fail", "retry"],
 };
-const TOP_LEVEL_COMMANDS = ["plan", "bootstrap", "apply", "status", "doctor", "start-orchestrator", "open", "render-agents", "handoff", "usage", "route", "execution", "relay", "inbox", "delivery"];
+const TOP_LEVEL_COMMANDS = ["plan", "bootstrap", "apply", "status", "doctor", "start-orchestrator", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
 const REQUIRED_FLAGS: Record<string, string[]> = {
-  "usage set": ["weekly-remaining"], "usage recommend": ["role"], "route resolve": ["role"],
+  "project resolve": ["path"], "usage set": ["weekly-remaining"], "usage recommend": ["role"], "route resolve": ["role"],
   "relay emit": ["type", "from-agent", "from-role", "to-agent", "to-role", "summary"],
   "inbox dead-letter": ["reason"],
   "delivery create": ["kind", "policy", "renderer", "destination", "summary"],
   "delivery mark-rendered": ["by"], "delivery mark-delivered": ["adapter"], "delivery fail": ["reason"],
 };
 const REQUIRED_POSITIONALS: Record<string, string> = {
-  open: "target", "usage set": "provider", "execution dispatch": "task_id", "execution inspect": "task_id",
+  open: "target", "project show": "project_id", "usage set": "provider", "execution dispatch": "task_id", "execution inspect": "task_id",
   "inbox show": "event_id", "inbox ack": "event_id", "inbox retry": "event_id", "inbox dead-letter": "event_id",
   "delivery show": "delivery_id", "delivery mark-rendered": "delivery_id", "delivery mark-delivered": "delivery_id",
   "delivery fail": "delivery_id", "delivery retry": "delivery_id",
@@ -3549,7 +4206,7 @@ function argumentContext(argv: string[]): string {
 
 function argumentUsage(context: string): string {
   if (!context) return `usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,usage,route,execution,relay,inbox,delivery} ...`;
+               {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
   return (HELP_SURFACES[context] ?? HELP_SURFACES[context.split(" ")[0]]).split("\n\n")[0];
 }
 
@@ -3559,7 +4216,7 @@ function hasFlag(argv: string[], flag: string): boolean {
 
 function normalizeArgumentMessage(argv: string[], context: string, raw: string): string {
   if (!context && raw.startsWith("invalid choice:")) return `argument command: ${raw} (choose from '${TOP_LEVEL_COMMANDS.join("', '")}')`;
-  const unknownSubcommand = raw.match(/^unknown (usage|route|execution|relay|inbox|delivery) command: (.+)$/);
+  const unknownSubcommand = raw.match(/^unknown (project|usage|route|execution|relay|inbox|delivery) command: (.+)$/);
   if (unknownSubcommand) {
     const command = unknownSubcommand[1]; const value = unknownSubcommand[2];
     return `argument ${command}_command: invalid choice: '${value}' (choose from '${SUBCOMMAND_CHOICES[command].join("', '")}')`;
@@ -3589,6 +4246,20 @@ async function main(): Promise<void> {
     const args = parseCli(process.argv.slice(2));
     if (args.command === "__help__") return;
     CONFIG_ROOT = args.config_root ? expand(args.config_root) : process.env.HANCHOU_CONFIG_ROOT ? expand(process.env.HANCHOU_CONFIG_ROOT) : DEFAULT_CONFIG_ROOT;
+    const managedRuntime = args.command === "start-orchestrator" || args.command === "execution";
+    if (managedRuntime) {
+      let selectedConfig: string;
+      let defaultConfig: string;
+      try {
+        selectedConfig = realpathSync(CONFIG_ROOT);
+        defaultConfig = realpathSync(DEFAULT_CONFIG_ROOT);
+      } catch {
+        throw new CommandError(`managed Agent runtime requires the checked-in config root: ${DEFAULT_CONFIG_ROOT}`);
+      }
+      if (selectedConfig !== defaultConfig) {
+        throw new CommandError(`managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT; use ${DEFAULT_CONFIG_ROOT}`);
+      }
+    }
     if (args.command === "render-agents") { renderAgents(Boolean(args.check)); return; }
     if (args.command === "handoff") { console.log(readText(join(ROOT, "docs", "SESSION_HANDOFF.md"))); return; }
     const [name, profile] = loadProfile(args.profile_name || args.profile);
@@ -3601,6 +4272,7 @@ async function main(): Promise<void> {
       case "doctor": process.exitCode = await doctor(name, profile); break;
       case "start-orchestrator": startOrchestrator(name, profile); break;
       case "open": openTarget(name, profile, args.target); break;
+      case "project": if (args.project_command === "list") projectList(args, name); else if (args.project_command === "show") projectShow(args, name); else if (args.project_command === "resolve") projectResolve(args, name); else projectDoctor(args, name); break;
       case "usage": if (args.usage_command === "set") usageSet(args, name, profile); else if (args.usage_command === "show") usageShow(args, name, profile); else usageRecommend(args, name, profile); break;
       case "route": usageRecommend(args, name, profile); break;
       case "execution": if (args.execution_command === "dispatch") executionDispatch(args, name, profile); else if (args.execution_command === "inspect") executionInspect(args, name, profile); else executionReconcile(args, name, profile); break;

@@ -19,6 +19,15 @@ the write scope is limited to the assigned worktree, durable report directory,
 Relay state, and the Herdr session socket. Beads is not worker-writable through
 an added directory.
 
+Before validation runs Git or creates the write-ahead record, dispatch resolves
+the Bead's `project`, canonical `repo_path`, and profile against the fixed
+effective-user registry at
+`~/.config/hanchou/<profile>/projects.local.toml`. Missing or invalid authority
+is deny-all. The execution record stores the registry path/digest and matched
+exact project or workspace root. An Agent cannot supply authority through Bead
+metadata, `HOME`, or `--config-root`. An `awaiting_ready` execution is
+re-authorized before its first prompt.
+
 The bridge owns only the top-level Bead metadata fields `execution_id`,
 `routing`, and `herdr`; it supplies `reporting` only when no policy exists.
 Every update reloads the latest metadata and sends a partial top-level merge, so
@@ -52,7 +61,7 @@ Bead ID → execution ID → Herdr session/workspace/pane/agent/provider-session
 
 ## Dispatch transaction
 
-1. Resolve Bead and verify ready/authority.
+1. Resolve Bead and verify ready plus human-owned project authority.
 2. Resolve provider/model from role and usage snapshot.
 3. Atomically claim/start the Bead.
 4. Create/open Herdr worktree workspace.
