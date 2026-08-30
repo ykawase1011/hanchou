@@ -1,0 +1,45 @@
+# Project-local policy for the trusted Hanchou L0 checkout. The CLI validates
+# record IDs, lease ownership, expiry, and the managed Agent identity before a
+# mutating Inbox transition is accepted.
+
+prefix_rule(
+    pattern = ["hanchou", "inbox", ["list", "show"]],
+    decision = "allow",
+    justification = "Read validated Hanchou Inbox records in the L0 control repository",
+    match = [
+        "hanchou inbox list --json",
+        "hanchou inbox show evt_example",
+    ],
+    not_match = [
+        "hanchou inbox claim --json",
+        "hanchou --profile work inbox list --json",
+    ],
+)
+
+prefix_rule(
+    pattern = ["hanchou", "inbox", ["claim", "ack"]],
+    decision = "allow",
+    justification = "Perform validated identity-bound routine Inbox transitions",
+    match = [
+        "hanchou inbox claim --to orchestrator --json",
+        "hanchou inbox ack evt_example --by orchestrator",
+    ],
+    not_match = [
+        "hanchou inbox retry evt_example",
+        "hanchou inbox dead-letter evt_example --reason invalid",
+    ],
+)
+
+prefix_rule(
+    pattern = ["hanchou", "inbox", ["retry", "dead-letter"]],
+    decision = "prompt",
+    justification = "Retry and dead-letter alter delivery semantics and require operator review",
+    match = [
+        "hanchou inbox retry evt_example",
+        "hanchou inbox dead-letter evt_example --reason invalid",
+    ],
+    not_match = [
+        "hanchou inbox list --json",
+        "hanchou inbox future-command",
+    ],
+)

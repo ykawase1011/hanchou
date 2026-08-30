@@ -11,6 +11,12 @@ pending → rendered → delivered
        ↘ failed → pending
 ```
 
+Every mutation is serialized. The record stores versioned render, failure,
+delivery, and retry evidence before its directory move; queue enumeration
+repairs an interrupted move under the same lock. Failed records are never
+published as rendered/delivered, and only an explicit retry may return them to
+pending. Attempt-keyed journal writes are idempotent across command replay.
+
 ## Policies
 
 | Policy | Behavior |

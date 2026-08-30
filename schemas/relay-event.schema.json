@@ -26,7 +26,7 @@
     },
     "event_id": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^evt_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
     },
     "type": {
       "enum": [
@@ -57,7 +57,7 @@
     },
     "from_agent": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
     },
     "from_role": {
       "type": "string",
@@ -65,7 +65,7 @@
     },
     "to_agent": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
     },
     "to_role": {
       "type": "string",
@@ -112,11 +112,66 @@
     },
     "retry_count": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 9007199254740991
     },
     "recovery_count": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "from_state",
+        "retry_count",
+        "journal_schema"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "from_state": {
+          "enum": [
+            "processing",
+            "dead-letter"
+          ]
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "journal_schema": {
+          "const": "hanchou.relay-inbox-transition-journal.v1"
+        }
+      }
+    },
+    "lease_recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "recovery_count",
+        "journal_schema"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "recovery_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "journal_schema": {
+          "const": "hanchou.relay-inbox-transition-journal.v1"
+        }
+      }
     },
     "lease": {
       "type": "object",
@@ -128,7 +183,27 @@
     },
     "dead_letter": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "required": [
+        "at",
+        "reason"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "journal_schema": {
+          "const": "hanchou.relay-terminal-journal.v1"
+        }
+      }
     }
   }
 }

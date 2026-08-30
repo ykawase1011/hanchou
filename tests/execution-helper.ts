@@ -34,6 +34,73 @@ function option(args: readonly string[], name: string): string {
   return value as string;
 }
 
+function assertKnownOptions(
+  args: readonly string[],
+  start: number,
+  valueOptions: readonly string[],
+  booleanOptions: readonly string[] = [],
+): void {
+  const values = new Set(valueOptions);
+  const booleans = new Set(booleanOptions);
+  for (let index = start; index < args.length; index += 1) {
+    const value = args[index] as string;
+    if (value === "--") return;
+    if (values.has(value)) {
+      assert.notEqual(args[index + 1], undefined, `missing value for ${value}`);
+      index += 1;
+      continue;
+    }
+    if (booleans.has(value)) continue;
+    throw new Error(`unsupported fake Herdr option: ${value}`);
+  }
+}
+
+function environmentOptions(args: readonly string[]): JsonObject {
+  const result: JsonObject = {};
+  for (let index = 0; index < args.length - 1; index += 1) {
+    if (args[index] !== "--env") continue;
+    const assignment = args[index + 1] as string;
+    const separator = assignment.indexOf("=");
+    assert.ok(separator > 0, `invalid environment assignment: ${assignment}`);
+    result[assignment.slice(0, separator)] = assignment.slice(separator + 1);
+  }
+  return result;
+}
+
+function codexConfigRaw(args: readonly string[], key: string): string {
+  const prefix = `${key}=`;
+  const matches: string[] = [];
+  for (let index = 0; index < args.length - 1; index += 1) {
+    if (args[index] !== "-c") continue;
+    const value = args[index + 1] as string;
+    if (value.startsWith(prefix)) matches.push(value.slice(prefix.length));
+  }
+  assert.equal(matches.length, 1, `expected one Codex config override ${key}`);
+  return matches[0] as string;
+}
+
+function codexConfig(args: readonly string[], key: string): any {
+  return JSON.parse(codexConfigRaw(args, key));
+}
+
+function assertManagedNetwork(args: readonly string[], rawHome: string): void {
+  const socketPath = join(rawHome, ".config/herdr/sessions/work/herdr.sock");
+  assert.equal(codexConfig(args, "sandbox_workspace_write.network_access"), true);
+  assert.equal(codexConfig(args, "features.network_proxy.enabled"), true);
+  assert.equal(codexConfigRaw(args, "features.network_proxy.domains"), "{}");
+  assert.equal(codexConfig(args, "features.network_proxy.allow_local_binding"), false);
+  assert.equal(codexConfig(args, "features.network_proxy.allow_upstream_proxy"), false);
+  assert.equal(codexConfig(args, "features.network_proxy.dangerously_allow_all_unix_sockets"), false);
+  assert.equal(codexConfig(args, "features.network_proxy.dangerously_allow_non_loopback_proxy"), false);
+  assert.equal(codexConfig(args, "features.network_proxy.enable_socks5"), false);
+  assert.equal(codexConfig(args, "features.network_proxy.enable_socks5_udp"), false);
+  assert.equal(
+    codexConfigRaw(args, "features.network_proxy.unix_sockets"),
+    `{${JSON.stringify(socketPath)}="allow"}`,
+  );
+  assert.ok(!args.some((value) => value === "network.enabled=true" || value.startsWith("network.unix_sockets=")));
+}
+
 function findExecutable(command: string): string | undefined {
   if (command.includes("/")) {
     try {
@@ -134,7 +201,34 @@ function fakeHerdr(input: readonly string[]): number {
   if (args.length >= 2 && args[0] === "--session") {
     args = args.slice(2);
   }
+  if (args[0] === "workspace" && args[1] === "create") {
+    assertKnownOptions(args, 2, ["--cwd", "--label", "--env"], ["--no-focus", "--focus"]);
+    state.counter += 1;
+    const workspace = `w${String(state.counter)}`;
+    const tab = `${workspace}:t1`;
+    const pane = `${tab}:p1`;
+    state.workspaces ??= [];
+    state.workspaces.push(args);
+    state.pane_env ??= {};
+    state.pane_env[pane] = environmentOptions(args);
+    state.tab_counters ??= {};
+    state.tab_counters[workspace] = 1;
+    state.last_workspace = { workspace_id: workspace, tab_id: tab, pane_id: pane };
+    writeJson(statePath, state);
+    console.log(
+      JSON.stringify({
+        result: {
+          type: "workspace_created",
+          workspace: { workspace_id: workspace },
+          tab: { tab_id: tab },
+          root_pane: { pane_id: pane },
+        },
+      }),
+    );
+    return 0;
+  }
   if (args[0] === "worktree" && args[1] === "create") {
+    assertKnownOptions(args, 2, ["--workspace", "--cwd", "--branch", "--base", "--path", "--label"], ["--no-focus", "--focus"]);
     const repository = option(args, "--cwd");
     const base = option(args, "--base");
     const branch = option(args, "--branch");
@@ -152,20 +246,52 @@ function fakeHerdr(input: readonly string[]): number {
     state.worktrees.push(args);
     state.counter += 1;
     const workspace = `w${String(state.counter)}`;
-    const pane = `${workspace}:p1`;
-    state.last_workspace = { workspace_id: workspace, pane_id: pane };
+    const tab = `${workspace}:t1`;
+    const pane = `${tab}:p1`;
+    state.pane_env ??= {};
+    state.pane_env[pane] = {};
+    state.tab_counters ??= {};
+    state.tab_counters[workspace] = 1;
+    state.last_workspace = { workspace_id: workspace, tab_id: tab, pane_id: pane };
     writeJson(statePath, state);
     console.log(
       JSON.stringify({
         result: {
+          type: "worktree_created",
           workspace: { workspace_id: workspace },
+          tab: { tab_id: tab },
           root_pane: { pane_id: pane },
+          worktree: { path: target },
         },
       }),
     );
     return 0;
   }
+  if (args[0] === "tab" && args[1] === "create") {
+    assertKnownOptions(args, 2, ["--workspace", "--cwd", "--label", "--env"], ["--no-focus", "--focus"]);
+    const workspace = option(args, "--workspace");
+    state.tab_counters ??= {};
+    state.tab_counters[workspace] = Number(state.tab_counters[workspace] ?? 1) + 1;
+    const tab = `${workspace}:t${String(state.tab_counters[workspace])}`;
+    const pane = `${tab}:p1`;
+    state.tabs ??= [];
+    state.tabs.push(args);
+    state.pane_env ??= {};
+    state.pane_env[pane] = environmentOptions(args);
+    writeJson(statePath, state);
+    console.log(JSON.stringify({ result: { type: "tab_created", tab: { tab_id: tab }, root_pane: { pane_id: pane } } }));
+    return 0;
+  }
+  if (args[0] === "tab" && args[1] === "close") {
+    assert.equal(args.length, 3, `unsupported fake Herdr tab close: ${JSON.stringify(args)}`);
+    state.tab_closes ??= [];
+    state.tab_closes.push(args[2]);
+    writeJson(statePath, state);
+    console.log(JSON.stringify({ result: { type: "ok" } }));
+    return 0;
+  }
   if (args[0] === "agent" && args[1] === "start") {
+    assertKnownOptions(args, 3, ["--kind", "--pane", "--timeout"]);
     if (process.env.FAKE_HERDR_FAIL_START === "1") {
       console.error(JSON.stringify({ error: { code: "agent_start_failed" } }));
       return 1;
@@ -173,13 +299,16 @@ function fakeHerdr(input: readonly string[]): number {
     const name = args[2] as string;
     const pane = option(args, "--pane");
     const workspace = pane.split(":", 1)[0];
+    const tab = pane.split(":").slice(0, 2).join(":");
     state.starts ??= [];
     state.starts.push(args);
     state.agents[name] = {
       name,
       agent_status: "idle",
       workspace_id: workspace,
+      tab_id: tab,
       pane_id: pane,
+      launch_env: { ...(state.pane_env?.[pane] ?? {}) },
       state_change_seq: 1,
       agent_session: {
         source: "fake",
@@ -318,7 +447,7 @@ function initialize(args: readonly string[]): void {
   foreign.metadata.execution_id = "exe_foreign";
   tasks["hch-foreign"] = foreign;
   writeJson(bdPath, { beads: tasks, metadata_updates: [] });
-  writeJson(herdrPath, { counter: 0, agents: {}, prompts: [], starts: [], worktrees: [] });
+  writeJson(herdrPath, { counter: 0, agents: {}, prompts: [], starts: [], worktrees: [], workspaces: [], tabs: [], tab_closes: [], pane_env: {}, tab_counters: {} });
 }
 
 function jsonField(value: JsonObject, path: string): void {
@@ -369,8 +498,18 @@ function assertInspectOk(args: readonly string[]): void {
     encoding: "utf8",
   }).trim();
   assert.equal(inspect.execution.base_commit, baseCommit);
-  const worktree = herdr.worktrees[0] as string[];
+  const worktree = herdr.worktrees.find(
+    (row: string[]) => option(row, "--path") === String(inspect.execution.worktree_path),
+  ) as string[];
+  assert.ok(worktree);
   assert.equal(option(worktree, "--base"), baseCommit);
+  assert.ok(!worktree.includes("--env"));
+  const tab = herdr.tabs.find(
+    (row: string[]) => option(row, "--workspace") === String(inspect.execution.workspace_id),
+  ) as string[];
+  assert.ok(tab);
+  assert.equal(option(tab, "--env"), `HANCHOU_AGENT_ID=${String(inspect.execution.agent_name)}`);
+  assert.ok(herdr.tab_closes.includes(`${String(inspect.execution.workspace_id)}:t1`));
   assert.equal(inspect.task_metadata.herdr.binding_state, "live");
   assert.ok(inspect.task_metadata.herdr.worktree_path);
   assert.ok(inspect.task_metadata.herdr.branch.startsWith("hanchou/"));
@@ -395,8 +534,24 @@ function assertInspectOk(args: readonly string[]): void {
   assert.ok(promptArgs.includes("--wait") && promptArgs.includes("working") && promptArgs.includes("blocked"));
   const start = herdr.starts[0] as string[];
   assert.equal(option(start, "--kind"), "codex");
+  assert.ok(!start.includes("--env"));
+  assert.equal(herdr.agents[String(inspect.execution.agent_name)].launch_env.HANCHOU_AGENT_ID, inspect.execution.agent_name);
   assert.ok(start.includes("--sandbox") && start.includes("workspace-write"));
-  assert.ok(start.includes("--approve-for-me") && start.includes("network.enabled=true"));
+  assert.ok(start.includes("--approve-for-me"));
+  assertManagedNetwork(start, rawHome);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_ENV"), "1");
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_SESSION"), "work");
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_PANE_ID"), inspect.execution.pane_id);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_WORKSPACE_ID"), inspect.execution.workspace_id);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_TAB_ID"), inspect.execution.tab_id);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_SOCKET_PATH"), join(rawHome, ".config/herdr/sessions/work/herdr.sock"));
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_BIN_PATH"), join(requiredEnvironment("FAKE_BIN"), "herdr"));
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_AGENT_ID"), inspect.execution.agent_name);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_PROFILE"), "work");
+  assert.equal(
+    codexConfig(start, "shell_environment_policy.set.BEADS_DIR"),
+    resolve(realpathSync(rawHome), ".local/share/hanchou/work/control/.beads"),
+  );
   const addDirs = start.flatMap((value, index) => (value === "--add-dir" ? [start[index + 1] as string] : []));
   const expected = [
     dirname(inspect.execution.report_path as string),
@@ -405,6 +560,31 @@ function assertInspectOk(args: readonly string[]): void {
   ].sort();
   assert.deepEqual([...new Set(addDirs)].sort(), expected);
   assert.equal(addDirs.length, 3);
+  assert.ok(!JSON.stringify(start).includes("must-not-be-forwarded"));
+}
+
+function assertOrchestratorEnvironment(herdrPath: string, rawHome: string): void {
+  const herdr = readJson(herdrPath);
+  const start = herdr.starts.find((row: string[]) => row[0] === "agent" && row[1] === "start" && row[2] === "orchestrator") as string[];
+  assert.ok(start);
+  const agent = herdr.agents.orchestrator as JsonObject;
+  assertManagedNetwork(start, rawHome);
+  assert.ok(!start.includes("--env"));
+  assert.equal(agent.launch_env.HANCHOU_AGENT_ID, "orchestrator");
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_ENV"), "1");
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_SESSION"), "work");
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_PANE_ID"), agent.pane_id);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_WORKSPACE_ID"), agent.workspace_id);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_TAB_ID"), agent.tab_id);
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_SOCKET_PATH"), join(rawHome, ".config/herdr/sessions/work/herdr.sock"));
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HERDR_BIN_PATH"), join(requiredEnvironment("FAKE_BIN"), "herdr"));
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_AGENT_ID"), "orchestrator");
+  assert.equal(codexConfig(start, "shell_environment_policy.set.HANCHOU_PROFILE"), "work");
+  assert.equal(
+    codexConfig(start, "shell_environment_policy.set.HANCHOU_RELAY_DIR"),
+    resolve(realpathSync(rawHome), ".local/share/hanchou/work/relay"),
+  );
+  assert.ok(!JSON.stringify(start).includes("must-not-be-forwarded"));
 }
 
 function assertAwaiting(): void {
@@ -564,6 +744,8 @@ function assertInspectClaude(inspectPath: string, herdrPath: string): void {
   assert.equal(inspect.task_metadata.routing.model, "sonnet");
   const start = herdr.starts.find((row: string[]) => option(row, "--kind") === "claude") as string[];
   assert.ok(start);
+  assert.ok(!start.includes("--env"));
+  assert.equal(herdr.agents[String(inspect.execution.agent_name)].launch_env.HANCHOU_AGENT_ID, inspect.execution.agent_name);
   assert.equal(option(start, "--permission-mode"), "auto");
   assert.equal(option(start, "--tools"), "Read,Edit,Write,Grep,Glob,Bash,Skill");
   const addDirs = start.flatMap((value, index) => (value === "--add-dir" ? [start[index + 1] as string] : []));
@@ -662,6 +844,7 @@ function main(args: readonly string[]): number {
     case "assert-inspect-readonly": assertInspectReadOnly(rest[0] as string, rest[1] as string, rest[2] as string); break;
     case "assert-writer-disabled": assertWriterDisabled(rest[0] as string); break;
     case "assert-inspect-secret": assertInspectSecret(rest[0] as string); break;
+    case "assert-orchestrator-env": assertOrchestratorEnvironment(rest[0] as string, rest[1] as string); break;
     case "assert-failure": assertFailure(rest[0] as string, rest[1] as string, rest[2] as string); break;
     default: throw new Error(`unknown execution helper command: ${String(command)}`);
   }

@@ -85,6 +85,12 @@
             "null"
           ]
         },
+        "tab_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "pane_id": {
           "type": [
             "string",

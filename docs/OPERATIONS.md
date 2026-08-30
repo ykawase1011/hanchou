@@ -26,12 +26,45 @@ hooks (such as credential prompts) from blocking lifecycle detection.
 The first `start-orchestrator` may pause for Codex project and hook review.
 Attach to the named Agent, review the exact sources, and trust only the intended
 Hanchou/Herdr integration. Hanchou never bypasses Codex approvals or sandboxing.
+That first project/hook decision is intentionally not auto-approved.
+
+An Agent that was already running before an `apply` does not gain new launch
+arguments. Open it with `hanchou open orchestrator <profile>`, enter `/exit`,
+then rerun `hanchou start-orchestrator <profile>`. The fresh Agent receives the
+managed environment and reloads the project-local command policy.
+
+Routine Inbox commands use the checked-in project policy at
+`.codex/rules/hanchou.rules`. It automatically allows only the canonical
+`hanchou inbox list/show/claim/ack` forms in this trusted checkout. `retry` and
+`dead-letter` still prompt because they alter delivery semantics, and unknown
+future Inbox commands receive no blanket permission. Never add a user-global
+`prefix_rule(pattern=["hanchou", "inbox"], decision="allow")`: it also allows
+destructive and future subcommands in unrelated Codex projects. Back up and
+remove such a remembered rule from `~/.codex/rules/default.rules`, then restart
+the L0 Agent so Codex reloads the narrower project policy.
+
+Hanchou injects `HANCHOU_AGENT_ID` into the root shell when it creates each
+orchestrator or worker workspace, and the managed Agent in that pane inherits
+it. For workers, Hanchou retains Herdr's dedicated worktree creation and opens
+an identity-bearing tab inside that worktree workspace; Herdr 0.8.2 supports
+`--env` on tab creation, not on worktree or Agent creation. Hanchou also passes
+the selected profile, Agent identity,
+Herdr workspace/tab/pane/socket, Beads, and Relay paths to each managed Codex
+run through per-run `shell_environment_policy.set` overrides. This preserves
+Herdr context when a persistent Codex app-server executes shell tools. Do not
+set `HERDR_ENV=1` globally in `~/.codex/config.toml` or launchd: a normal non-Herdr Codex session
+must not impersonate a managed pane. If context is nevertheless absent, L0 may
+answer from Beads but must label live Herdr state unavailable and request a
+Hanchou-managed restart.
+
 The Codex L0 receives writable access only to the selected Hanchou profile state,
 its Herdr session socket directory, and Herdr plugin configuration in addition
-to the Core checkout. Its Codex network sandbox allowlists only that selected
-Herdr Unix-socket directory for local control-plane IPC. No external domain is
-allowlisted for L0. Sandbox denials are routed through Codex automatic approval
-review; the dangerous approval/sandbox bypass flag is never used.
+to the Core checkout. Managed Codex runs enable the command-network proxy,
+replace inherited domain rules with an empty default-deny policy, and allow only
+the selected Herdr Unix socket for local control-plane IPC. Broad local binding,
+arbitrary Unix sockets, non-loopback proxy listeners, upstream proxy chaining,
+and SOCKS are disabled. Sandbox denials are routed through Codex automatic
+approval review; the dangerous approval/sandbox bypass flag is never used.
 
 ## Startup
 
@@ -65,7 +98,9 @@ herdr --session personal
 - Relay directories, expired leases, pending Deliveries;
 - Automation config, daemon, misses, repeated failures;
 - beads-ui endpoint;
-- generated agent and Skill freshness.
+- generated agent and Skill freshness;
+- the project-local Codex Inbox policy and absence of a broad user-level Inbox
+  allow rule.
 
 ## Backup and recovery
 

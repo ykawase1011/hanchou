@@ -34,6 +34,8 @@ hanchou relay emit \
 
 For an execution-bridge assignment, copy the exact Task ID, execution ID,
 Agent, role, owner, report path, and delegation depth from the worker prompt.
+Run emission only from that Hanchou-managed Agent; the CLI requires
+`--from-agent` to match its injected `HANCHOU_AGENT_ID`.
 A completed event must reference the assigned durable report, include non-empty
 verification evidence, and contain exactly one `commit:<sha>` matching the
 assigned worktree's current `HEAD`. Reconciliation rejects events that do not

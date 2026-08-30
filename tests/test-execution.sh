@@ -10,12 +10,22 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HELPER="$ROOT/tests/execution-helper.ts"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+NETWORK_SERVER_PID=""
+cleanup() {
+    if [[ -n "$NETWORK_SERVER_PID" ]]; then
+        kill "$NETWORK_SERVER_PID" 2>/dev/null || true
+        wait "$NETWORK_SERVER_PID" 2>/dev/null || true
+    fi
+    rm -rf "$TMP"
+}
+trap cleanup EXIT
 
 export HANCHOU_TEST_ROOT="$ROOT"
 export FAKE_BD_STATE="$TMP/bd.json"
 export FAKE_HERDR_STATE="$TMP/herdr.json"
 export FAKE_BIN="$TMP/bin"
+export HANCHOU_TEST_UNRELATED_VALUE="must-not-be-forwarded"
+export HANCHOU_AGENT_ID=orchestrator
 mkdir -p "$FAKE_BIN" "$TMP/home" "$TMP/repo"
 
 git -C "$TMP/repo" init -q -b main
@@ -102,7 +112,7 @@ SUCCESS_COMMIT="$(git -C "$SUCCESS_WORKTREE" rev-parse HEAD)"
 mkdir -p "$(dirname "$SUCCESS_REPORT")"
 printf '# Execution report\n\nVerification passed.\n' > "$SUCCESS_REPORT"
 
-UNRELATED_EVENT="$($ROOT/bin/hanchou --profile work relay emit \
+UNRELATED_EVENT="$(HANCHOU_AGENT_ID="$SUCCESS_AGENT" $ROOT/bin/hanchou --profile work relay emit \
     --type completed --task hch-ok \
     --execution exe_unrelated \
     --from-agent "$SUCCESS_AGENT" \
@@ -112,7 +122,7 @@ UNRELATED_EVENT="$($ROOT/bin/hanchou --profile work relay emit \
 UNRELATED_EVENT_ID="$(printf '%s' "$UNRELATED_EVENT" | node --experimental-strip-types "$HELPER" stdin-field event_id)"
 $ROOT/bin/hanchou --profile work inbox claim --to orchestrator --json >/dev/null
 $ROOT/bin/hanchou --profile work inbox ack "$UNRELATED_EVENT_ID" --by orchestrator --json >/dev/null
-WRONG_ROUTE_EVENT="$($ROOT/bin/hanchou --profile work relay emit \
+WRONG_ROUTE_EVENT="$(HANCHOU_AGENT_ID="$SUCCESS_AGENT" $ROOT/bin/hanchou --profile work relay emit \
     --type completed --task hch-ok \
     --execution "$SUCCESS_EXECUTION_ID" \
     --from-agent "$SUCCESS_AGENT" \
@@ -120,8 +130,8 @@ WRONG_ROUTE_EVENT="$($ROOT/bin/hanchou --profile work relay emit \
     --delegation-depth 1 --summary wrong-route --detail-ref "$SUCCESS_REPORT" \
     --artifact "commit:$SUCCESS_COMMIT" --verification tests-pass --no-nudge --json)"
 WRONG_ROUTE_EVENT_ID="$(printf '%s' "$WRONG_ROUTE_EVENT" | node --experimental-strip-types "$HELPER" stdin-field event_id)"
-$ROOT/bin/hanchou --profile work inbox claim --to other-orchestrator --json >/dev/null
-$ROOT/bin/hanchou --profile work inbox ack "$WRONG_ROUTE_EVENT_ID" --by other-orchestrator --json >/dev/null
+HANCHOU_AGENT_ID=other-orchestrator $ROOT/bin/hanchou --profile work inbox claim --to other-orchestrator --json >/dev/null
+HANCHOU_AGENT_ID=other-orchestrator $ROOT/bin/hanchou --profile work inbox ack "$WRONG_ROUTE_EVENT_ID" --by other-orchestrator --json >/dev/null
 STALE_DELIVERY="$($ROOT/bin/hanchou --profile work delivery create \
     --kind task_terminal --task hch-ok --source-event "$UNRELATED_EVENT_ID" \
     --policy on_terminal --renderer orchestrator \
@@ -134,7 +144,7 @@ $ROOT/bin/hanchou --profile work execution reconcile hch-ok --json > "$TMP/recon
 node --experimental-strip-types "$HELPER" assert-reconcile-unrelated \
     "$TMP/reconcile-unrelated.json"
 
-EVENT="$($ROOT/bin/hanchou --profile work relay emit \
+EVENT="$(HANCHOU_AGENT_ID="$SUCCESS_AGENT" $ROOT/bin/hanchou --profile work relay emit \
     --type completed --task hch-ok \
     --execution "$SUCCESS_EXECUTION_ID" \
     --from-agent "$SUCCESS_AGENT" \
@@ -173,7 +183,7 @@ git -C "$DELIVERY_BAD_WORKTREE" commit -qm "Add Delivery contract artifact"
 DELIVERY_BAD_COMMIT="$(git -C "$DELIVERY_BAD_WORKTREE" rev-parse HEAD)"
 mkdir -p "$(dirname "$DELIVERY_BAD_REPORT")"
 printf '# Delivery contract report\n' > "$DELIVERY_BAD_REPORT"
-DELIVERY_BAD_EVENT="$($ROOT/bin/hanchou --profile work relay emit \
+DELIVERY_BAD_EVENT="$(HANCHOU_AGENT_ID="$DELIVERY_BAD_AGENT" $ROOT/bin/hanchou --profile work relay emit \
     --type completed --task hch-delivery-bad \
     --execution "$DELIVERY_BAD_EXECUTION_ID" \
     --from-agent "$DELIVERY_BAD_AGENT" --from-role implementer \
@@ -213,7 +223,7 @@ printf 'unreported artifact\n' > "$EVIDENCE_WORKTREE/result.txt"
 git -C "$EVIDENCE_WORKTREE" add result.txt
 git -C "$EVIDENCE_WORKTREE" commit -qm "Add unreported artifact"
 EVIDENCE_STALE_COMMIT="$(git -C "$EVIDENCE_WORKTREE" rev-parse HEAD^)"
-INVALID_EVENT="$($ROOT/bin/hanchou --profile work relay emit \
+INVALID_EVENT="$(HANCHOU_AGENT_ID="$EVIDENCE_AGENT" $ROOT/bin/hanchou --profile work relay emit \
     --type completed --task hch-evidence \
     --execution "$EVIDENCE_EXECUTION_ID" \
     --from-agent "$EVIDENCE_AGENT" \
@@ -270,5 +280,82 @@ $ROOT/bin/hanchou --profile work execution inspect hch-fail --json > "$TMP/inspe
 $ROOT/bin/hanchou --profile work execution reconcile hch-fail --json > "$TMP/reconcile-fail.json"
 node --experimental-strip-types "$HELPER" assert-failure \
     "$TMP/inspect-fail.json" "$TMP/reconcile-fail.json" "$FAKE_BD_STATE"
+
+$ROOT/bin/hanchou --profile work start-orchestrator > "$TMP/start-orchestrator.out"
+grep -q 'started codex orchestrator `orchestrator`' "$TMP/start-orchestrator.out"
+node --experimental-strip-types "$HELPER" assert-orchestrator-env \
+    "$FAKE_HERDR_STATE" "$TMP/home"
+
+if command -v codex >/dev/null 2>&1; then
+    NETWORK_SOCKET="$TMP/herdr.sock"
+    NEIGHBOR_SOCKET="$TMP/neighbor.sock"
+    NETWORK_PORT_FILE="$TMP/network-port"
+    node -e '
+const http = require("node:http");
+const fs = require("node:fs");
+const [firstSocket, secondSocket, portFile] = process.argv.slice(1);
+for (const socket of [firstSocket, secondSocket]) {
+  http.createServer((_request, response) => response.end("ok\n")).listen(socket);
+}
+const tcp = http.createServer((_request, response) => response.end("ok\n"));
+tcp.listen(0, "127.0.0.1", () => fs.writeFileSync(portFile, String(tcp.address().port)));
+setInterval(() => {}, 1000);
+' "$NETWORK_SOCKET" "$NEIGHBOR_SOCKET" "$NETWORK_PORT_FILE" &
+    NETWORK_SERVER_PID=$!
+    for _attempt in {1..100}; do
+        [[ -S "$NETWORK_SOCKET" && -S "$NEIGHBOR_SOCKET" && -s "$NETWORK_PORT_FILE" ]] && break
+        sleep 0.05
+    done
+    [[ -S "$NETWORK_SOCKET" && -S "$NEIGHBOR_SOCKET" && -s "$NETWORK_PORT_FILE" ]]
+    NETWORK_PORT="$(<"$NETWORK_PORT_FILE")"
+    CURL_BIN="$(command -v curl)"
+    UNIX_SOCKET_RULE="features.network_proxy.unix_sockets={\"$NETWORK_SOCKET\"=\"allow\"}"
+    INHERITED_UNSAFE_NETWORK_ARGS=(
+        -c 'features.network_proxy.domains={"example.invalid"="allow"}'
+        -c features.network_proxy.allow_local_binding=true
+        -c features.network_proxy.dangerously_allow_all_unix_sockets=true
+        -c features.network_proxy.dangerously_allow_non_loopback_proxy=true
+        -c "features.network_proxy.unix_sockets={\"$NEIGHBOR_SOCKET\"=\"allow\"}"
+    )
+    CODEX_NETWORK_ARGS=(
+        -c 'sandbox_mode="workspace-write"'
+        -c sandbox_workspace_write.network_access=true
+        -c features.network_proxy.enabled=true
+        -c features.network_proxy.allow_local_binding=false
+        -c features.network_proxy.allow_upstream_proxy=false
+        -c features.network_proxy.dangerously_allow_all_unix_sockets=false
+        -c features.network_proxy.dangerously_allow_non_loopback_proxy=false
+        -c features.network_proxy.enable_socks5=false
+        -c features.network_proxy.enable_socks5_udp=false
+        -c "$UNIX_SOCKET_RULE"
+    )
+    codex sandbox "${INHERITED_UNSAFE_NETWORK_ARGS[@]}" "${CODEX_NETWORK_ARGS[@]}" \
+        -c features.network_proxy.domains={} \
+        "$CURL_BIN" -fsS --unix-socket "$NETWORK_SOCKET" http://localhost/ \
+        | grep -qx ok
+    if codex sandbox "${INHERITED_UNSAFE_NETWORK_ARGS[@]}" "${CODEX_NETWORK_ARGS[@]}" \
+        -c features.network_proxy.domains={} \
+        "$CURL_BIN" -fsS --unix-socket "$NEIGHBOR_SOCKET" http://localhost/ \
+        >"$TMP/network-neighbor.out" 2>"$TMP/network-neighbor.err"; then
+        echo "managed Codex network policy allowed an unlisted Unix socket" >&2
+        exit 1
+    fi
+    if codex sandbox "${INHERITED_UNSAFE_NETWORK_ARGS[@]}" "${CODEX_NETWORK_ARGS[@]}" \
+        -c features.network_proxy.domains={} \
+        "$CURL_BIN" -fsS --max-time 5 "http://127.0.0.1:$NETWORK_PORT/" \
+        >"$TMP/network-local.out" 2>"$TMP/network-local.err"; then
+        echo "managed Codex network policy allowed an unlisted local TCP endpoint" >&2
+        exit 1
+    fi
+    grep -q '403' "$TMP/network-local.err"
+    if codex sandbox "${INHERITED_UNSAFE_NETWORK_ARGS[@]}" "${CODEX_NETWORK_ARGS[@]}" \
+        -c features.network_proxy.domains={} \
+        "$CURL_BIN" -fsS --max-time 5 https://example.invalid/ \
+        >"$TMP/network-domain.out" 2>"$TMP/network-domain.err"; then
+        echo "managed Codex network policy allowed an external domain" >&2
+        exit 1
+    fi
+    grep -q '403' "$TMP/network-domain.err"
+fi
 
 echo "execution bridge fake E2E ok"

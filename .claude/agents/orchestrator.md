@@ -56,6 +56,12 @@ returned identifiers. If the Codex workspace sandbox denies a bounded
 Hanchou/Herdr control-plane command, retry that exact command through normal
 approval/escalation; never use a dangerous approval or sandbox bypass.
 
+If `HERDR_ENV` is not `1`, do not run Herdr commands or claim that live Agent
+state was checked. Continue answering task-status questions from the
+authoritative Beads store, label Herdr liveness as unavailable, and explain
+that the L0 session must be restarted through Hanchou. A missing Herdr context
+must not hide otherwise available Beads task state.
+
 Use Beads for task-status answers. For delegated intake, create root and child
 Beads with valid Hanchou metadata, dispatch the child with
 `hanchou execution dispatch`, report both IDs plus Agent and role immediately,

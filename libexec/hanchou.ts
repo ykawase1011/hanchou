@@ -3,11 +3,12 @@
 import { spawnSync, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
-  appendFileSync,
   chmodSync,
   closeSync,
+  constants as fsConstants,
   copyFileSync,
   existsSync,
+  fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -55,7 +56,14 @@ const REPORTING_POLICIES = new Set([
 ]);
 const DELIVERY_RENDERERS = new Set(["orchestrator", "editor", "producer"]);
 const DELIVERY_KINDS = new Set(["task_terminal", "decision", "schedule_report", "daily_digest", "alert", "manual"]);
-const NUDGE_TEXT = "[HANCHOU_RELAY] Durable Inbox events are pending. Run `hanchou inbox claim --json`, read each full event, apply the durable action, then `hanchou inbox ack <event-id>`. Do not infer completion from this nudge alone.";
+const EVENT_ID_PATTERN = /^evt_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const DELIVERY_ID_PATTERN = /^dly_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const INBOX_STATES = new Set(["pending", "processing", "acknowledged", "dead-letter"]);
+const DELIVERY_STATES = new Set(["pending", "rendered", "delivered", "failed"]);
+const CODEX_RULES_PATH = join(ROOT, ".codex", "rules", "hanchou.rules");
+const TERMINAL_JOURNAL_SCHEMA = "hanchou.relay-terminal-journal.v1";
+const INBOX_TRANSITION_JOURNAL_SCHEMA = "hanchou.relay-inbox-transition-journal.v1";
 
 export class CommandError extends Error {
   constructor(message: string) {
@@ -228,6 +236,74 @@ function profileEnv(name: string, profile: JsonObject): NodeJS.ProcessEnv {
   };
 }
 
+function nudgeText(agent: string): string {
+  return `[HANCHOU_RELAY] Durable Inbox events are pending for \`${agent}\`. Run \`hanchou inbox claim --to ${agent} --json\`, read each full event, apply the durable action, then \`hanchou inbox ack <event-id> --by ${agent}\`. Do not infer completion from this nudge alone.`;
+}
+
+/**
+ * Codex 0.151 can execute shell tools through a persistent app-server whose
+ * base environment is not the environment of the Herdr pane that launched the
+ * TUI. Pass only Hanchou's non-secret control-plane context as per-run config
+ * so shell tools retain the pane identity without globally claiming that every
+ * Codex session runs inside Herdr.
+ */
+export function codexManagedEnvironmentArgs(
+  name: string,
+  profile: JsonObject,
+  agentId: string,
+  paneId: string,
+  workspaceId: string,
+  tabId: string,
+): string[] {
+  const profileEnvironment = profileEnv(name, profile);
+  const sessionDirectory = join(homedir(), ".config", "herdr", "sessions", name);
+  const values: Record<string, string> = {
+    HERDR_ENV: "1",
+    HERDR_SESSION: name,
+    HERDR_SOCKET_PATH: join(sessionDirectory, "herdr.sock"),
+    HERDR_BIN_PATH: commandPath("herdr"),
+    HERDR_PANE_ID: paneId,
+    HANCHOU_AGENT_ID: validateAgentId(agentId, "managed Agent ID"),
+  };
+  values.HERDR_WORKSPACE_ID = workspaceId;
+  values.HERDR_TAB_ID = tabId;
+  for (const key of [
+    "HANCHOU_PROFILE", "HANCHOU_HOME", "HANCHOU_CONFIG_HOME", "HANCHOU_CONFIG_ROOT",
+    "HANCHOU_REPO_ROOT", "HANCHOU_BEADS_DIR", "HANCHOU_RELAY_DIR", "BEADS_DIR",
+    "BD_AGENT_PROFILE",
+  ]) {
+    const value = profileEnvironment[key];
+    if (value !== undefined) values[key] = value;
+  }
+  return Object.entries(values).sort(([left], [right]) => left.localeCompare(right)).flatMap(([key, value]) => [
+    "-c",
+    `shell_environment_policy.set.${key}=${JSON.stringify(value)}`,
+  ]);
+}
+
+/**
+ * Permit only the selected Herdr control socket for managed Codex commands.
+ * Command networking must be enabled for AF_UNIX access, so start Codex's
+ * network proxy and replace any inherited domain rules with an empty policy.
+ * Without the proxy, enabled command networking is direct and domain policy is
+ * not enforced.
+ */
+export function codexManagedNetworkArgs(name: string): string[] {
+  const socketPath = join(homedir(), ".config", "herdr", "sessions", name, "herdr.sock");
+  return [
+    "-c", "sandbox_workspace_write.network_access=true",
+    "-c", "features.network_proxy.enabled=true",
+    "-c", "features.network_proxy.domains={}",
+    "-c", "features.network_proxy.allow_local_binding=false",
+    "-c", "features.network_proxy.allow_upstream_proxy=false",
+    "-c", "features.network_proxy.dangerously_allow_all_unix_sockets=false",
+    "-c", "features.network_proxy.dangerously_allow_non_loopback_proxy=false",
+    "-c", "features.network_proxy.enable_socks5=false",
+    "-c", "features.network_proxy.enable_socks5_udp=false",
+    "-c", `features.network_proxy.unix_sockets={${JSON.stringify(socketPath)}="allow"}`,
+  ];
+}
+
 function herdrArgv(name: string, ...args: string[]): string[] {
   return [commandPath("herdr"), "--session", name, ...args];
 }
@@ -243,11 +319,28 @@ function atomicWrite(path: string, text: string, mode = 0o600): void {
     closeSync(fd);
   }
   chmodSync(temporary, mode);
-  renameSync(temporary, path);
+  try { renameSync(temporary, path); }
+  catch (error) {
+    try { unlinkSync(temporary); } catch { /* already removed */ }
+    throw error;
+  }
   try {
     const directoryFd = openSync(dirname(path), "r");
     try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
   } catch { /* directory fsync is unavailable on some platforms */ }
+}
+
+function fsyncDirectory(path: string): void {
+  const fd = openSync(path, "r");
+  try { fsyncSync(fd); } finally { closeSync(fd); }
+}
+
+function durableRename(source: string, destination: string): void {
+  renameSync(source, destination);
+  const sourceDirectory = dirname(source);
+  const destinationDirectory = dirname(destination);
+  fsyncDirectory(destinationDirectory);
+  if (sourceDirectory !== destinationDirectory) fsyncDirectory(sourceDirectory);
 }
 
 function backupAndWrite(path: string, text: string): boolean {
@@ -271,7 +364,11 @@ function ensureState(name: string, profile: JsonObject): void {
     "inbox/pending", "inbox/processing", "inbox/acknowledged", "inbox/dead-letter",
     "deliveries/pending", "deliveries/rendered", "deliveries/delivered", "deliveries/failed",
     "receipts", "payloads", "locks",
-  ]) mkdirSync(join(paths.relay_dir, part), { recursive: true });
+  ]) {
+    const target = safeRelayDirectory(paths.relay_dir, ...part.split("/"));
+    mkdirSync(target, { recursive: true });
+    safeRelayDirectory(paths.relay_dir, ...part.split("/"));
+  }
   const configHome = join(homedir(), ".config", "hanchou", name);
   mkdirSync(join(configHome, "generated"), { recursive: true });
   const target = join(configHome, "skills.toml");
@@ -302,21 +399,210 @@ function jsonPrint(value: any, pretty = false): void {
   console.log(pretty ? JSON.stringify(value, null, 2) : pyCompact(value));
 }
 
+function validateIdentifier(value: unknown, pattern: RegExp, label: string): string {
+  if (typeof value !== "string" || !pattern.test(value)) {
+    throw new CommandError(`invalid ${label}: expected ${pattern.source}`);
+  }
+  return value;
+}
+
+function validateEventId(value: unknown): string {
+  return validateIdentifier(value, EVENT_ID_PATTERN, "event ID");
+}
+
+function validateDeliveryId(value: unknown): string {
+  return validateIdentifier(value, DELIVERY_ID_PATTERN, "delivery ID");
+}
+
+function validateAgentId(value: unknown, label = "agent ID"): string {
+  return validateIdentifier(value, AGENT_ID_PATTERN, label);
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+function requireManagedAgentIdentity(requested: string, operation: string): void {
+  const configured = process.env.HANCHOU_AGENT_ID;
+  if (!configured) throw new CommandError(`${operation} requires HANCHOU_AGENT_ID from a Hanchou-managed Agent`);
+  const current = validateAgentId(configured, "managed Agent identity");
+  if (requested !== current) throw new CommandError(`${operation} target ${requested} does not match managed Agent identity ${current}`);
+}
+
+function safeRelayDirectory(root: string, ...segments: string[]): string {
+  let current = resolve(root);
+  for (const segment of ["", ...segments]) {
+    if (segment) current = join(current, segment);
+    if (!lexists(current)) continue;
+    const info = lstatSync(current);
+    if (info.isSymbolicLink() || !info.isDirectory()) throw new CommandError(`Relay path component must be a regular non-symlink directory: ${current}`);
+  }
+  return current;
+}
+
+function readJsonFile(path: string, label: string): JsonObject {
+  let info;
+  try { info = lstatSync(path); }
+  catch (error) { throw new CommandError(`cannot inspect ${label} ${path}: ${error}`); }
+  if (info.isSymbolicLink() || !info.isFile()) throw new CommandError(`${label} must be a regular non-symlink file: ${path}`);
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    if (!fstatSync(fd).isFile()) throw new Error("record is no longer a regular file");
+    const value = JSON.parse(readFileSync(fd, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("top-level JSON value must be an object");
+    return value;
+  } catch (error) { throw new CommandError(`cannot read ${label} ${path}: ${error}`); }
+  finally { if (fd !== null) closeSync(fd); }
+}
+
 function listJsonFiles(directory: string): Array<[string, JsonObject]> {
   if (!existsSync(directory)) return [];
   return readdirSync(directory)
     .filter((name) => name.endsWith(".json"))
     .map((name) => join(directory, name))
-    .sort((left, right) => statSync(left).mtimeMs - statSync(right).mtimeMs)
-    .flatMap((path) => {
-      try { return [[path, JSON.parse(readText(path))] as [string, JsonObject]]; }
-      catch { return []; }
-    });
+    .map((path) => {
+      const info = lstatSync(path);
+      if (info.isSymbolicLink() || !info.isFile()) throw new CommandError(`JSON record must be a regular non-symlink file: ${path}`);
+      return { path, mtimeMs: info.mtimeMs };
+    })
+    .sort((left, right) => left.mtimeMs - right.mtimeMs)
+    .map(({ path }) => [path, readJsonFile(path, "JSON record")] as [string, JsonObject]);
+}
+
+function userCodexRulePaths(): string[] {
+  const root = join(expand(process.env.CODEX_HOME ?? "~/.codex"), "rules");
+  return codexRulePaths(root);
+}
+
+export function codexRulePaths(root: string): string[] {
+  if (!existsSync(root)) return [];
+  const visit = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isSymbolicLink()) return [];
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return visit(path);
+    return entry.isFile() && entry.name.endsWith(".rules") ? [path] : [];
+  });
+  return visit(root).sort();
+}
+
+export function codexPolicyRulePaths(
+  userRoot = join(expand(process.env.CODEX_HOME ?? "~/.codex"), "rules"),
+  projectRoot = join(ROOT, ".codex", "rules"),
+): string[] {
+  return [...new Set([...codexRulePaths(userRoot), ...codexRulePaths(projectRoot)])];
+}
+
+function broadUserInboxRulePaths(): string[] {
+  const broadPattern = /^\[\s*["']hanchou["']\s*,\s*["']inbox["']\s*,?\s*\]$/;
+  return userCodexRulePaths().filter((rulesPath) => {
+    const source = stripRuleComments(readText(rulesPath));
+    for (const body of ruleCallBodies(source, "prefix_rule")) {
+      const fields = ruleKeywordArguments(body);
+      const decisionSource = fields.get("decision");
+      const decision = decisionSource?.match(/^(["'])([^"']+)\1$/)?.[2] ?? "allow";
+      if (broadPattern.test(fields.get("pattern") ?? "") && decision === "allow") return true;
+    }
+    return false;
+  });
+}
+
+function stripRuleComments(source: string): string {
+  let result = "";
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      result += character;
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'") { quote = character; result += character; continue; }
+    if (character === "#") {
+      while (index + 1 < source.length && source[index + 1] !== "\n") index += 1;
+      continue;
+    }
+    result += character;
+  }
+  return result;
+}
+
+function ruleCallBodies(source: string, callName: string): string[] {
+  const bodies: string[] = [];
+  for (let index = 0; index < source.length;) {
+    const found = source.indexOf(callName, index);
+    if (found < 0) break;
+    const before = source[found - 1] ?? "";
+    const after = source[found + callName.length] ?? "";
+    if (/[_A-Za-z0-9]/.test(before) || /[_A-Za-z0-9]/.test(after)) { index = found + callName.length; continue; }
+    let open = found + callName.length;
+    while (/\s/.test(source[open] ?? "")) open += 1;
+    if (source[open] !== "(") { index = open; continue; }
+    let depth = 1;
+    let quote = "";
+    let escaped = false;
+    for (let cursor = open + 1; cursor < source.length; cursor += 1) {
+      const character = source[cursor];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === quote) quote = "";
+        continue;
+      }
+      if (character === '"' || character === "'") { quote = character; continue; }
+      if (character === "(") depth += 1;
+      else if (character === ")") depth -= 1;
+      if (depth === 0) {
+        bodies.push(source.slice(open + 1, cursor));
+        index = cursor + 1;
+        break;
+      }
+    }
+    if (depth !== 0) break;
+  }
+  return bodies;
+}
+
+function ruleKeywordArguments(body: string): Map<string, string> {
+  const fields = new Map<string, string>();
+  for (let index = 0; index < body.length;) {
+    while (index < body.length && /[\s,]/.test(body[index])) index += 1;
+    const nameMatch = /^[_A-Za-z][_A-Za-z0-9]*/.exec(body.slice(index));
+    if (!nameMatch) { index += 1; continue; }
+    const name = nameMatch[0];
+    index += name.length;
+    while (/\s/.test(body[index] ?? "")) index += 1;
+    if (body[index] !== "=") { while (index < body.length && body[index] !== ",") index += 1; continue; }
+    index += 1;
+    while (/\s/.test(body[index] ?? "")) index += 1;
+    const start = index;
+    let quote = "";
+    let escaped = false;
+    let nested = 0;
+    while (index < body.length) {
+      const character = body[index];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === quote) quote = "";
+      } else if (character === '"' || character === "'") quote = character;
+      else if (["(", "[", "{"].includes(character)) nested += 1;
+      else if (")]}".includes(character)) nested -= 1;
+      else if (character === "," && nested === 0) break;
+      index += 1;
+    }
+    fields.set(name, body.slice(start, index).trim());
+    if (body[index] === ",") index += 1;
+  }
+  return fields;
 }
 
 function withLock<T>(lockPath: string, operation: () => T): T {
   mkdirSync(dirname(lockPath), { recursive: true });
-  const marker = openSync(lockPath, "a", 0o600);
+  const marker = openSync(lockPath, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW, 0o600);
   closeSync(marker);
   const heldPath = `${lockPath}.held`;
   const token = `${process.pid}:${randomBytes(16).toString("hex")}`;
@@ -333,9 +619,13 @@ function withLock<T>(lockPath: string, operation: () => T): T {
       let reaper: number | null = null;
       try {
         reaper = openSync(`${heldPath}.reap`, "wx", 0o600);
-        const held = statSync(heldPath);
+        const held = lstatSync(heldPath);
         let owner: JsonObject | null = null;
-        try { owner = JSON.parse(readText(heldPath)); } catch { /* incomplete owner record */ }
+        if (held.isSymbolicLink() || !held.isFile()) {
+          unlinkSync(heldPath);
+          continue;
+        }
+        try { owner = readJsonFile(heldPath, "lock owner"); } catch { /* incomplete owner record */ }
         let ownerAlive = true;
         if (owner && Number.isInteger(owner.pid)) {
           try { process.kill(owner.pid, 0); }
@@ -356,7 +646,7 @@ function withLock<T>(lockPath: string, operation: () => T): T {
   finally {
     try { closeSync(fd); } catch { /* already closed */ }
     try {
-      const owner = JSON.parse(readText(heldPath));
+      const owner = readJsonFile(heldPath, "lock owner");
       if (owner.token === token) unlinkSync(heldPath);
     } catch { /* already removed or replaced */ }
   }
@@ -543,6 +833,7 @@ function printPlan(name: string, profile: JsonObject): void {
   console.log(`  task UI: http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`);
   console.log(`  install mise tools from ${MISE_CONFIG}: Herdr ${tools.herdr}, Node.js ${tools.node}`);
   console.log("  render canonical roles to .codex/agents and .claude/agents");
+  console.log(`  use project-local Codex Inbox rules: ${CODEX_RULES_PATH}`);
   console.log("  backup + replace generated user Agent definitions and ~/.config/herdr/config.toml");
   console.log("  install/update explicit public Skills plus optional machine-local overlays");
   console.log("  install Herdr Claude/Codex integrations");
@@ -554,6 +845,7 @@ function printPlan(name: string, profile: JsonObject): void {
   console.log("  backup + render/install ~/Library/LaunchAgents entries for Herdr and beads-ui");
   console.log(`  model routing: ${routingPolicyPath(profile)}`);
   console.log(`  usage snapshot: ${usageSnapshotPath(profile)}`);
+  for (const broadRule of broadUserInboxRulePaths()) console.log(`  WARNING: remove overly broad user rule [\"hanchou\", \"inbox\"] from ${broadRule} after making a backup`);
 }
 
 function listMatchingFiles(directory: string, suffix: string): string[] {
@@ -726,25 +1018,587 @@ function getAgentInfo(profileName: string, agent: string, strict = false): JsonO
 function nudgeAgent(profileName: string, agent: string): [boolean, string | null] {
   const status = getAgentStatus(profileName, agent);
   if (!new Set(["idle", "done"]).has(status ?? "")) return [false, status];
-  try { run(herdrArgv(profileName, "agent", "prompt", agent, NUDGE_TEXT), { capture: true }); return [true, status]; }
+  try { run(herdrArgv(profileName, "agent", "prompt", agent, nudgeText(agent)), { capture: true }); return [true, status]; }
   catch { return [false, status]; }
 }
 
 function relayRoot(profile: JsonObject): string { return profilePaths(profile).relay_dir; }
-function inboxRoot(profile: JsonObject): string { return join(relayRoot(profile), "inbox"); }
-function deliveriesRoot(profile: JsonObject): string { return join(relayRoot(profile), "deliveries"); }
-function eventPath(root: string, state: string, eventId: string): string { return join(root, "inbox", state, `${eventId}.json`); }
-function deliveryPath(root: string, state: string, deliveryId: string): string { return join(root, "deliveries", state, `${deliveryId}.json`); }
+function eventPath(root: string, state: string, eventId: string): string {
+  if (!INBOX_STATES.has(state)) throw new CommandError(`invalid Inbox state: ${state}`);
+  return join(safeRelayDirectory(root, "inbox", state), `${validateEventId(eventId)}.json`);
+}
+function deliveryPath(root: string, state: string, deliveryId: string): string {
+  if (!DELIVERY_STATES.has(state)) throw new CommandError(`invalid Delivery state: ${state}`);
+  return join(safeRelayDirectory(root, "deliveries", state), `${validateDeliveryId(deliveryId)}.json`);
+}
+
+function withInboxTransition<T>(root: string, operation: () => T): T {
+  return withLock(join(safeRelayDirectory(root, "locks"), "inbox-transition.lock"), operation);
+}
+
+function withDeliveryTransition<T>(root: string, operation: () => T): T {
+  return withLock(join(safeRelayDirectory(root, "locks"), "delivery-transition.lock"), operation);
+}
+
+function validateStoredEvent(path: string, event: JsonObject): void {
+  const eventId = validateEventId(event.event_id);
+  validateAgentId(event.to_agent, "event recipient");
+  validateAgentId(event.from_agent, "event sender");
+  if (basename(path) !== `${eventId}.json`) throw new CommandError(`event filename does not match event_id: ${path}`);
+}
+
+function validateStoredDelivery(path: string, delivery: JsonObject): void {
+  const deliveryId = validateDeliveryId(delivery.delivery_id);
+  if (basename(path) !== `${deliveryId}.json`) throw new CommandError(`delivery filename does not match delivery_id: ${path}`);
+}
 
 function journal(root: string, record: JsonObject): void {
-  const lock = join(root, "locks", "journal.lock");
+  const lock = join(safeRelayDirectory(root, "locks"), "journal.lock");
   withLock(lock, () => {
-    const path = join(root, "journal.jsonl");
-    mkdirSync(dirname(path), { recursive: true });
-    appendFileSync(path, `${pyCompact(sortedJson(record))}\n`, { encoding: "utf8", mode: 0o600 });
-    const fd = openSync(path, "r");
-    try { fsyncSync(fd); } finally { closeSync(fd); }
+    appendJournalRecord(root, record);
   });
+}
+
+function appendJournalRecord(root: string, record: JsonObject): void {
+  const path = join(safeRelayDirectory(root), "journal.jsonl");
+  const fd = openSync(path, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW, 0o600);
+  try {
+    writeFileSync(fd, `${pyCompact(sortedJson(record))}\n`, "utf8");
+    fsyncSync(fd);
+  } finally { closeSync(fd); }
+}
+
+function journalOnce(root: string, identity: JsonObject, record: JsonObject, allowLegacy: boolean): void {
+  const lock = join(safeRelayDirectory(root, "locks"), "journal.lock");
+  withLock(lock, () => {
+    const path = join(safeRelayDirectory(root), "journal.jsonl");
+    if (existsSync(path)) {
+      const info = lstatSync(path);
+      if (info.isSymbolicLink() || !info.isFile()) throw new CommandError(`Relay journal must be a regular non-symlink file: ${path}`);
+      let fd: number | null = null;
+      try {
+        fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+        if (!fstatSync(fd).isFile()) throw new Error("journal is no longer a regular file");
+        const lines = readFileSync(fd, "utf8").split("\n").filter((line) => line.trim());
+        let matchingRecords = 0;
+        for (const line of lines) {
+          let candidate: JsonObject;
+          try {
+            candidate = JSON.parse(line);
+            if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new Error("journal line must be a JSON object");
+          }
+          catch (error) { throw new CommandError(`cannot read Relay journal ${path}: ${error}`); }
+          if (Object.entries(identity).every(([key, value]) => candidate[key] === value)) {
+            const exact = pyCompact(sortedJson(candidate)) === pyCompact(sortedJson(record));
+            if (!exact && !(allowLegacy && legacyTerminalJournalMatches(candidate, record))) throw new CommandError(`Relay journal entry does not match terminal state: ${pyCompact(identity)}`);
+            matchingRecords += 1;
+          }
+        }
+        if (matchingRecords > 1) throw new CommandError(`Relay journal contains duplicate terminal entries: ${pyCompact(identity)}`);
+        if (matchingRecords === 1) return;
+      } finally { if (fd !== null) closeSync(fd); }
+    }
+    appendJournalRecord(root, record);
+  });
+}
+
+function legacyTerminalJournalMatches(candidate: JsonObject, expected: JsonObject): boolean {
+  if (expected.schema !== TERMINAL_JOURNAL_SCHEMA || "schema" in candidate) return false;
+  const expectedKeys = Object.keys(expected).filter((key) => key !== "schema").sort();
+  if (pyCompact(Object.keys(candidate).sort()) !== pyCompact(expectedKeys)) return false;
+  if (typeof candidate.at !== "string" || Number.isNaN(Date.parse(candidate.at))) return false;
+  return expectedKeys.filter((key) => key !== "at").every((key) => pyCompact(sortedJson(candidate[key])) === pyCompact(sortedJson(expected[key])));
+}
+
+function ensureExactJsonRecord(path: string, label: string, expected: JsonObject): void {
+  if (existsSync(path)) {
+    const actual = readJsonFile(path, label);
+    if (pyCompact(sortedJson(actual)) !== pyCompact(sortedJson(expected))) throw new CommandError(`${label} does not match terminal state: ${path}`);
+    return;
+  }
+  atomicWrite(path, `${JSON.stringify(expected, null, 2)}\n`);
+}
+
+function inboxAcknowledgementEvidence(eventId: string, event: JsonObject): JsonObject {
+  if (event.dead_letter?.journal_schema !== undefined) throw new CommandError(`event has conflicting acknowledgement and dead-letter evidence: ${eventId}`);
+  if (event.retry !== undefined) throw new CommandError(`event has conflicting acknowledgement and retry evidence: ${eventId}`);
+  const ack = event.ack;
+  if (!ack || typeof ack !== "object" || !isTimestamp(ack.at) || typeof ack.by !== "string") throw new CommandError(`acknowledged event is missing acknowledgement evidence: ${eventId}`);
+  validateAgentId(ack.by, "Inbox acknowledgement actor");
+  if (ack.journal_schema !== undefined && ack.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`acknowledged event has an unsupported journal schema: ${eventId}`);
+  return ack;
+}
+
+function ensureInboxAcknowledgement(root: string, eventId: string, event: JsonObject): void {
+  const ack = inboxAcknowledgementEvidence(eventId, event);
+  const receipt = { ...ack, schema: "hanchou.relay-receipt.v1", event_id: eventId };
+  ensureExactJsonRecord(join(safeRelayDirectory(root, "receipts"), `inbox-${eventId}.json`), "Inbox receipt", receipt);
+  journalOnce(root, { action: "acknowledged", event_id: eventId }, { schema: TERMINAL_JOURNAL_SCHEMA, at: ack.at, action: "acknowledged", event_id: eventId, by: ack.by }, ack.journal_schema === undefined);
+}
+
+function inboxDeadLetterEvidence(eventId: string, event: JsonObject): JsonObject {
+  if (event.ack) throw new CommandError(`event has conflicting acknowledgement and dead-letter evidence: ${eventId}`);
+  const deadLetter = event.dead_letter;
+  if (!deadLetter || typeof deadLetter !== "object" || !isTimestamp(deadLetter.at) || typeof deadLetter.reason !== "string") throw new CommandError(`dead-lettered event is missing dead-letter evidence: ${eventId}`);
+  if (deadLetter.journal_schema !== undefined && deadLetter.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`dead-lettered event has an unsupported journal schema: ${eventId}`);
+  if (deadLetter.journal_schema === TERMINAL_JOURNAL_SCHEMA) {
+    if (!Number.isInteger(deadLetter.retry_count) || Number(deadLetter.retry_count) < 0) throw new CommandError(`dead-lettered event has invalid retry evidence: ${eventId}`);
+    if (Number(deadLetter.retry_count) !== Number(event.retry_count ?? 0)) throw new CommandError(`dead-lettered event retry evidence does not match event state: ${eventId}`);
+  }
+  return deadLetter;
+}
+
+function ensureInboxDeadLetter(root: string, eventId: string, event: JsonObject): void {
+  const deadLetter = inboxDeadLetterEvidence(eventId, event);
+  if (deadLetter.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`legacy dead-letter evidence must be migrated before journal repair: ${eventId}`);
+  const record: JsonObject = {
+    schema: TERMINAL_JOURNAL_SCHEMA, at: deadLetter.at, action: "dead-lettered",
+    event_id: eventId, reason: deadLetter.reason, retry_count: deadLetter.retry_count,
+  };
+  journalOnce(root, { action: "dead-lettered", event_id: eventId, retry_count: deadLetter.retry_count }, record, false);
+}
+
+function migrateLegacyInboxDeadLetter(root: string, path: string, event: JsonObject): void {
+  const eventId = validateEventId(event.event_id);
+  const deadLetter = inboxDeadLetterEvidence(eventId, event);
+  if (deadLetter.journal_schema === TERMINAL_JOURNAL_SCHEMA) { ensureInboxDeadLetter(root, eventId, event); return; }
+  const retryCount = Number(event.retry_count ?? 0);
+  if (!Number.isInteger(retryCount) || retryCount < 0) throw new CommandError(`dead-lettered event has invalid retry evidence: ${eventId}`);
+  deadLetter.retry_count = retryCount;
+  deadLetter.journal_schema = TERMINAL_JOURNAL_SCHEMA;
+  atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
+  ensureInboxDeadLetter(root, eventId, event);
+}
+
+function inboxRetryEvidence(eventId: string, event: JsonObject): JsonObject | null {
+  const retry = event.retry;
+  if (retry === undefined) return null;
+  if (!retry || typeof retry !== "object" || !isTimestamp(retry.at)) throw new CommandError(`event has invalid retry evidence: ${eventId}`);
+  if (retry.journal_schema !== INBOX_TRANSITION_JOURNAL_SCHEMA) throw new CommandError(`event has an unsupported retry journal schema: ${eventId}`);
+  if (!new Set(["processing", "dead-letter"]).has(retry.from_state)) throw new CommandError(`event has invalid retry source evidence: ${eventId}`);
+  if (!Number.isSafeInteger(retry.retry_count) || Number(retry.retry_count) < 1) throw new CommandError(`event has invalid retry count evidence: ${eventId}`);
+  if (!Number.isSafeInteger(event.retry_count) || Number(event.retry_count) !== Number(retry.retry_count)) throw new CommandError(`event retry evidence does not match retry_count: ${eventId}`);
+  if (event.ack) throw new CommandError(`event has conflicting acknowledgement and retry evidence: ${eventId}`);
+  return retry;
+}
+
+function ensureInboxRetry(root: string, eventId: string, event: JsonObject): void {
+  const retry = inboxRetryEvidence(eventId, event);
+  if (!retry) throw new CommandError(`event is missing retry evidence: ${eventId}`);
+  journalOnce(
+    root,
+    { action: "retried", event_id: eventId, retry_count: retry.retry_count },
+    {
+      schema: INBOX_TRANSITION_JOURNAL_SCHEMA,
+      at: retry.at,
+      action: "retried",
+      event_id: eventId,
+      from_state: retry.from_state,
+      retry_count: retry.retry_count,
+    },
+    false,
+  );
+}
+
+function ensureInboxRetrySourceEvidence(root: string, eventId: string, event: JsonObject, retry: JsonObject, state: string): void {
+  if (retry.from_state === "processing") {
+    if (event.dead_letter && new Set(["processing", "pending"]).has(state)) throw new CommandError(`processing retry has conflicting dead-letter evidence: ${eventId}`);
+    return;
+  }
+  const deadLetter = event.dead_letter;
+  if (!deadLetter) {
+    if (state === "dead-letter") throw new CommandError(`dead-letter retry is missing source evidence: ${eventId}`);
+    return;
+  }
+  if (typeof deadLetter !== "object" || !isTimestamp(deadLetter.at) || typeof deadLetter.reason !== "string") throw new CommandError(`dead-letter retry has invalid source evidence: ${eventId}`);
+  if (deadLetter.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`dead-letter retry has unsupported source evidence: ${eventId}`);
+  const priorRetryCount = Number(retry.retry_count) - 1;
+  if (!Number.isSafeInteger(deadLetter.retry_count) || Number(deadLetter.retry_count) !== priorRetryCount) throw new CommandError(`dead-letter retry source count does not precede retry_count: ${eventId}`);
+  journalOnce(
+    root,
+    { action: "dead-lettered", event_id: eventId, retry_count: priorRetryCount },
+    {
+      schema: TERMINAL_JOURNAL_SCHEMA,
+      at: deadLetter.at,
+      action: "dead-lettered",
+      event_id: eventId,
+      reason: deadLetter.reason,
+      retry_count: priorRetryCount,
+    },
+    false,
+  );
+}
+
+function inboxLeaseRecoveryEvidence(eventId: string, event: JsonObject): JsonObject | null {
+  const recovery = event.lease_recovery;
+  if (recovery === undefined) return null;
+  if (!recovery || typeof recovery !== "object" || !isTimestamp(recovery.at)) throw new CommandError(`event has invalid lease recovery evidence: ${eventId}`);
+  if (recovery.journal_schema !== INBOX_TRANSITION_JOURNAL_SCHEMA) throw new CommandError(`event has an unsupported lease recovery journal schema: ${eventId}`);
+  if (!Number.isSafeInteger(recovery.recovery_count) || Number(recovery.recovery_count) < 1) throw new CommandError(`event has invalid lease recovery count evidence: ${eventId}`);
+  if (!Number.isSafeInteger(event.recovery_count) || Number(event.recovery_count) !== Number(recovery.recovery_count)) throw new CommandError(`event lease recovery evidence does not match recovery_count: ${eventId}`);
+  return recovery;
+}
+
+function ensureInboxLeaseRecovery(root: string, eventId: string, event: JsonObject): void {
+  const recovery = inboxLeaseRecoveryEvidence(eventId, event);
+  if (!recovery) throw new CommandError(`event is missing lease recovery evidence: ${eventId}`);
+  journalOnce(
+    root,
+    { action: "lease-recovered", event_id: eventId, recovery_count: recovery.recovery_count },
+    {
+      schema: INBOX_TRANSITION_JOURNAL_SCHEMA,
+      at: recovery.at,
+      action: "lease-recovered",
+      event_id: eventId,
+      recovery_count: recovery.recovery_count,
+    },
+    false,
+  );
+}
+
+function retireInboxTransitionEvidence(root: string, eventId: string, event: JsonObject): void {
+  if (event.retry !== undefined) {
+    ensureInboxRetry(root, eventId, event);
+    delete event.retry;
+  }
+  if (event.lease_recovery !== undefined) {
+    ensureInboxLeaseRecovery(root, eventId, event);
+    delete event.lease_recovery;
+  }
+}
+
+type InboxTransitionReplay = { active: boolean; moved: boolean; path: string };
+
+function recoverStagedInboxRetry(root: string, path: string, event: JsonObject): InboxTransitionReplay | null {
+  const eventId = validateEventId(event.event_id);
+  const retry = inboxRetryEvidence(eventId, event);
+  if (!retry) return null;
+  if (event.lease_recovery) throw new CommandError(`event has conflicting retry and lease recovery evidence: ${eventId}`);
+  const state = basename(dirname(path));
+  ensureInboxRetrySourceEvidence(root, eventId, event, retry, state);
+  if (state === "processing" && event.lease) {
+    ensureInboxRetry(root, eventId, event);
+    return { active: false, moved: false, path };
+  }
+  if (new Set(["acknowledged", "dead-letter"]).has(state) && state !== retry.from_state) {
+    ensureInboxRetry(root, eventId, event);
+    return { active: false, moved: false, path };
+  }
+  if (state !== "pending" && state !== retry.from_state) throw new CommandError(`retry evidence conflicts with Inbox state ${state}: ${eventId}`);
+  if (state === "processing" && retry.from_state !== "processing") throw new CommandError(`retry source evidence conflicts with processing state: ${eventId}`);
+  if (state === "dead-letter" && retry.from_state !== "dead-letter") throw new CommandError(`retry source evidence conflicts with dead-letter state: ${eventId}`);
+
+  const destination = eventPath(root, "pending", eventId);
+  const moved = resolve(path) !== resolve(destination);
+  if (moved) durableRename(path, destination);
+  let normalized = false;
+  if (event.lease !== undefined) { delete event.lease; normalized = true; }
+  if (event.dead_letter !== undefined) { delete event.dead_letter; normalized = true; }
+  if (normalized) atomicWrite(destination, `${JSON.stringify(event, null, 2)}\n`);
+  ensureInboxRetry(root, eventId, event);
+  return { active: true, moved, path: destination };
+}
+
+function recoverStagedInboxLeaseRecovery(root: string, path: string, event: JsonObject): InboxTransitionReplay | null {
+  const eventId = validateEventId(event.event_id);
+  const recovery = inboxLeaseRecoveryEvidence(eventId, event);
+  if (!recovery) return null;
+  if (event.retry) throw new CommandError(`event has conflicting retry and lease recovery evidence: ${eventId}`);
+  const state = basename(dirname(path));
+  if (event.ack || event.dead_letter || (state === "processing" && event.lease) || new Set(["acknowledged", "dead-letter"]).has(state)) {
+    ensureInboxLeaseRecovery(root, eventId, event);
+    return { active: false, moved: false, path };
+  }
+  if (state !== "processing" && state !== "pending") throw new CommandError(`lease recovery evidence conflicts with Inbox state ${state}: ${eventId}`);
+  if (event.lease) throw new CommandError(`staged lease recovery still has lease evidence: ${eventId}`);
+  const destination = eventPath(root, "pending", eventId);
+  const moved = resolve(path) !== resolve(destination);
+  if (moved) durableRename(path, destination);
+  ensureInboxLeaseRecovery(root, eventId, event);
+  return { active: true, moved, path: destination };
+}
+
+function deliveryCompletionEvidence(deliveryId: string, record: JsonObject): JsonObject {
+  if (record.status !== "delivered") throw new CommandError(`delivered record has inconsistent status: ${deliveryId}`);
+  if (record.failure) throw new CommandError(`delivery has conflicting delivered and failure evidence: ${deliveryId}`);
+  const delivered = record.delivered;
+  if (!delivered || typeof delivered !== "object" || !isTimestamp(delivered.at) || typeof delivered.adapter !== "string") throw new CommandError(`delivered record is missing delivery evidence: ${deliveryId}`);
+  if (delivered.journal_schema !== undefined && delivered.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`delivered record has an unsupported journal schema: ${deliveryId}`);
+  return delivered;
+}
+
+function ensureDeliveryCompletion(root: string, deliveryId: string, record: JsonObject): void {
+  const delivered = deliveryCompletionEvidence(deliveryId, record);
+  const receipt = { ...delivered, schema: "hanchou.delivery-receipt.v1", delivery_id: deliveryId };
+  ensureExactJsonRecord(join(safeRelayDirectory(root, "receipts"), `delivery-${deliveryId}.json`), "Delivery receipt", receipt);
+  journalOnce(root, { action: "delivery-delivered", delivery_id: deliveryId }, { schema: TERMINAL_JOURNAL_SCHEMA, at: delivered.at, action: "delivery-delivered", delivery_id: deliveryId, adapter: delivered.adapter }, delivered.journal_schema === undefined);
+}
+
+function deliveryRenderedEvidence(deliveryId: string, record: JsonObject): JsonObject {
+  if (record.status !== "rendered") throw new CommandError(`rendered delivery has inconsistent status: ${deliveryId}`);
+  if (record.failure || record.delivered) throw new CommandError(`delivery has conflicting rendered terminal evidence: ${deliveryId}`);
+  const rendered = record.rendered;
+  if (!rendered || typeof rendered !== "object" || !isTimestamp(rendered.at) || typeof rendered.by !== "string") throw new CommandError(`rendered delivery is missing render evidence: ${deliveryId}`);
+  if (rendered.journal_schema !== undefined && rendered.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`rendered delivery has an unsupported journal schema: ${deliveryId}`);
+  if (rendered.journal_schema === TERMINAL_JOURNAL_SCHEMA) {
+    if (!Number.isInteger(rendered.attempts) || Number(rendered.attempts) < 0) throw new CommandError(`rendered delivery has invalid attempt evidence: ${deliveryId}`);
+    if (Number(rendered.attempts) !== Number(record.attempts ?? 0)) throw new CommandError(`rendered delivery attempt evidence does not match record state: ${deliveryId}`);
+  }
+  return rendered;
+}
+
+function ensureDeliveryRendered(root: string, deliveryId: string, record: JsonObject): void {
+  const rendered = deliveryRenderedEvidence(deliveryId, record);
+  if (rendered.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`legacy render evidence must be migrated before journal repair: ${deliveryId}`);
+  journalOnce(
+    root,
+    { action: "delivery-rendered", delivery_id: deliveryId, attempts: rendered.attempts },
+    { schema: TERMINAL_JOURNAL_SCHEMA, at: rendered.at, action: "delivery-rendered", delivery_id: deliveryId, by: rendered.by, attempts: rendered.attempts },
+    false,
+  );
+}
+
+function migrateLegacyDeliveryRendered(root: string, path: string, record: JsonObject): void {
+  const deliveryId = validateDeliveryId(record.delivery_id);
+  const rendered = deliveryRenderedEvidence(deliveryId, record);
+  if (rendered.journal_schema === TERMINAL_JOURNAL_SCHEMA) { ensureDeliveryRendered(root, deliveryId, record); return; }
+  const attempts = Number(record.attempts ?? 0);
+  if (!Number.isInteger(attempts) || attempts < 0) throw new CommandError(`rendered delivery has invalid attempt evidence: ${deliveryId}`);
+  rendered.attempts = attempts;
+  rendered.journal_schema = TERMINAL_JOURNAL_SCHEMA;
+  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`);
+  ensureDeliveryRendered(root, deliveryId, record);
+}
+
+function deliveryFailureEvidence(deliveryId: string, record: JsonObject): JsonObject {
+  if (record.status !== "failed") throw new CommandError(`failed delivery has inconsistent status: ${deliveryId}`);
+  if (record.delivered) throw new CommandError(`delivery has conflicting failure and delivered evidence: ${deliveryId}`);
+  const failure = record.failure;
+  if (!failure || typeof failure !== "object" || !isTimestamp(failure.at) || typeof failure.reason !== "string") throw new CommandError(`failed delivery is missing failure evidence: ${deliveryId}`);
+  if (failure.journal_schema !== undefined && failure.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`failed delivery has an unsupported journal schema: ${deliveryId}`);
+  if (failure.journal_schema === TERMINAL_JOURNAL_SCHEMA) {
+    if (!Number.isInteger(failure.attempts) || Number(failure.attempts) < 1) throw new CommandError(`failed delivery has invalid attempt evidence: ${deliveryId}`);
+    if (Number(failure.attempts) !== Number(record.attempts)) throw new CommandError(`failed delivery attempt evidence does not match record state: ${deliveryId}`);
+  }
+  return failure;
+}
+
+function ensureDeliveryFailure(root: string, deliveryId: string, record: JsonObject): void {
+  const failure = deliveryFailureEvidence(deliveryId, record);
+  if (failure.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`legacy failure evidence must be migrated before journal repair: ${deliveryId}`);
+  journalOnce(
+    root,
+    { action: "delivery-failed", delivery_id: deliveryId, attempts: failure.attempts },
+    { schema: TERMINAL_JOURNAL_SCHEMA, at: failure.at, action: "delivery-failed", delivery_id: deliveryId, reason: failure.reason, attempts: failure.attempts },
+    false,
+  );
+}
+
+function migrateLegacyDeliveryFailure(root: string, path: string, record: JsonObject): void {
+  const deliveryId = validateDeliveryId(record.delivery_id);
+  const failure = deliveryFailureEvidence(deliveryId, record);
+  if (failure.journal_schema === TERMINAL_JOURNAL_SCHEMA) { ensureDeliveryFailure(root, deliveryId, record); return; }
+  const attempts = Number(record.attempts);
+  if (!Number.isInteger(attempts) || attempts < 1) throw new CommandError(`failed delivery has invalid attempt evidence: ${deliveryId}`);
+  failure.attempts = attempts;
+  failure.journal_schema = TERMINAL_JOURNAL_SCHEMA;
+  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`);
+  ensureDeliveryFailure(root, deliveryId, record);
+}
+
+function deliveryRetryEvidence(deliveryId: string, record: JsonObject): JsonObject | null {
+  const retry = record.retry;
+  if (retry === undefined) return null;
+  if (!retry || typeof retry !== "object" || !isTimestamp(retry.at)) throw new CommandError(`delivery has invalid retry evidence: ${deliveryId}`);
+  if (retry.journal_schema !== TERMINAL_JOURNAL_SCHEMA) throw new CommandError(`delivery has an unsupported retry journal schema: ${deliveryId}`);
+  if (!Number.isInteger(retry.attempts) || Number(retry.attempts) < 1 || Number(retry.attempts) > Number(record.attempts)) throw new CommandError(`delivery has invalid retry attempt evidence: ${deliveryId}`);
+  return retry;
+}
+
+function ensureDeliveryRetry(root: string, deliveryId: string, record: JsonObject): void {
+  const retry = deliveryRetryEvidence(deliveryId, record);
+  if (!retry) throw new CommandError(`delivery is missing retry evidence: ${deliveryId}`);
+  journalOnce(
+    root,
+    { action: "delivery-retried", delivery_id: deliveryId, attempts: retry.attempts },
+    { schema: TERMINAL_JOURNAL_SCHEMA, at: retry.at, action: "delivery-retried", delivery_id: deliveryId, attempts: retry.attempts },
+    false,
+  );
+}
+
+function recoverStagedDeliveryRetry(root: string, path: string, record: JsonObject): string | null {
+  const deliveryId = validateDeliveryId(record.delivery_id);
+  let retry = deliveryRetryEvidence(deliveryId, record);
+  const pathState = basename(dirname(path));
+  const attempts = Number(record.attempts);
+  const legacyRetryShape = !retry && record.status === "pending" && !record.failure && Number.isInteger(attempts) && attempts >= 1
+    && new Set(["failed", "pending"]).has(pathState);
+  if (legacyRetryShape) {
+    // Public v2.3.1 could stop either before or after the source rename, while
+    // leaving no durable retry marker. attempts>=1 distinguishes it from a
+    // never-failed pending record; migrate both locations to exact evidence.
+    record.retry = { at: utcnow(), attempts, journal_schema: TERMINAL_JOURNAL_SCHEMA };
+    atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`);
+    retry = record.retry;
+  }
+  if (!retry) return null;
+  if (Number(retry.attempts) < Number(record.attempts) || new Set(["rendered", "delivered"]).has(record.status)) {
+    ensureDeliveryRetry(root, deliveryId, record);
+    return null;
+  }
+  if (record.status === "failed") {
+    deliveryFailureEvidence(deliveryId, record);
+    const destination = deliveryPath(root, "pending", deliveryId);
+    if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+    delete record.failure;
+    record.status = "pending";
+    atomicWrite(destination, `${JSON.stringify(record, null, 2)}\n`);
+    ensureDeliveryRetry(root, deliveryId, record);
+    return destination;
+  }
+  if (record.status === "pending") {
+    if (record.failure) throw new CommandError(`retried delivery still has failure evidence: ${deliveryId}`);
+    const destination = deliveryPath(root, "pending", deliveryId);
+    if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+    ensureDeliveryRetry(root, deliveryId, record);
+    return destination;
+  }
+  throw new CommandError(`delivery retry evidence conflicts with status ${record.status}: ${deliveryId}`);
+}
+
+function recoverStagedInboxAcknowledgement(root: string, path: string, event: JsonObject): string | null {
+  if (!event.ack) return null;
+  const eventId = validateEventId(event.event_id);
+  if (event.dead_letter?.journal_schema !== undefined) throw new CommandError(`event has conflicting acknowledgement and dead-letter evidence: ${eventId}`);
+  const ack = inboxAcknowledgementEvidence(eventId, event);
+  if (event.lease) throw new CommandError(`staged acknowledgement still has lease evidence: ${eventId}`);
+  if (event.to_agent !== ack.by) throw new CommandError(`staged acknowledgement actor does not match event recipient: ${eventId}`);
+  const destination = eventPath(root, "acknowledged", eventId);
+  if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+  ensureInboxAcknowledgement(root, eventId, event);
+  return destination;
+}
+
+function recoverStagedInboxDeadLetter(root: string, path: string, event: JsonObject): string | null {
+  if (!event.dead_letter) return null;
+  if (event.retry !== undefined) throw new CommandError(`retry evidence must be replayed before dead-letter evidence: ${validateEventId(event.event_id)}`);
+  // Public v2.3.1 could leave a markerless dead_letter object behind after a
+  // successful retry. Only the versioned marker is unambiguous evidence that
+  // a new dead-letter transition was durably staged in a source directory.
+  if (event.dead_letter.journal_schema === undefined) return null;
+  const eventId = validateEventId(event.event_id);
+  if (event.ack) throw new CommandError(`event has conflicting acknowledgement and dead-letter evidence: ${eventId}`);
+  inboxDeadLetterEvidence(eventId, event);
+  if (event.lease) throw new CommandError(`staged dead-letter still has lease evidence: ${eventId}`);
+  const destination = eventPath(root, "dead-letter", eventId);
+  if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+  ensureInboxDeadLetter(root, eventId, event);
+  return destination;
+}
+
+function legacyDeadLetterHasRetryProof(root: string, eventId: string, deadLetterAt: string): boolean {
+  const deadLetterEpoch = Date.parse(deadLetterAt);
+  if (Number.isNaN(deadLetterEpoch)) return false;
+  return withLock(join(safeRelayDirectory(root, "locks"), "journal.lock"), () => {
+    const path = join(safeRelayDirectory(root), "journal.jsonl");
+    if (!existsSync(path)) return false;
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() || !info.isFile()) throw new CommandError(`Relay journal must be a regular non-symlink file: ${path}`);
+    let fd: number | null = null;
+    try {
+      fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      if (!fstatSync(fd).isFile()) throw new Error("journal is no longer a regular file");
+      for (const line of readFileSync(fd, "utf8").split("\n").filter((item) => item.trim())) {
+        let candidate: JsonObject;
+        try {
+          candidate = JSON.parse(line);
+          if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new Error("journal line must be a JSON object");
+        } catch (error) { throw new CommandError(`cannot read Relay journal ${path}: ${error}`); }
+        if (candidate.action !== "retried" || candidate.event_id !== eventId || candidate.from_state !== "dead-letter") continue;
+        if (typeof candidate.at === "string" && Date.parse(candidate.at) > deadLetterEpoch) return true;
+      }
+      return false;
+    } finally { if (fd !== null) closeSync(fd); }
+  });
+}
+
+function resolveLegacyDeadLetterSource(root: string, path: string, event: JsonObject): boolean {
+  const deadLetter = event.dead_letter;
+  if (!deadLetter || deadLetter.journal_schema !== undefined) return false;
+  const eventId = validateEventId(event.event_id);
+  const retryProven = typeof deadLetter.at === "string" && legacyDeadLetterHasRetryProof(root, eventId, deadLetter.at);
+  // A v2.3.1 acknowledgement or lease can only have been created after retry;
+  // dead-letter staging deleted the lease and could not coexist with ack.
+  const retryResidue = Boolean(event.ack || event.lease || retryProven);
+  if (retryResidue) {
+    delete event.dead_letter;
+    atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
+    return false;
+  }
+  // Without durable proof of a completed retry, the markerless shape is
+  // ambiguous with a v2.3.1 crash after source write. Preserve terminal intent.
+  migrateLegacyInboxDeadLetter(root, path, event);
+  recoverStagedInboxDeadLetter(root, path, event);
+  return true;
+}
+
+function recoverStagedDeliveryCompletion(root: string, path: string, record: JsonObject): string | null {
+  if (!record.delivered && record.status !== "delivered") return null;
+  const deliveryId = validateDeliveryId(record.delivery_id);
+  if (!record.delivered || record.status !== "delivered") throw new CommandError(`staged delivery evidence is inconsistent: ${deliveryId}`);
+  deliveryCompletionEvidence(deliveryId, record);
+  const destination = deliveryPath(root, "delivered", deliveryId);
+  if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+  ensureDeliveryCompletion(root, deliveryId, record);
+  return destination;
+}
+
+function recoverStagedDeliveryRendered(root: string, path: string, record: JsonObject): string | null {
+  if (record.status !== "rendered") return null;
+  const deliveryId = validateDeliveryId(record.delivery_id);
+  deliveryRenderedEvidence(deliveryId, record);
+  const destination = deliveryPath(root, "rendered", deliveryId);
+  if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+  if (record.rendered.journal_schema === undefined) migrateLegacyDeliveryRendered(root, destination, record);
+  else ensureDeliveryRendered(root, deliveryId, record);
+  return destination;
+}
+
+function recoverStagedDeliveryFailure(root: string, path: string, record: JsonObject): string | null {
+  if (!record.failure && record.status !== "failed") return null;
+  const deliveryId = validateDeliveryId(record.delivery_id);
+  if (!record.failure || record.status !== "failed") throw new CommandError(`staged delivery failure evidence is inconsistent: ${deliveryId}`);
+  deliveryFailureEvidence(deliveryId, record);
+  const destination = deliveryPath(root, "failed", deliveryId);
+  if (resolve(path) !== resolve(destination)) durableRename(path, destination);
+  if (record.failure.journal_schema === undefined) migrateLegacyDeliveryFailure(root, destination, record);
+  else ensureDeliveryFailure(root, deliveryId, record);
+  return destination;
+}
+
+function reconcileDeliveryTransitionsUnlocked(root: string): number {
+  let recovered = 0;
+  for (const state of ["pending", "rendered", "delivered", "failed"]) {
+    for (const [path, record] of listJsonFiles(safeRelayDirectory(root, "deliveries", state))) {
+      validateStoredDelivery(path, record);
+      const retryPath = recoverStagedDeliveryRetry(root, path, record);
+      if (retryPath && resolve(retryPath) !== resolve(path)) { recovered += 1; continue; }
+      if (recoverStagedDeliveryCompletion(root, path, record)) {
+        if (state !== "delivered") recovered += 1;
+        continue;
+      }
+      if (recoverStagedDeliveryFailure(root, path, record)) {
+        if (state !== "failed") recovered += 1;
+        continue;
+      }
+      if (recoverStagedDeliveryRendered(root, path, record)) {
+        if (state !== "rendered") recovered += 1;
+        continue;
+      }
+      if (record.status !== state) throw new CommandError(`Delivery directory/status mismatch for ${record.delivery_id}: directory=${state}, status=${record.status ?? "missing"}`);
+    }
+  }
+  return recovered;
 }
 
 function validateRoute(event: JsonObject): void {
@@ -767,7 +1621,10 @@ function relayEmit(args: JsonObject, name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
   ensureState(name, profile);
   if (!RELAY_EVENT_TYPES.has(args.type)) throw new CommandError(`unsupported relay event type: ${args.type}`);
-  const eventId = args.event_id || `evt_${randomUUID().replaceAll("-", "")}`;
+  const eventId = validateEventId(args.event_id || `evt_${randomUUID().replaceAll("-", "")}`);
+  const fromAgent = validateAgentId(args.from_agent, "event sender");
+  requireManagedAgentIdentity(fromAgent, "Relay emit");
+  validateAgentId(args.to_agent, "event recipient");
   let origin = null;
   if (args.origin) { try { origin = JSON.parse(args.origin); } catch (error) { throw new CommandError(`invalid --origin JSON: ${error}`); } }
   const event = {
@@ -778,10 +1635,13 @@ function relayEmit(args: JsonObject, name: string, profile: JsonObject): void {
     artifacts: args.artifact ?? [], verification: args.verification ?? [], origin,
   };
   validateRoute(event);
-  const path = eventPath(root, "pending", eventId);
-  if (["pending", "processing", "acknowledged", "dead-letter"].some((state) => existsSync(eventPath(root, state, eventId)))) throw new CommandError(`event already exists: ${eventId}`);
-  atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
-  journal(root, { at: utcnow(), action: "enqueued", event_id: eventId, to_agent: args.to_agent });
+  const path = withInboxTransition(root, () => {
+    const pendingPath = eventPath(root, "pending", eventId);
+    if (["pending", "processing", "acknowledged", "dead-letter"].some((state) => existsSync(eventPath(root, state, eventId)))) throw new CommandError(`event already exists: ${eventId}`);
+    atomicWrite(pendingPath, `${JSON.stringify(event, null, 2)}\n`);
+    journal(root, { at: utcnow(), action: "enqueued", event_id: eventId, to_agent: args.to_agent });
+    return pendingPath;
+  });
   let nudged = false;
   let status: string | null = null;
   if (!args.no_nudge) {
@@ -792,11 +1652,25 @@ function relayEmit(args: JsonObject, name: string, profile: JsonObject): void {
   if (args.json) jsonPrint(result); else console.log(`queued ${eventId} (nudged=${String(nudged).replace(/^./, (char) => char.toUpperCase())}, status=${status === null ? "None" : status})`);
 }
 
-function iterEvents(root: string, state: string): Array<[string, JsonObject]> { return listJsonFiles(join(root, "inbox", state)); }
-function iterDeliveries(root: string, state: string): Array<[string, JsonObject]> { return listJsonFiles(join(root, "deliveries", state)); }
+function iterEvents(root: string, state: string): Array<[string, JsonObject]> {
+  if (!INBOX_STATES.has(state)) throw new CommandError(`invalid Inbox state: ${state}`);
+  return listJsonFiles(safeRelayDirectory(root, "inbox", state)).map(([path, event]) => {
+    validateStoredEvent(path, event);
+    return [path, event];
+  });
+}
+function iterDeliveries(root: string, state: string): Array<[string, JsonObject]> {
+  if (!DELIVERY_STATES.has(state)) throw new CommandError(`invalid Delivery state: ${state}`);
+  return listJsonFiles(safeRelayDirectory(root, "deliveries", state)).map(([path, delivery]) => {
+    validateStoredDelivery(path, delivery);
+    if (delivery.status !== state) throw new CommandError(`Delivery directory/status mismatch for ${delivery.delivery_id}: directory=${state}, status=${delivery.status ?? "missing"}`);
+    return [path, delivery];
+  });
+}
 
 function inboxList(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
+  if (args.to) validateAgentId(args.to, "Inbox recipient");
   const states = args.state ? [args.state] : ["pending", "processing", "acknowledged", "dead-letter"];
   const rows: JsonObject[] = [];
   for (const state of states) for (const [path, event] of iterEvents(root, state)) {
@@ -813,17 +1687,25 @@ function inboxList(args: JsonObject, _name: string, profile: JsonObject): void {
 function inboxClaim(args: JsonObject, name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
   ensureState(name, profile);
-  const target = args.to || profile.orchestrator.agent_name;
+  const target = validateAgentId(args.to || profile.orchestrator.agent_name, "Inbox claimant");
+  requireManagedAgentIdentity(target, "Inbox claim");
   const limit = args.limit || profile.relay?.max_batch || 20;
-  const claimed: JsonObject[] = withLock(join(root, "locks", `claim-${target}.lock`), () => {
+  if (!Number.isInteger(limit) || limit < 1) throw new CommandError("Inbox claim limit must be a positive integer");
+  const claimed: JsonObject[] = withInboxTransition(root, () => {
     const records: JsonObject[] = [];
     for (const [path, event] of iterEvents(root, "pending")) {
+      recoverStagedInboxRetry(root, path, event);
+      if (recoverStagedInboxDeadLetter(root, path, event)) continue;
+      if (resolveLegacyDeadLetterSource(root, path, event)) continue;
+      if (recoverStagedInboxAcknowledgement(root, path, event)) continue;
+      recoverStagedInboxLeaseRecovery(root, path, event);
       if (records.length >= limit) break;
       if (event.to_agent !== target) continue;
+      retireInboxTransitionEvidence(root, validateEventId(event.event_id), event);
       event.lease = { claimed_by: target, claimed_at: utcnow(), expires_at_epoch: Math.floor(Date.now() / 1000) + Number(profile.relay?.lease_seconds ?? 900) };
       const destination = eventPath(root, "processing", event.event_id);
       atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
-      renameSync(path, destination);
+      durableRename(path, destination);
       records.push({ ...event, path: destination });
       journal(root, { at: utcnow(), action: "claimed", event_id: event.event_id, agent: target });
     }
@@ -837,49 +1719,130 @@ function inboxClaim(args: JsonObject, name: string, profile: JsonObject): void {
 }
 
 function locateEvent(root: string, eventId: string, states: string[]): [string, string, JsonObject] {
+  validateEventId(eventId);
   for (const state of states) {
     const path = eventPath(root, state, eventId);
-    if (existsSync(path)) return [state, path, JSON.parse(readText(path))];
+    if (existsSync(path)) {
+      const event = readJsonFile(path, "Relay event");
+      validateStoredEvent(path, event);
+      return [state, path, event];
+    }
   }
   throw new CommandError(`event not found: ${eventId}`);
 }
 
 function inboxAck(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [state, path, event] = locateEvent(root, args.event_id, ["processing", "pending", "acknowledged"]);
-  let result: JsonObject;
-  if (state === "acknowledged") result = { ok: true, event_id: args.event_id, already: true };
-  else {
-    event.ack = { at: utcnow(), by: args.by || event.to_agent, note: args.note };
+  const eventId = validateEventId(args.event_id);
+  const result = withInboxTransition(root, (): JsonObject => {
+    const [state, path, event] = locateEvent(root, eventId, ["processing", "acknowledged", "pending"]);
+    const actor = validateAgentId(args.by || event.to_agent, "Inbox acknowledgement actor");
+    requireManagedAgentIdentity(actor, "Inbox acknowledgement");
+    if (event.to_agent !== actor) {
+      if (state === "acknowledged" || event.ack) throw new CommandError(`event ${eventId} was not acknowledged by ${actor}`);
+      throw new CommandError(`event ${eventId} is not claimed by ${actor}`);
+    }
+    const retryReplay = recoverStagedInboxRetry(root, path, event);
+    if (retryReplay?.active) throw new CommandError(`event retry completed; claim again before acknowledgement: ${eventId}`);
+    if (recoverStagedInboxDeadLetter(root, path, event)) throw new CommandError(`cannot acknowledge dead-lettered event: ${eventId}`);
+    if (resolveLegacyDeadLetterSource(root, path, event)) throw new CommandError(`cannot acknowledge dead-lettered event: ${eventId}`);
+    if (state === "acknowledged") {
+      if (event.to_agent !== actor || event.ack?.by !== actor) throw new CommandError(`event ${eventId} was not acknowledged by ${actor}`);
+      ensureInboxAcknowledgement(root, eventId, event);
+      return { ok: true, event_id: eventId, already: true };
+    }
+    if (event.ack) {
+      if (event.ack?.by !== actor) throw new CommandError(`event ${eventId} was not acknowledged by ${actor}`);
+      const destination = recoverStagedInboxAcknowledgement(root, path, event);
+      return { ok: true, event_id: eventId, already: true, recovered: true, path: destination };
+    }
+    const recoveryReplay = recoverStagedInboxLeaseRecovery(root, path, event);
+    if (recoveryReplay?.active) throw new CommandError(`event lease recovery completed; claim again before acknowledgement: ${eventId}`);
+    if (state !== "processing") throw new CommandError(`event must be claimed before acknowledgement: ${eventId}`);
+    const claimedBy = event.lease?.claimed_by;
+    const expiresAt = Number(event.lease?.expires_at_epoch ?? 0);
+    if (event.to_agent !== actor || claimedBy !== actor) throw new CommandError(`event ${eventId} is not claimed by ${actor}`);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) throw new CommandError(`event lease expired; recover and claim again: ${eventId}`);
+    retireInboxTransitionEvidence(root, eventId, event);
+    event.ack = { at: utcnow(), by: actor, note: args.note, journal_schema: TERMINAL_JOURNAL_SCHEMA };
     delete event.lease;
-    const destination = eventPath(root, "acknowledged", args.event_id);
+    const destination = eventPath(root, "acknowledged", eventId);
     atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
-    renameSync(path, destination);
-    atomicWrite(join(root, "receipts", `inbox-${args.event_id}.json`), `${JSON.stringify({ schema: "hanchou.relay-receipt.v1", event_id: args.event_id, ...event.ack }, null, 2)}\n`);
-    journal(root, { at: utcnow(), action: "acknowledged", event_id: args.event_id, by: event.ack.by });
-    result = { ok: true, event_id: args.event_id, already: false, path: destination };
-  }
+    durableRename(path, destination);
+    ensureInboxAcknowledgement(root, eventId, event);
+    return { ok: true, event_id: eventId, already: false, path: destination };
+  });
   if (args.json) jsonPrint(result); else console.log(`acknowledged ${args.event_id}`);
 }
 
 function inboxRetry(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [state, path, event] = locateEvent(root, args.event_id, ["processing", "dead-letter"]);
-  delete event.lease; event.retry_count = Number(event.retry_count ?? 0) + 1;
-  const destination = eventPath(root, "pending", args.event_id);
-  atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`); renameSync(path, destination);
-  journal(root, { at: utcnow(), action: "retried", event_id: args.event_id, from_state: state });
-  console.log(`retried ${args.event_id}`);
+  const eventId = validateEventId(args.event_id);
+  const already = withInboxTransition(root, () => {
+    const [state, path, event] = locateEvent(root, eventId, ["processing", "dead-letter", "pending"]);
+    const retryReplay = recoverStagedInboxRetry(root, path, event);
+    if (retryReplay?.active) return true;
+    if (recoverStagedInboxAcknowledgement(root, path, event)) throw new CommandError(`cannot retry acknowledged event: ${eventId}`);
+    if (state === "dead-letter") {
+      if (!event.dead_letter) throw new CommandError(`dead-lettered event is missing dead-letter evidence: ${eventId}`);
+      if (event.dead_letter.journal_schema === undefined) migrateLegacyInboxDeadLetter(root, path, event);
+      else ensureInboxDeadLetter(root, eventId, event);
+    } else if (recoverStagedInboxDeadLetter(root, path, event)) {
+      throw new CommandError(`recovered staged dead-letter; retry again: ${eventId}`);
+    } else if (resolveLegacyDeadLetterSource(root, path, event)) {
+      throw new CommandError(`recovered legacy staged dead-letter; retry again: ${eventId}`);
+    }
+    const recoveryReplay = recoverStagedInboxLeaseRecovery(root, path, event);
+    if (recoveryReplay?.active) throw new CommandError(`event lease recovery completed; retry requires a claimed or dead-lettered event: ${eventId}`);
+    if (state === "pending") throw new CommandError(`event is already pending: ${eventId}`);
+    const retryCount = Number(event.retry_count ?? 0);
+    if (!Number.isSafeInteger(retryCount) || retryCount < 0 || retryCount >= Number.MAX_SAFE_INTEGER) throw new CommandError(`event has invalid retry_count: ${eventId}`);
+    retireInboxTransitionEvidence(root, eventId, event);
+    if (state === "processing") delete event.lease;
+    const nextRetryCount = retryCount + 1;
+    event.retry_count = nextRetryCount;
+    event.retry = {
+      at: utcnow(),
+      from_state: state,
+      retry_count: nextRetryCount,
+      journal_schema: INBOX_TRANSITION_JOURNAL_SCHEMA,
+    };
+    atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
+    const replay = recoverStagedInboxRetry(root, path, event);
+    if (!replay?.active) throw new CommandError(`failed to replay staged retry: ${eventId}`);
+    return false;
+  });
+  console.log(`${already ? "already retried" : "retried"} ${eventId}`);
 }
 
 function inboxDeadLetter(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [, path, event] = locateEvent(root, args.event_id, ["processing", "pending"]);
-  delete event.lease; event.dead_letter = { at: utcnow(), reason: args.reason };
-  const destination = eventPath(root, "dead-letter", args.event_id);
-  atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`); renameSync(path, destination);
-  journal(root, { at: utcnow(), action: "dead-lettered", event_id: args.event_id, reason: args.reason });
-  console.log(`dead-lettered ${args.event_id}`);
+  const eventId = validateEventId(args.event_id);
+  const already = withInboxTransition(root, () => {
+    const [state, path, event] = locateEvent(root, eventId, ["processing", "pending", "dead-letter"]);
+    const retryReplay = recoverStagedInboxRetry(root, path, event);
+    if (retryReplay?.active && retryReplay.moved) throw new CommandError(`recovered staged retry; dead-letter again if still required: ${eventId}`);
+    if (recoverStagedInboxDeadLetter(root, path, event)) return true;
+    if (recoverStagedInboxAcknowledgement(root, path, event)) throw new CommandError(`cannot dead-letter acknowledged event: ${eventId}`);
+    if (state === "dead-letter") {
+      if (!event.dead_letter) throw new CommandError(`dead-lettered event is missing dead-letter evidence: ${eventId}`);
+      if (event.dead_letter.journal_schema === undefined) migrateLegacyInboxDeadLetter(root, path, event);
+      else ensureInboxDeadLetter(root, eventId, event);
+      return true;
+    }
+    const recoveryReplay = recoverStagedInboxLeaseRecovery(root, path, event);
+    if (recoveryReplay?.active && recoveryReplay.moved) throw new CommandError(`recovered staged lease recovery; dead-letter again if still required: ${eventId}`);
+    retireInboxTransitionEvidence(root, eventId, event);
+    const retryCount = Number(event.retry_count ?? 0);
+    if (!Number.isSafeInteger(retryCount) || retryCount < 0) throw new CommandError(`event has invalid retry_count: ${eventId}`);
+    delete event.lease;
+    event.dead_letter = { at: utcnow(), reason: args.reason, retry_count: retryCount, journal_schema: TERMINAL_JOURNAL_SCHEMA };
+    const destination = eventPath(root, "dead-letter", eventId);
+    atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`); durableRename(path, destination);
+    ensureInboxDeadLetter(root, eventId, event);
+    return false;
+  });
+  console.log(`${already ? "already dead-lettered" : "dead-lettered"} ${eventId}`);
 }
 
 function inboxShow(args: JsonObject, _name: string, profile: JsonObject): void {
@@ -889,16 +1852,41 @@ function inboxShow(args: JsonObject, _name: string, profile: JsonObject): void {
 
 function relayRecover(name: string, profile: JsonObject, quiet = false): number {
   const root = relayRoot(profile);
-  let recovered = 0;
-  const now = Math.floor(Date.now() / 1000);
-  for (const [path, event] of iterEvents(root, "processing")) {
-    const expires = Number(event.lease?.expires_at_epoch ?? 0);
-    if (expires && expires > now) continue;
-    delete event.lease; event.recovery_count = Number(event.recovery_count ?? 0) + 1;
-    const destination = eventPath(root, "pending", event.event_id);
-    atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`); renameSync(path, destination);
-    journal(root, { at: utcnow(), action: "lease-recovered", event_id: event.event_id }); recovered += 1;
-  }
+  const recovered = withInboxTransition(root, () => {
+    let count = 0;
+    const now = Math.floor(Date.now() / 1000);
+    for (const [path, event] of iterEvents(root, "processing")) {
+      const retryReplay = recoverStagedInboxRetry(root, path, event);
+      if (retryReplay?.active) { if (retryReplay.moved) count += 1; continue; }
+      if (recoverStagedInboxDeadLetter(root, path, event)) { count += 1; continue; }
+      if (resolveLegacyDeadLetterSource(root, path, event)) { count += 1; continue; }
+      if (recoverStagedInboxAcknowledgement(root, path, event)) { count += 1; continue; }
+      const recoveryReplay = recoverStagedInboxLeaseRecovery(root, path, event);
+      if (recoveryReplay?.active) { if (recoveryReplay.moved) count += 1; continue; }
+      const expires = Number(event.lease?.expires_at_epoch ?? 0);
+      if (Number.isFinite(expires) && expires > now) continue;
+      const eventId = validateEventId(event.event_id);
+      const recoveryCount = Number(event.recovery_count ?? 0);
+      if (!Number.isSafeInteger(recoveryCount) || recoveryCount < 0 || recoveryCount >= Number.MAX_SAFE_INTEGER) throw new CommandError(`event has invalid recovery_count: ${eventId}`);
+      retireInboxTransitionEvidence(root, eventId, event);
+      delete event.lease;
+      const nextRecoveryCount = recoveryCount + 1;
+      event.recovery_count = nextRecoveryCount;
+      event.lease_recovery = { at: utcnow(), recovery_count: nextRecoveryCount, journal_schema: INBOX_TRANSITION_JOURNAL_SCHEMA };
+      atomicWrite(path, `${JSON.stringify(event, null, 2)}\n`);
+      const replay = recoverStagedInboxLeaseRecovery(root, path, event);
+      if (!replay?.active) throw new CommandError(`failed to replay staged lease recovery: ${eventId}`);
+      count += 1;
+    }
+    for (const [path, event] of iterEvents(root, "pending")) {
+      recoverStagedInboxRetry(root, path, event);
+      if (recoverStagedInboxDeadLetter(root, path, event)) { count += 1; continue; }
+      if (resolveLegacyDeadLetterSource(root, path, event)) { count += 1; continue; }
+      if (recoverStagedInboxAcknowledgement(root, path, event)) { count += 1; continue; }
+      recoverStagedInboxLeaseRecovery(root, path, event);
+    }
+    return count;
+  });
   if (!quiet) console.log(`recovered ${recovered} event(s)`);
   return recovered;
 }
@@ -969,9 +1957,14 @@ function validateDestination(destination: JsonObject): void {
 }
 
 function locateDelivery(root: string, deliveryId: string, states: string[]): [string, string, JsonObject] {
+  validateDeliveryId(deliveryId);
   for (const state of states) {
     const path = deliveryPath(root, state, deliveryId);
-    if (existsSync(path)) return [state, path, JSON.parse(readText(path))];
+    if (existsSync(path)) {
+      const delivery = readJsonFile(path, "Delivery record");
+      validateStoredDelivery(path, delivery);
+      return [state, path, delivery];
+    }
   }
   throw new CommandError(`delivery not found: ${deliveryId}`);
 }
@@ -986,17 +1979,21 @@ function deliveryCreate(args: JsonObject, name: string, profile: JsonObject): vo
   try { destination = JSON.parse(args.destination); }
   catch (error) { throw new CommandError(`invalid --destination JSON: ${error}`); }
   validateDestination(destination);
-  const deliveryId = args.delivery_id || `dly_${randomUUID().replaceAll("-", "")}`;
+  const deliveryId = validateDeliveryId(args.delivery_id || `dly_${randomUUID().replaceAll("-", "")}`);
+  if (args.source_event) validateEventId(args.source_event);
   const record = {
     schema: "hanchou.delivery.v1", delivery_id: deliveryId, kind: args.kind, task_id: args.task,
     source_event_id: args.source_event, created_at: utcnow(), policy: args.policy, renderer: args.renderer,
     destination, summary: args.summary, body_ref: args.body_ref, dedupe_key: args.dedupe_key,
     coalesce_key: args.coalesce_key, not_before: args.not_before, status: "pending", attempts: 0,
   };
-  const path = deliveryPath(root, "pending", deliveryId);
-  if (["pending", "rendered", "delivered", "failed"].some((state) => existsSync(deliveryPath(root, state, deliveryId)))) throw new CommandError(`delivery already exists: ${deliveryId}`);
-  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`);
-  journal(root, { at: utcnow(), action: "delivery-created", delivery_id: deliveryId, task_id: args.task });
+  const path = withDeliveryTransition(root, () => {
+    const pendingPath = deliveryPath(root, "pending", deliveryId);
+    if (["pending", "rendered", "delivered", "failed"].some((state) => existsSync(deliveryPath(root, state, deliveryId)))) throw new CommandError(`delivery already exists: ${deliveryId}`);
+    atomicWrite(pendingPath, `${JSON.stringify(record, null, 2)}\n`);
+    journal(root, { at: utcnow(), action: "delivery-created", delivery_id: deliveryId, task_id: args.task });
+    return pendingPath;
+  });
   const result = { ok: true, delivery_id: deliveryId, path };
   if (args.json) jsonPrint(result); else console.log(`created ${deliveryId}`);
 }
@@ -1004,11 +2001,15 @@ function deliveryCreate(args: JsonObject, name: string, profile: JsonObject): vo
 function deliveryList(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
   const states = args.state ? [args.state] : ["pending", "rendered", "delivered", "failed"];
-  const rows: JsonObject[] = [];
-  for (const state of states) for (const [path, record] of iterDeliveries(root, state)) {
-    if (args.task && record.task_id !== args.task) continue;
-    rows.push({ state, delivery_id: record.delivery_id, kind: record.kind, task_id: record.task_id, policy: record.policy, renderer: record.renderer, destination: record.destination, summary: record.summary, created_at: record.created_at, path });
-  }
+  const rows: JsonObject[] = withDeliveryTransition(root, () => {
+    reconcileDeliveryTransitionsUnlocked(root);
+    const result: JsonObject[] = [];
+    for (const state of states) for (const [path, record] of iterDeliveries(root, state)) {
+      if (args.task && record.task_id !== args.task) continue;
+      result.push({ state, delivery_id: record.delivery_id, kind: record.kind, task_id: record.task_id, policy: record.policy, renderer: record.renderer, destination: record.destination, summary: record.summary, created_at: record.created_at, path });
+    }
+    return result;
+  });
   if (args.json) jsonPrint(rows, true);
   else {
     if (!rows.length) console.log("delivery queue empty");
@@ -1017,55 +2018,112 @@ function deliveryList(args: JsonObject, _name: string, profile: JsonObject): voi
 }
 
 function deliveryShow(args: JsonObject, _name: string, profile: JsonObject): void {
-  const [state, path, delivery] = locateDelivery(relayRoot(profile), args.delivery_id, ["pending", "rendered", "delivered", "failed"]);
+  const root = relayRoot(profile);
+  const [state, path, delivery] = withDeliveryTransition(root, () => {
+    reconcileDeliveryTransitionsUnlocked(root);
+    return locateDelivery(root, args.delivery_id, ["pending", "rendered", "delivered", "failed"]);
+  });
   jsonPrint({ state, path, delivery }, true);
 }
 
 function deliveryRendered(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [state, path, record] = locateDelivery(root, args.delivery_id, ["pending", "rendered"]);
-  if (state === "rendered") { console.log(`already rendered ${args.delivery_id}`); return; }
-  if (args.message && args.message_file) throw new CommandError("use only one of --message or --message-file");
-  const message = args.message_file ? readText(args.message_file) : args.message;
-  record.rendered = { at: utcnow(), by: args.by, message };
-  record.status = "rendered";
-  const destination = deliveryPath(root, "rendered", args.delivery_id);
-  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); renameSync(path, destination);
-  journal(root, { at: utcnow(), action: "delivery-rendered", delivery_id: args.delivery_id, by: args.by });
-  console.log(`rendered ${args.delivery_id}`);
+  withDeliveryTransition(root, () => {
+    const [state, path, record] = locateDelivery(root, args.delivery_id, ["pending", "rendered"]);
+    recoverStagedDeliveryRetry(root, path, record);
+    if (recoverStagedDeliveryCompletion(root, path, record)) throw new CommandError(`cannot render delivered record: ${args.delivery_id}`);
+    if (recoverStagedDeliveryFailure(root, path, record)) throw new CommandError(`cannot render failed record; retry first: ${args.delivery_id}`);
+    if (recoverStagedDeliveryRendered(root, path, record)) {
+      console.log(`${state === "rendered" ? "already" : "recovered"} rendered ${args.delivery_id}`);
+      return;
+    }
+    if (state !== "pending" || record.status !== "pending") throw new CommandError(`delivery must be pending before rendering: ${args.delivery_id}`);
+    if (args.message && args.message_file) throw new CommandError("use only one of --message or --message-file");
+    const message = args.message_file ? readText(args.message_file) : args.message;
+    record.rendered = { at: utcnow(), by: args.by, message, attempts: Number(record.attempts ?? 0), journal_schema: TERMINAL_JOURNAL_SCHEMA };
+    record.status = "rendered";
+    const destination = deliveryPath(root, "rendered", args.delivery_id);
+    atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); durableRename(path, destination);
+    ensureDeliveryRendered(root, args.delivery_id, record);
+    console.log(`rendered ${args.delivery_id}`);
+  });
 }
 
 function deliveryDelivered(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [state, path, record] = locateDelivery(root, args.delivery_id, ["pending", "rendered", "delivered"]);
-  if (state === "delivered") { console.log(`already delivered ${args.delivery_id}`); return; }
-  record.delivered = { at: utcnow(), adapter: args.adapter, external_id: args.external_id, note: args.note };
-  record.status = "delivered";
-  const destination = deliveryPath(root, "delivered", args.delivery_id);
-  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); renameSync(path, destination);
-  atomicWrite(join(root, "receipts", `delivery-${args.delivery_id}.json`), `${JSON.stringify({ schema: "hanchou.delivery-receipt.v1", delivery_id: args.delivery_id, ...record.delivered }, null, 2)}\n`);
-  journal(root, { at: utcnow(), action: "delivery-delivered", delivery_id: args.delivery_id, adapter: args.adapter });
-  console.log(`delivered ${args.delivery_id}`);
+  withDeliveryTransition(root, () => {
+    let [state, path, record] = locateDelivery(root, args.delivery_id, ["pending", "rendered", "delivered"]);
+    recoverStagedDeliveryRetry(root, path, record);
+    if (state === "delivered") {
+      ensureDeliveryCompletion(root, args.delivery_id, record);
+      console.log(`already delivered ${args.delivery_id}`);
+      return;
+    }
+    if (recoverStagedDeliveryCompletion(root, path, record)) {
+      console.log(`recovered delivered ${args.delivery_id}`);
+      return;
+    }
+    if (recoverStagedDeliveryFailure(root, path, record)) throw new CommandError(`cannot deliver failed record; retry first: ${args.delivery_id}`);
+    const recoveredRendered = recoverStagedDeliveryRendered(root, path, record);
+    if (recoveredRendered) { state = "rendered"; path = recoveredRendered; }
+    if (!new Set(["pending", "rendered"]).has(record.status)) throw new CommandError(`delivery cannot be delivered from status ${record.status}: ${args.delivery_id}`);
+    record.delivered = { at: utcnow(), adapter: args.adapter, external_id: args.external_id, note: args.note, journal_schema: TERMINAL_JOURNAL_SCHEMA };
+    record.status = "delivered";
+    const destination = deliveryPath(root, "delivered", args.delivery_id);
+    atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); durableRename(path, destination);
+    ensureDeliveryCompletion(root, args.delivery_id, record);
+    console.log(`delivered ${args.delivery_id}`);
+  });
 }
 
 function deliveryFail(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [, path, record] = locateDelivery(root, args.delivery_id, ["pending", "rendered"]);
-  record.failure = { at: utcnow(), reason: args.reason }; record.attempts = Number(record.attempts ?? 0) + 1; record.status = "failed";
-  const destination = deliveryPath(root, "failed", args.delivery_id);
-  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); renameSync(path, destination);
-  journal(root, { at: utcnow(), action: "delivery-failed", delivery_id: args.delivery_id, reason: args.reason });
-  console.log(`failed ${args.delivery_id}`);
+  withDeliveryTransition(root, () => {
+    let [state, path, record] = locateDelivery(root, args.delivery_id, ["pending", "rendered", "failed"]);
+    const recoveredRetry = recoverStagedDeliveryRetry(root, path, record);
+    if (recoveredRetry && resolve(recoveredRetry) !== resolve(path)) throw new CommandError(`recovered staged retry; run fail again: ${args.delivery_id}`);
+    if (recoverStagedDeliveryCompletion(root, path, record)) throw new CommandError(`cannot fail delivered record: ${args.delivery_id}`);
+    if (recoverStagedDeliveryFailure(root, path, record)) {
+      console.log(`${state === "failed" ? "already" : "recovered"} failed ${args.delivery_id}`);
+      return;
+    }
+    const recoveredRendered = recoverStagedDeliveryRendered(root, path, record);
+    if (recoveredRendered) { state = "rendered"; path = recoveredRendered; }
+    if (!new Set(["pending", "rendered"]).has(record.status)) throw new CommandError(`delivery cannot fail from status ${record.status}: ${args.delivery_id}`);
+    const attempts = Number(record.attempts ?? 0) + 1;
+    record.failure = { at: utcnow(), reason: args.reason, attempts, journal_schema: TERMINAL_JOURNAL_SCHEMA };
+    record.attempts = attempts;
+    record.status = "failed";
+    const destination = deliveryPath(root, "failed", args.delivery_id);
+    atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); durableRename(path, destination);
+    ensureDeliveryFailure(root, args.delivery_id, record);
+    console.log(`failed ${args.delivery_id}`);
+  });
 }
 
 function deliveryRetry(args: JsonObject, _name: string, profile: JsonObject): void {
   const root = relayRoot(profile);
-  const [, path, record] = locateDelivery(root, args.delivery_id, ["failed"]);
-  delete record.failure; record.status = "pending";
-  const destination = deliveryPath(root, "pending", args.delivery_id);
-  atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`); renameSync(path, destination);
-  journal(root, { at: utcnow(), action: "delivery-retried", delivery_id: args.delivery_id });
-  console.log(`retried ${args.delivery_id}`);
+  withDeliveryTransition(root, () => {
+    let [state, path, record] = locateDelivery(root, args.delivery_id, ["failed", "pending", "rendered"]);
+    if (recoverStagedDeliveryCompletion(root, path, record)) throw new CommandError(`cannot retry delivered record: ${args.delivery_id}`);
+    const recoveredRetry = recoverStagedDeliveryRetry(root, path, record);
+    if (recoveredRetry) {
+      console.log(`${state === "pending" ? "already" : "recovered"} retried ${args.delivery_id}`);
+      return;
+    }
+    if (state === "pending") {
+      if (recoverStagedDeliveryFailure(root, path, record)) throw new CommandError(`recovered staged failed record; retry again: ${args.delivery_id}`);
+      throw new CommandError(`pending delivery has no retry evidence: ${args.delivery_id}`);
+    }
+    const recoveredFailed = recoverStagedDeliveryFailure(root, path, record);
+    if (!recoveredFailed) throw new CommandError(`delivery must be failed before retry: ${args.delivery_id}`);
+    state = "failed";
+    path = recoveredFailed;
+    record.retry = { at: utcnow(), attempts: Number(record.attempts), journal_schema: TERMINAL_JOURNAL_SCHEMA };
+    atomicWrite(path, `${JSON.stringify(record, null, 2)}\n`);
+    recoverStagedDeliveryRetry(root, path, record);
+    console.log(`retried ${args.delivery_id}`);
+  });
 }
 
 const DEFAULT_TASK_KINDS: Record<string, string> = {
@@ -1201,7 +2259,7 @@ function executionTaskMetadata(
   parameters: {
     executionId: string; route: JsonObject; session: string; agentName: string; kind: string;
     bindingState: string; branch: string; worktreePath: string; workspaceId?: string | null;
-    paneId?: string | null; providerSessionId?: string | null;
+    tabId?: string | null; paneId?: string | null; providerSessionId?: string | null;
   },
 ): JsonObject {
   const result = clone(metadata);
@@ -1209,7 +2267,7 @@ function executionTaskMetadata(
   result.routing = taskRoutingMetadata(parameters.route, profile);
   result.herdr = {
     session: parameters.session, agent_name: parameters.agentName, kind: parameters.kind,
-    workspace_id: parameters.workspaceId ?? null, pane_id: parameters.paneId ?? null,
+    workspace_id: parameters.workspaceId ?? null, tab_id: parameters.tabId ?? null, pane_id: parameters.paneId ?? null,
     provider_session_id: parameters.providerSessionId ?? null, binding_state: parameters.bindingState,
     worktree_path: parameters.worktreePath, branch: parameters.branch,
   };
@@ -1255,13 +2313,22 @@ function nestedValue(value: any, key: string): any {
   return null;
 }
 
-function createExecutionWorktree(name: string, profile: JsonObject, repo: string, baseCommit: string, branch: string, worktreePath: string, label: string): [string, string] {
+function createExecutionWorktree(name: string, profile: JsonObject, repo: string, baseCommit: string, branch: string, worktreePath: string, label: string, agentName: string): [string, string, string] {
+  const managedAgentId = validateAgentId(agentName, "managed Agent ID");
   const proc = run(herdrArgv(name, "worktree", "create", "--cwd", repo, "--base", baseCommit, "--branch", branch, "--path", worktreePath, "--label", label, "--no-focus"), { env: profileEnv(name, profile), capture: true, timeout: 120_000 });
   const value = parseJsonOutput(proc);
-  const workspaceId = nestedValue(value, "workspace_id");
-  const paneId = nestedValue(value, "pane_id");
-  if (typeof workspaceId !== "string" || typeof paneId !== "string") throw new CommandError(`cannot read workspace/pane IDs from Herdr worktree response: ${pyCompact(value)}`);
-  return [workspaceId, paneId];
+  const workspaceId = value?.result?.workspace?.workspace_id;
+  const initialTabId = value?.result?.tab?.tab_id;
+  const createdWorktreePath = value?.result?.worktree?.path;
+  if (typeof workspaceId !== "string" || typeof initialTabId !== "string" || typeof createdWorktreePath !== "string") throw new CommandError(`cannot read workspace/tab/worktree from Herdr worktree response: ${pyCompact(value)}`);
+  if (resolve(createdWorktreePath) !== resolve(worktreePath)) throw new CommandError(`Herdr created an unexpected worktree path: ${createdWorktreePath}`);
+  const tabProc = run(herdrArgv(name, "tab", "create", "--workspace", workspaceId, "--cwd", createdWorktreePath, "--label", managedAgentId, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { env: profileEnv(name, profile), capture: true, timeout: 120_000 });
+  const tabValue = parseJsonOutput(tabProc);
+  const tabId = tabValue?.result?.tab?.tab_id;
+  const paneId = tabValue?.result?.root_pane?.pane_id;
+  if (typeof tabId !== "string" || typeof paneId !== "string") throw new CommandError(`cannot read tab/pane IDs from Herdr tab response: ${pyCompact(tabValue)}`);
+  run(herdrArgv(name, "tab", "close", initialTabId), { env: profileEnv(name, profile), capture: true, timeout: 30_000 });
+  return [workspaceId, tabId, paneId];
 }
 
 function safeAgentName(taskId: string, executionId: string, role: string): string {
@@ -1270,9 +2337,20 @@ function safeAgentName(taskId: string, executionId: string, role: string): strin
   return `hch_${digest}_${rolePart}`.slice(0, 32);
 }
 
-export function workerAgentArgv(name: string, profile: JsonObject, agentName: string, paneId: string, route: JsonObject, role: string, reportPath: string): string[] {
+export function workerAgentArgv(
+  name: string,
+  profile: JsonObject,
+  agentName: string,
+  paneId: string,
+  route: JsonObject,
+  role: string,
+  reportPath: string,
+  workspaceId: string | null = null,
+  tabId: string | null = null,
+): string[] {
   const kind = route.provider;
-  const argv = herdrArgv(name, "agent", "start", agentName, "--kind", kind, "--pane", paneId, "--timeout", "120000", "--");
+  const managedAgentId = validateAgentId(agentName, "managed Agent ID");
+  const argv = herdrArgv(name, "agent", "start", managedAgentId, "--kind", kind, "--pane", paneId, "--timeout", "120000", "--");
   const paths = profilePaths(profile);
   if (kind === "claude") {
     const roleData = loadToml(join(ROOT, "roles", role, "role.toml"));
@@ -1286,8 +2364,20 @@ export function workerAgentArgv(name: string, profile: JsonObject, agentName: st
     return [...argv, "--model", route.model, "--permission-mode", permissionMode, "--tools", tools.join(","), "--add-dir", dirname(reportPath), "--add-dir", paths.relay_dir];
   }
   const sessionDirectory = join(homedir(), ".config", "herdr", "sessions", name);
-  const unixSocketRule = `network.unix_sockets={${JSON.stringify(sessionDirectory)}="allow"}`;
-  return [...argv, "-m", route.model, "--sandbox", "workspace-write", "--approve-for-me", "--add-dir", dirname(reportPath), "--add-dir", paths.relay_dir, "--add-dir", sessionDirectory, "-c", "network.enabled=true", "-c", unixSocketRule];
+  if (typeof workspaceId !== "string" || !workspaceId || typeof tabId !== "string" || !tabId) {
+    throw new CommandError("Codex worker startup requires Herdr workspace and tab IDs");
+  }
+  return [
+    ...argv,
+    "-m", route.model,
+    "--sandbox", "workspace-write",
+    "--approve-for-me",
+    "--add-dir", dirname(reportPath),
+    "--add-dir", paths.relay_dir,
+    "--add-dir", sessionDirectory,
+    ...codexManagedNetworkArgs(name),
+    ...codexManagedEnvironmentArgs(name, profile, managedAgentId, paneId, workspaceId, tabId),
+  ];
 }
 
 function providerSessionId(agent: JsonObject): string | null {
@@ -1415,9 +2505,13 @@ function completionEvidenceAnomalies(event: JsonObject, record: JsonObject): str
 }
 
 function executionDeliveries(profile: JsonObject, taskId: string): JsonObject[] {
-  const root = relayRoot(profile); const rows: JsonObject[] = [];
-  for (const state of ["pending", "rendered", "delivered", "failed"]) for (const [path, delivery] of iterDeliveries(root, state)) if (delivery.task_id === taskId) rows.push({ state, path, delivery });
-  return rows;
+  const root = relayRoot(profile);
+  return withDeliveryTransition(root, () => {
+    reconcileDeliveryTransitionsUnlocked(root);
+    const rows: JsonObject[] = [];
+    for (const state of ["pending", "rendered", "delivered", "failed"]) for (const [path, delivery] of iterDeliveries(root, state)) if (delivery.task_id === taskId) rows.push({ state, path, delivery });
+    return rows;
+  });
 }
 
 function executionDispatch(args: JsonObject, name: string, profile: JsonObject): void {
@@ -1452,7 +2546,7 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
       repo_path: repo, base_commit: baseCommit, worktree_path: worktreePath, branch, report_path: reportPath,
       role, owner_role: metadata.owner_role, owner_agent: metadata.owner_agent, task_identity: taskIdentity,
       route: taskRoutingMetadata(route, profile), herdr_session: name, agent_name: agentName, kind,
-      workspace_id: null, pane_id: null, provider_session_id: null,
+      workspace_id: null, tab_id: null, pane_id: null, provider_session_id: null,
     };
     saveExecution(profile, record);
     let claimed = false;
@@ -1462,9 +2556,9 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
     try {
       taskMetadata = patchExecutionMetadata(name, profile, taskId, executionId, taskMetadata, taskIdentity, true);
       claimed = true; record.phase = "claimed"; saveExecution(profile, record);
-      const [workspaceId, paneId] = createExecutionWorktree(name, profile, repo, baseCommit, branch, worktreePath, `${taskId} ${role}`);
-      Object.assign(record, { phase: "workspace_created", workspace_id: workspaceId, pane_id: paneId }); saveExecution(profile, record);
-      const started = run(workerAgentArgv(name, profile, agentName, paneId, route, role, reportPath), { env: profileEnv(name, profile), check: false, capture: true, timeout: 140_000 });
+      const [workspaceId, tabId, paneId] = createExecutionWorktree(name, profile, repo, baseCommit, branch, worktreePath, `${taskId} ${role}`, agentName);
+      Object.assign(record, { phase: "workspace_created", workspace_id: workspaceId, tab_id: tabId, pane_id: paneId }); saveExecution(profile, record);
+      const started = run(workerAgentArgv(name, profile, agentName, paneId, route, role, reportPath, workspaceId, tabId), { env: profileEnv(name, profile), check: false, capture: true, timeout: 140_000 });
       agent = getAgentInfo(name, agentName, true) ?? {};
       if (!Object.keys(agent).length) {
         if (started.returncode !== 0) throw new CommandError(`Herdr could not start ${agentName}: ${(started.stderr || started.stdout).trim()}`);
@@ -1476,7 +2570,7 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
       saveExecution(profile, record);
       taskMetadata = executionTaskMetadata(taskMetadata, profile, {
         executionId, route, session: name, agentName, kind, bindingState: "live", branch, worktreePath,
-        workspaceId, paneId, providerSessionId: record.provider_session_id,
+        workspaceId, tabId, paneId, providerSessionId: record.provider_session_id,
       });
       taskMetadata = patchExecutionMetadata(name, profile, taskId, executionId, taskMetadata, taskIdentity);
       if (record.phase === "awaiting_ready") {
@@ -1495,7 +2589,7 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
       if (claimed) {
         const failedMetadata = executionTaskMetadata(taskMetadata, profile, {
           executionId, route, session: name, agentName, kind, bindingState: agentStarted ? "live" : "lost", branch, worktreePath,
-          workspaceId: record.workspace_id, paneId: record.pane_id, providerSessionId: record.provider_session_id,
+          workspaceId: record.workspace_id, tabId: record.tab_id, paneId: record.pane_id, providerSessionId: record.provider_session_id,
         });
         try { patchExecutionMetadata(name, profile, taskId, executionId, failedMetadata, taskIdentity, false, "blocked"); }
         catch (updateError) { record.bead_update_error = updateError instanceof Error ? updateError.message : String(updateError); saveExecution(profile, record); }
@@ -1504,7 +2598,7 @@ function executionDispatch(args: JsonObject, name: string, profile: JsonObject):
     }
     const result = {
       ok: true, task_id: taskId, execution_id: executionId, phase: record.phase, agent_name: agentName,
-      workspace_id: record.workspace_id, pane_id: record.pane_id, worktree_path: worktreePath, branch,
+      workspace_id: record.workspace_id, tab_id: record.tab_id, pane_id: record.pane_id, worktree_path: worktreePath, branch,
       record_path: path, agent_status: findAgentStatus(agent), requires_ready_reconcile: record.phase === "awaiting_ready",
     };
     if (args.json) jsonPrint(result); else if (record.phase === "awaiting_ready") console.log(`worker ${agentName} is awaiting readiness/trust review in ${record.workspace_id} (${executionId})`); else console.log(`dispatched ${taskId} as ${agentName} in ${record.workspace_id} (${executionId})`);
@@ -1576,6 +2670,7 @@ function reconcileExecution(name: string, profile: JsonObject, taskId: string): 
     if (agent && new Set(["pending", "lost"]).has(binding)) {
       herdr.binding_state = "live";
       herdr.workspace_id = record.workspace_id || herdr.workspace_id;
+      herdr.tab_id = record.tab_id || herdr.tab_id;
       herdr.pane_id = record.pane_id || herdr.pane_id;
       herdr.provider_session_id = providerSessionId(agent) || record.provider_session_id;
       metadata.herdr = herdr;
@@ -1595,6 +2690,7 @@ function reconcileExecution(name: string, profile: JsonObject, taskId: string): 
       else if (new Set(["idle", "done"]).has(status ?? "")) {
         herdr.binding_state = "live";
         herdr.workspace_id = record.workspace_id || herdr.workspace_id;
+        herdr.tab_id = record.tab_id || herdr.tab_id;
         herdr.pane_id = record.pane_id || herdr.pane_id;
         herdr.provider_session_id = providerSessionId(agent) || record.provider_session_id;
         metadata.herdr = herdr;
@@ -1672,7 +2768,12 @@ function startOrchestrator(name: string, profile: JsonObject): void {
       catch { /* initialize again */ }
     }
     const statusValue = record.agent_status;
-    if (!new Set(["idle", "done"]).has(statusValue)) { console.log(`orchestrator \`${agentName}\` exists with status ${statusValue}; initialization remains pending`); return; }
+    if (!new Set(["idle", "done"]).has(statusValue)) {
+      console.log(`orchestrator \`${agentName}\` exists with status ${statusValue}; initialization remains pending`);
+      console.log(`attach with \`hanchou open orchestrator ${name}\``);
+      console.log(`if this Agent was started before the latest \`hanchou apply ${name} --yes\`, exit that attached Agent with \`/exit\`, then run \`hanchou start-orchestrator ${name}\` again`);
+      return;
+    }
     const promptArgv = herdrArgv(name, "agent", "prompt", agentName, initial);
     run(promptArgv, { capture: true, displayArgv: promptArgv.map((value) => value === initial ? "<redacted-prompt>" : value), redactOutput: true });
     atomicWrite(marker, `${JSON.stringify({ identity, initialized_at: utcnow() })}\n`);
@@ -1680,24 +2781,33 @@ function startOrchestrator(name: string, profile: JsonObject): void {
   };
   const existing = getAgentInfo(name, agentName);
   if (existing) { initialize(existing); return; }
-  const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--no-focus"), { capture: true });
+  const managedAgentId = validateAgentId(agentName, "managed Agent ID");
+  const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
   const data = parseJsonOutput(created);
   const paneId = data?.result?.root_pane?.pane_id;
-  if (typeof paneId !== "string") throw new CommandError(`cannot read root pane ID from Herdr response: ${pyCompact(data)}`);
+  const workspaceId = data?.result?.workspace?.workspace_id ?? null;
+  const tabId = data?.result?.tab?.tab_id ?? nestedValue(data, "tab_id");
+  if (typeof workspaceId !== "string" || typeof tabId !== "string" || typeof paneId !== "string") throw new CommandError(`cannot read workspace/tab/root pane IDs from Herdr response: ${pyCompact(data)}`);
   const kind = profile.orchestrator.kind ?? "codex";
-  const argv = herdrArgv(name, "agent", "start", agentName, "--kind", kind, "--pane", paneId, "--timeout", "120000");
+  const argv = herdrArgv(name, "agent", "start", managedAgentId, "--kind", kind, "--pane", paneId, "--timeout", "120000");
   const model = profile.orchestrator.model;
   if (model) argv.push("--", kind === "claude" ? "--model" : "-m", model);
   if (kind === "codex") {
     if (!argv.includes("--")) argv.push("--");
     const paths = profilePaths(profile);
     const sessionDirectory = join(homedir(), ".config", "herdr", "sessions", name);
-    const unixSocketRule = `network.unix_sockets={${JSON.stringify(sessionDirectory)}="allow"}`;
-    argv.push("--approve-for-me", "--add-dir", paths.root, "--add-dir", sessionDirectory, "--add-dir", join(homedir(), ".config", "herdr", "plugins", "config"), "-c", "network.enabled=true", "-c", unixSocketRule);
+    argv.push(
+      "--approve-for-me",
+      "--add-dir", paths.root,
+      "--add-dir", sessionDirectory,
+      "--add-dir", join(homedir(), ".config", "herdr", "plugins", "config"),
+      ...codexManagedNetworkArgs(name),
+      ...codexManagedEnvironmentArgs(name, profile, agentName, paneId, workspaceId, tabId),
+    );
   }
   const started = run(argv, { check: false, capture: true });
   if (started.returncode !== 0) {
-    if (getAgentStatus(name, agentName) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`herdr --session ${name} agent attach ${agentName}\``); return; }
+    if (getAgentStatus(name, agentName) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`hanchou open orchestrator ${name}\``); return; }
     throw new CommandError(`cannot start orchestrator: ${(started.stderr || started.stdout).trim()}`);
   }
   const record = getAgentInfo(name, agentName);
@@ -1726,12 +2836,16 @@ function openTarget(name: string, profile: JsonObject, target: string): never | 
 function statusCommand(name: string, profile: JsonObject, asJson: boolean): void {
   const paths = profilePaths(profile);
   const agent = profile.orchestrator.agent_name;
+  const pendingDeliveries = existsSync(paths.relay_dir) ? withDeliveryTransition(paths.relay_dir, () => {
+    reconcileDeliveryTransitionsUnlocked(paths.relay_dir);
+    return iterDeliveries(paths.relay_dir, "pending").length;
+  }) : 0;
   const result = {
     profile: name, config_root: CONFIG_ROOT, herdr_session: profile.herdr.session,
     orchestrator: { name: agent, kind: profile.orchestrator.kind ?? "codex", model: profile.orchestrator.model ?? null, status: getAgentStatus(name, agent, true) },
     beads_dir: paths.beads_dir, relay_dir: paths.relay_dir,
     pending_inbox: existsSync(paths.relay_dir) ? iterEvents(paths.relay_dir, "pending").length : 0,
-    pending_deliveries: existsSync(paths.relay_dir) ? iterDeliveries(paths.relay_dir, "pending").length : 0,
+    pending_deliveries: pendingDeliveries,
     task_ui: `http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`,
     usage_snapshot: usageSnapshotPath(profile),
     commands: { herdr: `herdr --session ${name}`, orchestrator: `herdr --session ${name} agent attach ${agent}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}` },
@@ -1812,6 +2926,41 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
   } catch (error) { console.log(`FAIL Hanchou Skills: ${error instanceof Error ? error.message : error}`); failures += 1; }
   try { renderAgents(true); console.log("ok   generated agent definitions"); }
   catch (error) { console.log(`FAIL generated agent definitions: ${error instanceof Error ? error.message : error}`); failures += 1; }
+  try {
+    const info = lstatSync(CODEX_RULES_PATH);
+    const ok = info.isFile() && !info.isSymbolicLink();
+    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex Inbox rules: ${CODEX_RULES_PATH}`);
+    if (!ok) failures += 1;
+  } catch (error) {
+    console.log(`FAIL Hanchou Codex Inbox rules: ${error instanceof Error ? error.message : error}`);
+    failures += 1;
+  }
+  try {
+    const cases: Array<[string[], string | null]> = [
+      [["hanchou", "inbox", "list", "--json"], "allow"],
+      [["hanchou", "inbox", "claim", "--to", String(profile.orchestrator.agent_name), "--json"], "allow"],
+      [["hanchou", "inbox", "ack", "evt_example", "--by", String(profile.orchestrator.agent_name)], "allow"],
+      [["hanchou", "inbox", "retry", "evt_example"], "prompt"],
+      [["hanchou", "inbox", "future-command"], null],
+    ];
+    const activeRules = codexPolicyRulePaths();
+    const ruleArgs = activeRules.flatMap((path) => ["--rules", path]);
+    const observed = cases.map(([command, expected]) => {
+      const proc = run([commandPath("codex"), "execpolicy", "check", ...ruleArgs, "--", ...command], { env, cwd: ROOT, capture: true, timeout: 15_000 });
+      const decision = JSON.parse(proc.stdout).decision ?? null;
+      return { command, expected, decision };
+    });
+    const ok = observed.every((item) => item.expected === item.decision);
+    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex Inbox rule decisions`);
+    if (!ok) failures += 1;
+  } catch (error) {
+    console.log(`FAIL Hanchou Codex Inbox rule decisions: ${error instanceof Error ? error.message : error}`);
+    failures += 1;
+  }
+  const broadRules = broadUserInboxRulePaths();
+  const narrowUserRules = broadRules.length === 0;
+  console.log(`${narrowUserRules ? "ok  " : "FAIL"} no broad user-level ["hanchou", "inbox"] allow${broadRules.length ? `: ${broadRules.join(", ")}` : ""}`);
+  if (!narrowUserRules) failures += 1;
   const paths = profilePaths(profile);
   for (const [label, path] of [["state root", paths.root], ["relay", paths.relay_dir], ["Beads", paths.beads_dir]]) { const ok = existsSync(path); console.log(`${ok ? "ok  " : "FAIL"} ${label}: ${path}`); if (!ok) failures += 1; }
   return failures;

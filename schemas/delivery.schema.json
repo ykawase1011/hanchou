@@ -61,7 +61,7 @@
     },
     "delivery_id": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^dly_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
     },
     "kind": {
       "enum": [
@@ -83,7 +83,8 @@
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "pattern": "^evt_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
     },
     "created_at": {
       "type": "string",
@@ -155,7 +156,27 @@
     },
     "rendered": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "required": [
+        "at",
+        "by"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "by": {
+          "type": "string"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "journal_schema": {
+          "const": "hanchou.relay-terminal-journal.v1"
+        }
+      }
     },
     "delivered": {
       "type": "object",
@@ -163,7 +184,154 @@
     },
     "failure": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "required": [
+        "at",
+        "reason"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "journal_schema": {
+          "const": "hanchou.relay-terminal-journal.v1"
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "at",
+        "attempts",
+        "journal_schema"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "journal_schema": {
+          "const": "hanchou.relay-terminal-journal.v1"
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pending"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "failure"
+              ]
+            },
+            {
+              "required": [
+                "delivered"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rendered"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "rendered"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "failure"
+              ]
+            },
+            {
+              "required": [
+                "delivered"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "delivered"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "delivered"
+        ],
+        "not": {
+          "required": [
+            "failure"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "failure"
+        ],
+        "not": {
+          "required": [
+            "delivered"
+          ]
+        }
+      }
+    }
+  ]
 }
