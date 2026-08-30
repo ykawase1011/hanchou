@@ -68,7 +68,9 @@
   opt-out, no healthy Herdr/LaunchAgent restart, and optional Herdrm
   missing/mismatched/matched socket behavior;
 - Herdrm compatibility tests rejected missing, regular-file, and different live
-  sockets and accepted only two paths resolving to the same live Unix socket;
+  sockets, created a compatibility symlink only for an absent default path and
+  a live same-user named socket, never replaced an existing path, and accepted
+  only two paths resolving to the same live Unix socket;
 - LaunchAgent rendering produced pinned Herdr, beads-ui, and Dashboard plists,
   embedded the exact validated mise Herdr/Node paths even when Herdr was absent
   from `PATH`, left a second unchanged render current without backups, reloaded

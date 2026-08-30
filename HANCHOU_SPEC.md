@@ -217,8 +217,10 @@ profile別loopback portで提供します。状態変更API、CORS、telemetry�
 このDashboardを開きます。
 
 Herdrmはoptionalです。Herdrm 0.5.xのdefault socketとHanchou named-session socketが
-同じ実体だと確認できる場合だけmonitor／attach用途で開きます。Hanchouは互換性の
-ためにsocket bridgeや別のdefault Herdr sessionを自動作成しません。
+同じ実体だと確認できる場合だけmonitor／attach用途で開きます。人間がHerdrm起動を
+明示した時点でdefault pathが存在せず、pin済みversionのlive named socketが同一user
+所有だと確認できる場合だけcompatibility symlinkを作成できます。既存default socketを
+上書きしたり、別のdefault Herdr sessionを起動したりしません。
 
 `herdr-beads`はoptional dependencyでありCoreの成立条件に含めません。source
 buildに追加toolchainが必要な場合、利用者がHerdr内Boardを必要とするときだけ

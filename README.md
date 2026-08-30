@@ -184,8 +184,9 @@ artifact本文はDashboardに表示しませんが、Task titleやpathにはsecr
 Herdrmはoptionalです。現在のHerdrm 0.5.xはdefault socketを使う一方、Hanchouは
 `work`／`personal`のnamed sessionを使うため、通常は同じsessionを表示できません。
 Hanchouは別sessionの誤起動を避けるため、socket一致を確認できない場合は
-`hanchou open herdrm work`を安全側に失敗させます。標準画面はHanchou Dashboardと
-Herdr TUIです。互換性が確認できる環境だけ、次を利用できます。
+`hanchou open herdrm work`を安全側に失敗させます。default socketが存在しない場合だけ、
+明示的なHerdrm起動commandはlive named socketへのcompatibility linkを作成できます。
+既存default sessionは上書きしません。標準画面はHanchou DashboardとHerdr TUIです。
 
 ```bash
 hanchou launch work --herdrm

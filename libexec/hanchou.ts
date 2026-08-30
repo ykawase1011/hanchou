@@ -15,7 +15,6 @@ import {
   openSync,
   readFileSync,
   readdirSync,
-  readlinkSync,
   realpathSync,
   renameSync,
   statSync,
@@ -328,7 +327,18 @@ export function loadProfile(requested: string | null = null): [string, JsonObjec
   if (!VALID_PROFILES.has(selected)) throw new CommandError(`unknown profile: ${selected}`);
   const path = join(CONFIG_ROOT, "profiles", `${selected}.toml`);
   if (!existsSync(path)) throw new CommandError(`profile not found: ${path}`);
-  return [selected, loadToml(path)];
+  const profile = loadToml(path);
+  validatedHerdrSession(selected, profile);
+  return [selected, profile];
+}
+
+function validatedHerdrSession(name: string, profile: JsonObject): string {
+  if (!VALID_PROFILES.has(name)) throw new CommandError(`unknown profile: ${name}`);
+  const session = profile.herdr?.session;
+  if (typeof session !== "string" || session !== name) {
+    throw new CommandError(`profile herdr.session must exactly match the selected profile: expected ${name}`);
+  }
+  return session;
 }
 
 function profilePaths(profile: JsonObject): Record<string, string> {
@@ -516,6 +526,17 @@ function validateAuthorityMetadata(info: Stats, path: string, label: string, req
   }
   if ((info.mode & 0o022) !== 0) {
     throw new CommandError(`${label} must not be group/world writable: ${path}`);
+  }
+}
+
+function validateAuthorityDirectoryChain(path: string, label: string): void {
+  const home = operatorHome();
+  if (!pathWithin(home, path, true)) throw new CommandError(`${label} must be below the operator HOME: ${path}`);
+  let component = home;
+  validateAuthorityComponent(component, label, false);
+  for (const part of relative(home, path).split(/[\\/]+/).filter(Boolean)) {
+    component = join(component, part);
+    validateAuthorityComponent(component, label, false);
   }
 }
 
@@ -3484,7 +3505,7 @@ export function herdrmCompatibility(name: string, profile: JsonObject): JsonObje
     join(home, "Applications", "herdrm.app"), join(home, "Applications", "HerdrM.app"),
   ];
   const application = applications.find((candidate) => isDirectory(candidate)) ?? null;
-  const session = String(profile.herdr.session ?? name);
+  const session = validatedHerdrSession(name, profile);
   const defaultSocket = join(home, ".config", "herdr", "herdr.sock");
   const namedSocket = session === "default" ? defaultSocket : join(home, ".config", "herdr", "sessions", session, "herdr.sock");
   let compatible = false;
@@ -3493,7 +3514,10 @@ export function herdrmCompatibility(name: string, profile: JsonObject): JsonObje
     try {
       const defaultInfo = statSync(defaultSocket);
       const namedInfo = statSync(namedSocket);
-      compatible = defaultInfo.isSocket() && namedInfo.isSocket() && defaultInfo.dev === namedInfo.dev && defaultInfo.ino === namedInfo.ino;
+      const effectiveUid = typeof process.getuid === "function" ? process.getuid() : null;
+      compatible = defaultInfo.isSocket() && namedInfo.isSocket()
+        && (effectiveUid === null || (defaultInfo.uid === effectiveUid && namedInfo.uid === effectiveUid))
+        && defaultInfo.dev === namedInfo.dev && defaultInfo.ino === namedInfo.ino;
       if (compatible) socketIdentity = { device: String(defaultInfo.dev), inode: String(defaultInfo.ino) };
     } catch { compatible = false; }
   }
@@ -3502,6 +3526,49 @@ export function herdrmCompatibility(name: string, profile: JsonObject): JsonObje
   else if (!compatible) message = `Herdrm 0.5.xはdefault socket固定のため、live Unix socketの同一性を証明できないHanchou session \`${session}\`には安全に接続できません。別sessionの自動起動を防ぐためopenしません。`;
   else message = "同じHerdr socketを確認しました。監視・attach専用で利用できます。";
   return { installed: Boolean(application), application, compatible, session, default_socket: defaultSocket, named_socket: namedSocket, socket_identity: socketIdentity, message };
+}
+
+export function ensureHerdrmCompatibility(name: string, profile: JsonObject): JsonObject {
+  const initial = herdrmCompatibility(name, profile);
+  if (!initial.installed) return initial;
+  const namedSocket = String(initial.named_socket);
+  const defaultSocket = String(initial.default_socket);
+  if (!initial.compatible && !lexists(namedSocket)) return initial;
+  try {
+    validateAuthorityDirectoryChain(dirname(defaultSocket), "Herdrm default socket directory");
+    validateAuthorityDirectoryChain(dirname(namedSocket), "Hanchou named socket directory");
+  } catch {
+    return {
+      ...initial,
+      compatible: false,
+      socket_identity: null,
+      message: "Herdr socketの親directoryにsymlink、所有者不一致、またはgroup/world writable権限があるため、安全にHerdrmを開けません。",
+    };
+  }
+  if (initial.compatible || lexists(defaultSocket)) return initial;
+  let namedInfo: Stats;
+  try { namedInfo = lstatSync(namedSocket); }
+  catch { return initial; }
+  if (!namedInfo.isSocket()) return initial;
+  if (typeof process.getuid === "function" && namedInfo.uid !== process.getuid()) return initial;
+
+  try {
+    symlinkSync(namedSocket, defaultSocket);
+    const verified = herdrmCompatibility(name, profile);
+    const currentNamed = lstatSync(namedSocket);
+    const linked = statSync(defaultSocket);
+    const unchanged = currentNamed.isSocket()
+      && currentNamed.dev === namedInfo.dev && currentNamed.ino === namedInfo.ino && currentNamed.uid === namedInfo.uid
+      && linked.isSocket() && linked.dev === namedInfo.dev && linked.ino === namedInfo.ino && linked.uid === namedInfo.uid;
+    if (!verified.compatible || !unchanged) {
+      throw new CommandError("created Herdrm compatibility link, but the live Hanchou socket changed during verification; the link was preserved without unlinking any path, so retry after Herdr is stable");
+    }
+    console.log(`created Herdrm compatibility link: ${defaultSocket} -> ${namedSocket}`);
+    return verified;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return herdrmCompatibility(name, profile);
+    throw error;
+  }
 }
 
 async function dashboardSnapshot(name: string, profile: JsonObject): Promise<JsonObject> {
@@ -3587,8 +3654,15 @@ function openUrl(url: string): void {
 
 function openHerdrm(name: string, profile: JsonObject): void {
   if (platform() !== "darwin") throw new CommandError("Herdrm is a macOS 14+ native application");
-  const state = herdrmCompatibility(name, profile);
-  if (!state.installed) throw new CommandError("Herdrm is optional and not installed; install it manually with `brew install owo-network/brew/herdrm`");
+  const initial = herdrmCompatibility(name, profile);
+  if (!initial.installed) throw new CommandError("Herdrm is optional and not installed; install it manually with `brew install owo-network/brew/herdrm`");
+  const session = validatedHerdrSession(name, profile);
+  const server = herdrStatusSnapshot(session, 2_000);
+  const expectedVersion = miseTools().herdr;
+  if (!server.running || server.version !== expectedVersion) {
+    throw new CommandError(`cannot verify the pinned live Herdr ${expectedVersion} session before opening Herdrm`);
+  }
+  const state = ensureHerdrmCompatibility(name, profile);
   if (!state.compatible) throw new CommandError(String(state.message));
   console.log("WARNING: use Herdrm only to monitor or attach to Hanchou Agents. Do not create Hanchou Orchestrators or workers from Herdrm New Agent.");
   const child = spawn("open", ["-a", "herdrm"], { detached: true, stdio: "ignore" });

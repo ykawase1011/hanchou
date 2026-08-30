@@ -337,7 +337,9 @@ brew install owo-network/brew/herdrm
 sessionを安全に表示できません。
 
 Hanchouはdefault socketとnamed-session socketが同じ実体だと確認できた場合だけ
-Herdrmを開きます。symlinkや別serverを自動作成して互換性を偽装しません。
+Herdrmを開きます。明示的なHerdrm起動commandを実行した時点でdefault socketが
+存在しなければ、同一userのlive named socketを確認してcompatibility symlinkを
+作成します。既存のdefault socketや別serverは上書きしません。
 
 ```bash
 hanchou open herdrm work
@@ -346,6 +348,7 @@ hanchou launch work --herdrm
 ```
 
 非互換ならHanchou本体は起動したまま、Herdrmだけを開かず理由を表示します。
+別profileのcompatibility linkやdefault sessionが既にある場合も、安全のため同じです。
 互換環境でもmonitor／attach専用とし、HerdrmのNew AgentからHanchou管理の
 OrchestratorやWorkerを新規作成しないでください。標準操作はHanchou Dashboardと
 `hanchou open herdr work`です。

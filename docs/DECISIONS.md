@@ -36,6 +36,8 @@
 20. HanchouはTask／Agent操作GUIを複製せず、Herdr、Beads、Relay、workspaceの状態と
     upstream入口をまとめるloopback限定・read-only Dashboardだけを提供する。
     Herdrmはnamed-session socket互換性を確認できる場合のoptional monitorとする。
+    明示起動時に限り、空のdefault pathから検証済みlive named socketへのsymlinkを
+    作成できるが、既存pathの置換や別Herdr serverの起動は行わない。
 
 ## 初期default
 

@@ -134,9 +134,11 @@ hanchou open orchestrator work
 
 Herdrm is optional and is not a Core readiness condition. Herdrm 0.5.x uses the
 default local socket while Hanchou uses named sessions. `hanchou open herdrm`
-therefore refuses to open unless both paths resolve to the same socket; Hanchou
-does not create a socket bridge or start a second default session. Even when
-compatible, use it only for monitoring or attaching to Hanchou-created Agents.
+therefore opens the app only when both paths resolve to the same socket. On an
+explicit Herdrm open, Hanchou may create a symlink only when the default path is
+absent and the named path is a live same-user socket; it never overwrites an
+existing default session or starts a second server. Even when compatible, use
+it only for monitoring or attaching to Hanchou-created Agents.
 
 ## Health checks
 

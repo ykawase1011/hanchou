@@ -56,7 +56,9 @@ registered the macOS LaunchAgents, it verifies Herdr, beads-ui, and the
 read-only Hanchou Dashboard, starts or initializes the Orchestrator, and opens
 the Dashboard. `--herdrm` also attempts the optional native app, but inability
 to prove that Herdrm's default socket matches the Hanchou named-session socket
-is reported as a warning and never starts a second Herdr session.
+is reported as a warning and never starts a second Herdr session. If the default
+path is absent, an explicit Herdrm open may link it to the verified pinned,
+live, same-user named socket; an existing path is never replaced.
 
 `dashboard serve` is normally owned by the LaunchAgent. It binds only to the
 configured literal loopback address and exposes GET-only `/`, `/health`, and

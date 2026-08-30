@@ -13,7 +13,7 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
     "status server")
       [[ "${3:-}" == "--json" ]] || { echo "unexpected fake status argv: $*" >&2; exit 98; }
       if [[ "${HANCHOU_TEST_HERDR_READY:-0}" == "1" ]]; then
-        printf '%s\n' '{"status":"running","version":"0.8.2"}'
+        printf '{"status":"running","version":"%s"}\n' "${HANCHOU_TEST_HERDR_VERSION:-0.8.2}"
       else
         printf '%s\n' '{"status":"not_running","version":"0.8.2"}'
       fi
@@ -281,7 +281,7 @@ start_socket_fixture() {
 const fs = require("node:fs");
 const net = require("node:net");
 const [mode, named, fallback, ready] = process.argv.slice(1);
-const paths = mode === "match" ? [named] : [named, fallback];
+const paths = mode === "mismatch" ? [named, fallback] : [named];
 let listening = 0;
 const servers = paths.map((path) => net.createServer().listen(path, () => {
   listening += 1;
@@ -302,6 +302,27 @@ setInterval(() => {}, 1000);
 }
 
 mkdir -p "$HERDRM_APP"
+start_socket_fixture named-only
+export HANCHOU_TEST_HERDR_VERSION=0.8.1
+rm -f "$FAKE_OPEN_LOG"
+if hanchou_test open herdrm work > "$TMP/herdrm-version.out" 2> "$TMP/herdrm-version.err"; then
+  echo "expected Herdrm open to reject an unpinned live Herdr version" >&2
+  exit 1
+fi
+grep -q 'cannot verify the pinned live Herdr 0.8.2 session' "$TMP/herdrm-version.err"
+[[ ! -e "$DEFAULT_SOCKET" ]]
+[[ ! -e "$FAKE_OPEN_LOG" ]]
+export HANCHOU_TEST_HERDR_VERSION=0.8.2
+
+rm -f "$FAKE_OPEN_LOG"
+hanchou_test launch work --no-browser --herdrm > "$TMP/herdrm-bridge.out"
+grep -q 'created Herdrm compatibility link:' "$TMP/herdrm-bridge.out"
+wait_for_file "$FAKE_OPEN_LOG"
+grep -Fxq -- '-a herdrm' "$FAKE_OPEN_LOG"
+[[ -L "$DEFAULT_SOCKET" ]]
+
+stop_socket_fixture
+rm -f "$DEFAULT_SOCKET"
 start_socket_fixture mismatch
 rm -f "$FAKE_OPEN_LOG"
 hanchou_test launch work --no-browser --herdrm > "$TMP/herdrm-mismatch.out"
