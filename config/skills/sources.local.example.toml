@@ -1,0 +1,17 @@
+schema_version = 1
+
+# Copy selected entries into:
+# ~/.config/hanchou/<profile>/skills.local.toml
+#
+# Do not commit the resulting file. Do not put credentials in it. Authentication
+# for remote private repositories comes from existing Git/SSH/gh configuration.
+
+[[sources]]
+name = "local-policy-overlay"
+location = "/absolute/path/to/reviewed-private-skill-repository"
+visibility = "private"
+enabled = false
+copy = true
+scope = "global"
+agents = ["codex", "claude-code"]
+skills = ["company-policy"]

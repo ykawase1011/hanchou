@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hanchou.dev/schemas/relay-event.v1.json",
+  "title": "Hanchou Relay event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "event_id",
+    "type",
+    "task_id",
+    "from_agent",
+    "from_role",
+    "to_agent",
+    "to_role",
+    "delegation_depth",
+    "created_at",
+    "summary",
+    "artifacts",
+    "verification"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hanchou.relay-event.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "enum": [
+        "accepted",
+        "checkpoint",
+        "needs_decision",
+        "blocked",
+        "completed",
+        "failed",
+        "discovered_work",
+        "schedule_proposal",
+        "human_request",
+        "schedule_due",
+        "delivery_requested"
+      ]
+    },
+    "task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "from_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "from_role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "to_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "to_role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "delegation_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "detail_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "origin": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": true
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "recovery_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ack": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "dead_letter": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

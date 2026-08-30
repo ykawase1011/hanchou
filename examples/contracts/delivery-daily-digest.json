@@ -1,0 +1,21 @@
+{
+  "schema": "hanchou.delivery.v1",
+  "delivery_id": "dly_daily_digest",
+  "kind": "daily_digest",
+  "task_id": null,
+  "source_event_id": "evt_daily_review",
+  "created_at": "2026-08-30T01:00:00Z",
+  "policy": "always",
+  "renderer": "orchestrator",
+  "destination": {
+    "type": "local_session",
+    "agent": "orchestrator"
+  },
+  "summary": "Create and publish the daily Hanchou digest.",
+  "body_ref": null,
+  "dedupe_key": "digest:work:2026-08-30",
+  "coalesce_key": "digest:work:daily",
+  "not_before": null,
+  "status": "pending",
+  "attempts": 0
+}

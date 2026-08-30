@@ -1,0 +1,47 @@
+schema_version = 1
+
+# Clone hanchou-skills as a sibling repository or override this source in
+# ~/.config/hanchou/<profile>/skills.local.toml.
+[[sources]]
+name = "hanchou-control-skills"
+location = "../hanchou-skills"
+visibility = "public"
+enabled = true
+copy = true
+scope = "project"
+agents = ["codex", "claude-code"]
+skills = ["hanchou-cli", "hanchou-orchestrator", "hanchou-task", "hanchou-schedule", "hanchou-relay", "hanchou-reporting", "hanchou-usage-routing"]
+
+[[sources]]
+name = "hanchou-worker-skills"
+location = "../hanchou-skills"
+visibility = "public"
+enabled = true
+copy = true
+scope = "global"
+agents = ["codex", "claude-code"]
+skills = ["hanchou-mission-lead", "hanchou-worker", "hanchou-reviewer", "hanchou-relay"]
+
+[[sources]]
+name = "hanchou-codex-writing"
+location = "../hanchou-skills"
+visibility = "public"
+enabled = true
+copy = true
+scope = "global"
+agents = ["codex"]
+skills = ["hanchou-writer", "hanchou-editor"]
+
+[[sources]]
+name = "herdr-official"
+location = "https://github.com/herdrdev/herdr.git"
+ref = "v0.8.2"
+visibility = "public"
+enabled = true
+copy = true
+scope = "global"
+agents = ["codex", "claude-code"]
+skills = ["herdr"]
+
+# Confidential policy sources are machine-local only:
+# ~/.config/hanchou/<profile>/skills.local.toml

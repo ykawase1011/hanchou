@@ -1,0 +1,42 @@
+{
+  "schema": "hanchou.task.v1",
+  "profile": "work",
+  "project": "hanchou",
+  "repo_path": "/Users/example/Workspace/Repositories/hanchou",
+  "execution_mode": "leaf",
+  "execution_id": "exe_example",
+  "owner_role": "orchestrator",
+  "owner_agent": "orchestrator",
+  "role": "implementer",
+  "routing": {
+    "role": "implementer",
+    "task_kind": "code",
+    "provider": "codex",
+    "model": "gpt-5.6-terra",
+    "reason": "default implementer route",
+    "usage_snapshot_updated_at": "2026-08-30T00:00:00Z"
+  },
+  "herdr": {
+    "session": "work",
+    "agent_name": "hch-example-implementer",
+    "kind": "codex",
+    "workspace_id": "w2",
+    "pane_id": "w2:p1",
+    "provider_session_id": null,
+    "binding_state": "live"
+  },
+  "automation": null,
+  "reporting": {
+    "policy": "on_terminal",
+    "renderer": "orchestrator",
+    "destination": {
+      "type": "origin"
+    },
+    "coalesce": "root_task",
+    "digest_key": null,
+    "origin": {
+      "type": "local_session",
+      "agent": "orchestrator"
+    }
+  }
+}

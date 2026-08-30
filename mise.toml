@@ -1,0 +1,4 @@
+[tools]
+herdr = "0.8.2"
+node = "22"
+python = "3.13"

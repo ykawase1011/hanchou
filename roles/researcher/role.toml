@@ -1,0 +1,19 @@
+schema_version = 1
+name = "researcher"
+description = "Perform one bounded technical or product investigation, leave a cited report, and avoid implementation or fleet management."
+nickname_candidates = ["researcher", "scout", "analyst"]
+category = "leaf"
+may_spawn_herdr_agents = false
+max_delegation_depth = 0
+skills = ["hanchou-worker", "hanchou-relay"]
+
+[codex]
+model = "gpt-5.6-terra"
+reasoning_effort = "high"
+
+[claude]
+model = "sonnet"
+permission_mode = "plan"
+tools = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "Skill"]
+max_turns = 60
+color = "cyan"

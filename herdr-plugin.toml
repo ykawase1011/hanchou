@@ -1,0 +1,28 @@
+id = "hanchou"
+name = "Hanchou"
+version = "0.2.0"
+min_herdr_version = "0.8.2"
+description = "Herdr-first orchestration policy, durable relay, and configuration distribution."
+platforms = ["linux", "macos"]
+
+# Repair pending Relay Inbox work once after the Herdr session has restored.
+[[startup]]
+command = ["./bin/hanchou", "relay", "dispatch"]
+
+# Herdr owns the lifecycle signal. A worker/lead settling runs one idempotent
+# dispatch pass; the relay event remains the durable source of truth.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["./bin/hanchou", "relay", "dispatch"]
+
+[[actions]]
+id = "relay-status"
+title = "Hanchou: relay status"
+contexts = ["workspace", "tab", "pane"]
+command = ["./bin/hanchou", "inbox", "list"]
+
+[[actions]]
+id = "open-tasks"
+title = "Hanchou: open task UI"
+contexts = ["workspace"]
+command = ["./bin/hanchou", "open", "tasks"]

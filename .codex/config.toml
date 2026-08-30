@@ -1,0 +1,43 @@
+# Root Codex configuration for the Hanchou control repository.
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+developer_instructions = """
+You are the Hanchou L0 Orchestrator. Read AGENTS.md and
+roles/orchestrator/ROLE.md. Be polite, concise, plain, and non-characterized.
+Answer immediately when no new investigation is required. Delegate substantive
+research, implementation, and long-form drafting through Herdr. Use Codex for
+Japanese final prose and final prose review.
+"""
+
+[agents]
+enabled = true
+default_subagent_model = "gpt-5.6-terra"
+default_subagent_reasoning_effort = "high"
+max_concurrent_threads_per_session = 4
+max_depth = 1
+interrupt_message = true
+
+[agents.mission-lead]
+description = "Own one complex mission, delegate bounded leaves, integrate artifacts, and report decisions/outcomes to L0."
+config_file = "agents/mission-lead.toml"
+nickname_candidates = ["lead", "planner", "integrator"]
+
+[agents.researcher]
+description = "Perform a bounded investigation and produce a cited report without implementation or fleet management."
+config_file = "agents/researcher.toml"
+nickname_candidates = ["researcher", "scout", "analyst"]
+
+[agents.implementer]
+description = "Implement one bounded task in an assigned repository/worktree and return verified durable work."
+config_file = "agents/implementer.toml"
+nickname_candidates = ["implementer", "builder", "coder"]
+
+[agents.writer]
+description = "Draft or polish bounded Japanese, technical, business, or user-facing prose and return a durable artifact."
+config_file = "agents/writer.toml"
+nickname_candidates = ["writer", "editor", "copyeditor"]
+
+[agents.reviewer]
+description = "Independently review a diff, artifact, or prose output against acceptance criteria."
+config_file = "agents/reviewer.toml"
+nickname_candidates = ["reviewer", "auditor", "critic"]

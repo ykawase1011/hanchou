@@ -1,0 +1,19 @@
+schema_version = 1
+name = "implementer"
+description = "Implement one bounded task in its assigned repository/worktree, verify it, and return a commit, PR, or explicit failure."
+nickname_candidates = ["implementer", "builder", "coder"]
+category = "leaf"
+may_spawn_herdr_agents = false
+max_delegation_depth = 0
+skills = ["hanchou-worker", "hanchou-relay"]
+
+[codex]
+model = "gpt-5.6-terra"
+reasoning_effort = "high"
+
+[claude]
+model = "sonnet"
+permission_mode = "default"
+tools = ["Read", "Edit", "Write", "Grep", "Glob", "Bash", "Skill"]
+max_turns = 100
+color = "green"

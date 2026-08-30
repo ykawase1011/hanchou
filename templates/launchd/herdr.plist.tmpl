@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.hanchou.{{PROFILE}}.herdr</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{HERDR_BIN}}</string>
+    <string>--session</string>
+    <string>{{HERDR_SESSION}}</string>
+    <string>server</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{{CONTROL_DIR}}</string>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>{{PATH}}</string>
+    <key>HANCHOU_PROFILE</key><string>{{PROFILE}}</string>
+    <key>HANCHOU_HOME</key><string>{{STATE_ROOT}}</string>
+    <key>HANCHOU_REPO_ROOT</key><string>{{REPO_ROOT}}</string>
+    <key>HANCHOU_CONFIG_ROOT</key><string>{{CONFIG_ROOT}}</string>
+    <key>HANCHOU_BEADS_DIR</key><string>{{BEADS_DIR}}</string>
+    <key>HANCHOU_RELAY_DIR</key><string>{{RELAY_DIR}}</string>
+    <key>BEADS_DIR</key><string>{{BEADS_DIR}}</string>
+    <key>BD_AGENT_PROFILE</key><string>conservative</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>{{STATE_ROOT}}/logs/herdr.out.log</string>
+  <key>StandardErrorPath</key><string>{{STATE_ROOT}}/logs/herdr.err.log</string>
+</dict>
+</plist>

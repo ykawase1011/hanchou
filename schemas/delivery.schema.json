@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hanchou.dev/schemas/delivery.v1.json",
+  "title": "Hanchou Delivery v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "delivery_id",
+    "kind",
+    "task_id",
+    "source_event_id",
+    "created_at",
+    "policy",
+    "renderer",
+    "destination",
+    "summary",
+    "status",
+    "attempts"
+  ],
+  "$defs": {
+    "destination": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "local_session",
+            "origin",
+            "slack_channel",
+            "slack_thread",
+            "discord_channel",
+            "discord_thread",
+            "file"
+          ]
+        },
+        "alias": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "message_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "hanchou.delivery.v1"
+    },
+    "delivery_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "task_terminal",
+        "decision",
+        "schedule_report",
+        "daily_digest",
+        "alert",
+        "manual"
+      ]
+    },
+    "task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy": {
+      "enum": [
+        "silent",
+        "parent_only",
+        "on_failure",
+        "on_change",
+        "on_terminal",
+        "always",
+        "digest",
+        "immediate"
+      ]
+    },
+    "renderer": {
+      "enum": [
+        "orchestrator",
+        "editor",
+        "producer"
+      ]
+    },
+    "destination": {
+      "$ref": "#/$defs/destination"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "body_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dedupe_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "coalesce_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "not_before": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "rendered",
+        "delivered",
+        "failed"
+      ]
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rendered": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "delivered": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

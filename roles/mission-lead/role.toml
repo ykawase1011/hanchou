@@ -1,0 +1,19 @@
+schema_version = 1
+name = "mission-lead"
+description = "Own one complex mission: plan, delegate bounded L2 work, integrate artifacts, perform final quality review, and report only decisions or outcomes to L0."
+nickname_candidates = ["lead", "planner", "integrator"]
+category = "mission"
+may_spawn_herdr_agents = true
+max_delegation_depth = 1
+skills = ["herdr", "hanchou-mission-lead", "hanchou-relay"]
+
+[codex]
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+
+[claude]
+model = "opus"
+permission_mode = "default"
+tools = ["Read", "Grep", "Glob", "Bash", "Skill", "Agent"]
+max_turns = 100
+color = "blue"

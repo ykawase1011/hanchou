@@ -1,0 +1,88 @@
+schema_version = 1
+
+[[projects]]
+id = "example-app"
+path = "~/Workspace/Repositories/example-app"
+allowed_profiles = ["work"]
+default_leaf_role = "implementer"
+default_leaf_kind = "codex"
+labels = ["project:example-app", "scope:work"]
+
+[[projects]]
+id = "hanchou"
+path = "~/Workspace/Repositories/hanchou"
+allowed_profiles = ["work", "personal"]
+default_leaf_role = "implementer"
+default_leaf_kind = "codex"
+labels = ["project:hanchou"]
+
+[[projects]]
+id = "hanchou-kingdom"
+path = "~/Workspace/Repositories/hanchou-kingdom"
+allowed_profiles = ["work", "personal"]
+default_leaf_role = "implementer"
+default_leaf_kind = "codex"
+labels = ["project:hanchou-kingdom"]
+
+# Confidential company/personal project coordinates belong only in
+# ~/.config/hanchou/<profile>/projects.local.toml.
+
+[agent_profiles.orchestrator]
+role = "orchestrator"
+kind = "codex"
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+
+[agent_profiles.mission_lead_claude]
+role = "mission-lead"
+kind = "claude"
+model = "opus"
+reasoning_effort = "high"
+
+[agent_profiles.mission_lead_codex]
+role = "mission-lead"
+kind = "codex"
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+
+[agent_profiles.researcher_claude]
+role = "researcher"
+kind = "claude"
+model = "sonnet"
+reasoning_effort = "medium"
+
+[agent_profiles.researcher_codex]
+role = "researcher"
+kind = "codex"
+model = "gpt-5.6-terra"
+reasoning_effort = "medium"
+
+[agent_profiles.implementer_codex]
+role = "implementer"
+kind = "codex"
+model = "gpt-5.6-terra"
+reasoning_effort = "high"
+
+[agent_profiles.implementer_claude]
+role = "implementer"
+kind = "claude"
+model = "sonnet"
+reasoning_effort = "medium"
+
+[agent_profiles.reviewer_codex]
+role = "reviewer"
+kind = "codex"
+model = "gpt-5.6-terra"
+reasoning_effort = "high"
+
+[agent_profiles.reviewer_claude]
+role = "reviewer"
+kind = "claude"
+model = "sonnet"
+reasoning_effort = "medium"
+
+[agent_profiles.writer]
+role = "writer"
+kind = "codex"
+model = "gpt-5.6-terra"
+reasoning_effort = "high"

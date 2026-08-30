@@ -1,0 +1,74 @@
+schema_version = 1
+name = "personal"
+
+[state]
+root = "~/.local/share/hanchou/personal"
+control_dir = "~/.local/share/hanchou/personal/control"
+beads_dir = "~/.local/share/hanchou/personal/control/.beads"
+worktree_dir = "~/.local/share/hanchou/personal/worktrees"
+report_dir = "~/.local/share/hanchou/personal/reports"
+relay_dir = "~/.local/share/hanchou/personal/relay"
+
+[herdr]
+session = "personal"
+orchestrator_workspace_label = "00-orchestrator"
+orchestrator_agent_name = "orchestrator"
+headless_cols = 160
+headless_rows = 50
+
+[beads]
+prefix = "hch"
+mode = "embedded"
+agent_profile = "conservative"
+single_writer = "orchestrator"
+remote_sync = false
+
+[ui]
+beads_ui_enabled = true
+beads_ui_host = "127.0.0.1"
+beads_ui_port = 3837
+herdr_beads_enabled = false
+
+[scheduler]
+enabled = true
+plugin_id = "dnzzl.automations"
+config_template = "automations/personal.yaml.tmpl"
+default_timeout_minutes = 60
+default_catch_up_minutes = 240
+
+[orchestrator]
+kind = "codex"
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+agent_name = "orchestrator"
+workspace_label = "00-orchestrator"
+allow_direct_project_reads = false
+allow_direct_project_writes = false
+allow_web_research = false
+max_delegation_depth = 2
+max_concurrent_direct_reports = 5
+acknowledge_before_delegated_work = true
+
+[model_routing]
+policy_file = "model-routing.toml"
+usage_snapshot = "~/.local/share/hanchou/personal/usage.json"
+
+[relay]
+lease_seconds = 900
+poll_seconds = 2
+max_batch = 20
+nudge_when = ["idle", "done"]
+coalesce_seconds = 15
+
+[reporting]
+default_user_task_policy = "on_terminal"
+default_child_task_policy = "parent_only"
+default_automation_policy = "on_failure"
+default_daily_digest_policy = "always"
+default_renderer = "orchestrator"
+default_destination = "local_session"
+
+[skills]
+sources_file = "skills/sources.example.toml"
+install_private = false
+local_overlay_file = "~/.config/hanchou/personal/skills.local.toml"

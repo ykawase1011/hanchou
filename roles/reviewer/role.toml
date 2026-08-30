@@ -1,0 +1,19 @@
+schema_version = 1
+name = "reviewer"
+description = "Independently review an assigned diff, artifact, or prose output against acceptance criteria and report actionable findings."
+nickname_candidates = ["reviewer", "auditor", "critic"]
+category = "leaf"
+may_spawn_herdr_agents = false
+max_delegation_depth = 0
+skills = ["hanchou-reviewer", "hanchou-relay"]
+
+[codex]
+model = "gpt-5.6-terra"
+reasoning_effort = "high"
+
+[claude]
+model = "sonnet"
+permission_mode = "plan"
+tools = ["Read", "Grep", "Glob", "Bash", "Skill"]
+max_turns = 60
+color = "orange"

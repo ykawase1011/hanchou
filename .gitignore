@@ -1,0 +1,11 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.bak.*
+config/skills/sources.toml
+.env
+.agents/
+.claude/settings.json
+.claude/skills/
+.codex/hooks.json
+skills-lock.json

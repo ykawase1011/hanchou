@@ -1,0 +1,20 @@
+{
+  "schema": "hanchou.delivery.v1",
+  "delivery_id": "dly_example",
+  "kind": "task_terminal",
+  "task_id": "hch-example",
+  "source_event_id": "evt_example",
+  "created_at": "2026-08-30T00:05:00Z",
+  "policy": "on_terminal",
+  "renderer": "orchestrator",
+  "destination": {
+    "type": "origin"
+  },
+  "summary": "Task hch-example completed and is ready for a final user report.",
+  "body_ref": "reports/hch-example/final.md",
+  "dedupe_key": "task:hch-example:terminal:completed",
+  "coalesce_key": "root:hch-example",
+  "not_before": null,
+  "status": "pending",
+  "attempts": 0
+}

@@ -1,0 +1,15 @@
+automations:
+  - name: hch-work-weekly-dependency-audit
+    cron: "0 10 * * 1"
+    repo: {{REPO_ROOT}}
+    workspace: worktree
+    agent: codex
+    model: gpt-5.6-terra
+    prompt: |
+      Read the active Hanchou Beads store through BEADS_DIR. Audit ready and
+      blocked dependency consistency, write a bounded report to {{REPORT_DIR}},
+      and emit a completed/failed Relay event to orchestrator. Do not close root
+      tasks or directly contact the user.
+    timeout_minutes: 45
+    catch_up_minutes: 120
+    disabled: true

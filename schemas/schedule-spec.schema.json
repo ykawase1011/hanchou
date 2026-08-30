@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hanchou.dev/schemas/schedule-spec.v1.json",
+  "title": "Hanchou schedule specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "name",
+    "profile",
+    "cron",
+    "timezone",
+    "target_mode",
+    "project",
+    "timeout_minutes",
+    "catch_up_minutes",
+    "overlap_policy",
+    "task_link_policy",
+    "enabled",
+    "reporting"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hanchou.schedule.v1"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+    },
+    "profile": {
+      "enum": [
+        "work",
+        "personal"
+      ]
+    },
+    "cron": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timezone": {
+      "type": "string",
+      "description": "IANA timezone or 'host'. Initial renderer requires the host timezone."
+    },
+    "target_mode": {
+      "enum": [
+        "new-agent",
+        "existing-orchestrator"
+      ]
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workspace": {
+      "enum": [
+        "worktree",
+        "root",
+        "none"
+      ]
+    },
+    "role": {
+      "enum": [
+        "orchestrator",
+        "mission-lead",
+        "researcher",
+        "implementer",
+        "writer",
+        "reviewer"
+      ]
+    },
+    "agent": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prompt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "workflow": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mcp_config": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agent_args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "timeout_minutes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "catch_up_minutes": {
+      "type": "integer",
+      "minimum": -1
+    },
+    "overlap_policy": {
+      "enum": [
+        "upstream",
+        "skip-same",
+        "reject-overlap"
+      ]
+    },
+    "task_link_policy": {
+      "enum": [
+        "none",
+        "existing-parent",
+        "new-run-task"
+      ]
+    },
+    "task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "reporting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "renderer",
+        "destination",
+        "coalesce"
+      ],
+      "properties": {
+        "policy": {
+          "enum": [
+            "silent",
+            "on_failure",
+            "on_change",
+            "on_terminal",
+            "always",
+            "digest",
+            "immediate"
+          ]
+        },
+        "renderer": {
+          "enum": [
+            "orchestrator",
+            "editor",
+            "producer"
+          ]
+        },
+        "destination": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "local_session",
+                "origin",
+                "slack_channel",
+                "slack_thread",
+                "discord_channel",
+                "discord_thread",
+                "file"
+              ]
+            }
+          }
+        },
+        "coalesce": {
+          "enum": [
+            "none",
+            "time_window",
+            "digest"
+          ]
+        },
+        "digest_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "change_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "target_mode": {
+            "const": "new-agent"
+          }
+        },
+        "required": [
+          "target_mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "repo",
+          "workspace",
+          "role",
+          "agent",
+          "model"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "prompt"
+            ],
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workflow": {
+                "type": "null"
+              }
+            }
+          },
+          {
+            "required": [
+              "workflow"
+            ],
+            "properties": {
+              "workflow": {
+                "type": "string",
+                "minLength": 1
+              },
+              "prompt": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "target_mode": {
+            "const": "existing-orchestrator"
+          }
+        },
+        "required": [
+          "target_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "role": {
+            "const": "orchestrator"
+          },
+          "workspace": {
+            "const": "none"
+          },
+          "agent": {
+            "type": "null"
+          },
+          "model": {
+            "type": "null"
+          },
+          "workflow": {
+            "type": "null"
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    }
+  ]
+}

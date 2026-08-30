@@ -1,0 +1,47 @@
+onboarding = false
+
+[server]
+headless_cols = {{HEADLESS_COLS}}
+headless_rows = {{HEADLESS_ROWS}}
+
+[terminal]
+# Hanchou panes must reach a deterministic prompt without invoking user login
+# hooks that can ask for credentials (for example ssh-add). The bootstrap PATH
+# already contains every required executable.
+default_shell = "/bin/bash"
+shell_mode = "non_login"
+new_cwd = "follow"
+
+[worktrees]
+directory = "{{WORKTREE_DIR}}"
+
+[keys]
+prefix = "ctrl+b"
+
+# Open the standard browser Task GUI.
+[[keys.command]]
+key = "prefix+shift+t"
+type = "shell"
+command = "open '{{BEADS_UI_URL}}'"
+description = "open Hanchou task UI"
+
+# Open the optional Beads dock inside Herdr.
+[[keys.command]]
+key = "prefix+shift+b"
+type = "plugin_action"
+command = "herdr-beads.open-dock"
+description = "toggle Beads task dock"
+
+# Open the optional Beads full board inside Herdr.
+[[keys.command]]
+key = "prefix+shift+k"
+type = "plugin_action"
+command = "herdr-beads.open-board"
+description = "open Beads task board"
+
+# Open the Automations board.
+[[keys.command]]
+key = "prefix+a"
+type = "shell"
+command = "herdr plugin pane open --plugin dnzzl.automations --entrypoint board --placement overlay"
+description = "open Automations board"
