@@ -1,6 +1,6 @@
 PROFILE ?= work
 
-.PHONY: plan apply apply-all doctor agents check open-tasks handoff
+.PHONY: plan apply apply-all doctor agents manifest manifest-check check open-tasks handoff
 
 plan:
 	./bin/hanchou plan $(PROFILE)
@@ -17,6 +17,12 @@ doctor:
 agents:
 	./bin/hanchou render-agents
 
+manifest:
+	python3 scripts/manifest.py generate
+
+manifest-check:
+	python3 scripts/manifest.py check
+
 check:
 	./bin/hanchou render-agents --check
 	mise exec -- python3 scripts/validate.py
@@ -24,7 +30,7 @@ check:
 	bash tests/test-delivery.sh
 	bash tests/test-execution.sh
 	bash tests/test-cli.sh
-	shasum -a 256 -c MANIFEST.sha256
+	python3 scripts/manifest.py check
 
 open-tasks:
 	./bin/hanchou open tasks $(PROFILE)

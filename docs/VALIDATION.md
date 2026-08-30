@@ -17,7 +17,9 @@
   agent-start failure → blocked/lost → non-destructive reconcile;
 - `hanchou-kingdom` passed secret-free repository checks;
 - old `hanchou-mailbox` files and command names were absent;
-- archive manifests are regenerated during final packaging.
+- `make manifest` regenerates each release manifest from the Git index only;
+- `make check` verifies both the exact tracked-file set and every recorded
+  SHA-256 checksum.
 
 On a target macOS host, 2026-08-30:
 
@@ -51,4 +53,7 @@ On a target macOS host, 2026-08-30:
 cd hanchou && make check
 cd ../hanchou-skills && make check
 cd ../hanchou-kingdom && make check
+
+# After staging an intentional tracked-file addition or removal:
+make manifest
 ```
