@@ -16,9 +16,10 @@ human repository shelf
   └─ relay/
 ```
 
-The repository shelf is only a human organization convention. Hanchou does not
-scan the caller's current directory. L0 resolves one absolute Git top-level for
-each Leaf Task. Dispatch then creates the task worktree automatically.
+The repository shelf is a human-approved authorization boundary, not a directory
+that Hanchou scans for work. Hanchou does not infer a target from the caller's
+current directory. L0 resolves one absolute Git top-level for each Leaf Task.
+Dispatch then creates the task worktree automatically.
 
 ## Recommended filesystem layout
 
@@ -56,29 +57,38 @@ hanchou project resolve --path /absolute/git/root --json
 hanchou project doctor
 ```
 
-There is intentionally no Agent-callable add/remove/trust command. A human
-edits the local TOML from an ordinary terminal. The file must be owned by the
-effective OS user, must be a regular non-symlink file, and must not be
-group/world writable. Its parent Hanchou config directories have the same
-non-symlink/non-writable requirement. This prevents trust expansion through the
-normal Hanchou command surface; it is not a kernel-level boundary against a
-hostile process running as the same OS user. A directory dedicated to Hanchou
-improves organization, but only a separate OS user, restrictive ownership/ACL,
-or Kingdom/VM provides a strong secret boundary.
+There is intentionally no Agent-callable arbitrary add/remove/trust command.
+For the fixed dedicated shelf only, a human may run `hanchou onboard` from an
+ordinary interactive terminal. Without `--yes` it is plan-only. Applying is
+rejected when `HERDR_ENV=1`, `HANCHOU_AGENT_ID` is present, or stdin is not a
+TTY. It accepts no arbitrary path and creates only
+`~/HanchouWorkspace/<profile>/repositories` with the corresponding fixed
+workspace-root ID. This makes first setup reproducible without letting a
+Managed Agent broaden authority through the normal command surface.
 
-For first-time setup, create the authority file from a normal terminal, then
-paste one of the reviewed entries below:
+The registry must be owned by the effective OS user, must be a regular
+non-symlink file, and must not be group/world writable. Its parent Hanchou
+config directories have the same non-symlink/non-writable requirement. This is
+not a kernel-level boundary against a hostile process running as the same OS
+user. A directory dedicated to Hanchou improves organization, but only a
+separate OS user, restrictive ownership/ACL, or Kingdom/VM provides a strong
+secret boundary.
+
+For the recommended first-time setup, review the plan and then apply it from a
+normal terminal:
+
+```bash
+hanchou onboard work
+hanchou onboard work --yes
+hanchou project list --json
+```
+
+This creates a `descendant-git-repositories` entry. If recursive authorization
+is too broad, do not run `onboard --yes`. Instead, create the parent directory
+and edit one exact entry at a time:
 
 ```bash
 mkdir -p ~/HanchouWorkspace/work/repositories
-
-# For a new checkout, replace OWNER/example-app and clone only a reviewed
-# public repository. If it already exists elsewhere, keep it there and
-# register its Git top-level instead.
-REPOSITORY_URL='https://github.com/OWNER/example-app.git'
-git clone "$REPOSITORY_URL" \
-  ~/HanchouWorkspace/work/repositories/example-app
-
 mkdir -p ~/.config/hanchou/work
 chmod go-w ~/.config ~/.config/hanchou ~/.config/hanchou/work
 touch ~/.config/hanchou/work/projects.local.toml
@@ -144,7 +154,7 @@ git -C /absolute/repository pull --ff-only
 git -C /absolute/repository status --short
 
 hanchou project resolve --path /absolute/repository
-hanchou start-orchestrator work
+hanchou launch work
 hanchou open orchestrator work
 ```
 

@@ -24,6 +24,8 @@ single_writer = "orchestrator"
 remote_sync = false
 
 [ui]
+dashboard_host = "127.0.0.1"
+dashboard_port = 3847
 beads_ui_enabled = true
 beads_ui_host = "127.0.0.1"
 beads_ui_port = 3837

@@ -70,7 +70,9 @@ hanchou             setup, routing, Relay, Delivery, cross-system operations
 
 Implemented in the scaffold:
 
-- configuration/apply/doctor/status/open;
+- fixed-path human onboarding and project authorization enforcement;
+- configuration/apply/doctor/status/launch/open;
+- loopback-only read-only status Dashboard;
 - provider-neutral Role generation;
 - usage snapshot/routing;
 - Relay Inbox and Delivery state machines;

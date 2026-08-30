@@ -7,6 +7,8 @@
 | Herdr common template | hanchou | yes | backup + atomic replace |
 | work/personal profile templates | hanchou / kingdom | yes | no secrets |
 | project authorization | `~/.config/hanchou/<profile>/projects.local.toml` | no | human-owned、deny-by-default、Core example is never authority |
+| dedicated repository shelf | `~/HanchouWorkspace/<profile>/repositories` | no | fixed-path human onboarding、Agent-safe Git repos only |
+| Dashboard host/port | hanchou profile | yes | literal loopback、read-only、work 3747 / personal 3847 |
 | private Skill sources | machine-local | no | reviewed private refs |
 | credentials/tokens | Keychain/secret manager/env | no | never in kingdom |
 | Beads DB | profile state dir | no | durable runtime state |

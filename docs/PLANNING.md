@@ -26,9 +26,11 @@ validation.
 - use Homebrew only for prerequisites such as mise, git, gh and Beads;
 - bootstrap provider integrations, Skills, beads-ui and herdr-automations;
 - keep herdr-beads optional and do not require a standalone Dolt server;
+- create the fixed human-approved Agent-safe repository shelf with the
+  plan-first interactive onboarding flow;
 - apply work profile;
-- launch Herdr and Task UI;
-- start Codex Orchestrator;
+- launch Herdr, Task UI, and the read-only Hanchou status Dashboard;
+- start Codex Orchestrator through the single `hanchou launch` entrypoint;
 - verify Claude/Codex Herdr integrations and Skills.
 
 **Exit:** all Core surfaces are visible locally.
@@ -98,7 +100,7 @@ Only after Core E2E:
 
 ## Non-goals before Core exit
 
-- custom GUI;
+- a custom writable Task/Agent GUI (a loopback read-only status Dashboard is in scope);
 - custom PTY/runtime;
 - second Task or Cron store;
 - automatic provider usage scraping by browser;

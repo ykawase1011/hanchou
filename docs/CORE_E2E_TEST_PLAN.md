@@ -1,5 +1,18 @@
 # Core E2E test plan
 
+## 0. Onboarding and startup
+
+1. From an ordinary terminal, verify `hanchou onboard work` is plan-only.
+2. Apply `hanchou onboard work --yes`; verify the fixed workspace/registry
+   modes and an idempotent second run.
+3. Run `hanchou plan work`, `hanchou bootstrap work`, and `hanchou doctor work`.
+4. Run `hanchou launch work`; verify the Dashboard opens and the Orchestrator
+   exists in the named Herdr session.
+5. Verify the Dashboard shows Herdr/Beads/Relay/workspace summary, changes no
+   durable state, and refuses non-loopback or state-changing HTTP access.
+6. Ask L0 for active/blocked Beads Tasks and live Herdr execution Agents; verify
+   it checks both sources and explicitly reports zero when empty.
+
 ## A. Intake and immediate acknowledgement
 
 1. Send a task to L0.

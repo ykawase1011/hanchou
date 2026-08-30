@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   accessSync,
   chmodSync,
@@ -74,6 +75,34 @@ function command(name: string): string {
   const value = which(name);
   if (!value) throw new LaunchdError(`required command not found: ${name}`);
   return value;
+}
+
+function configuredCommand(environmentName: string, fallbackName: string): string {
+  const configured = process.env[environmentName];
+  if (configured === undefined) return command(fallbackName);
+  if (!isAbsolute(configured)) throw new LaunchdError(`${environmentName} must be an absolute path`);
+  let canonical: string;
+  try {
+    canonical = realpathSync(configured);
+    accessSync(canonical, constants.X_OK);
+    if (!statSync(canonical).isFile()) throw new Error("not a file");
+  } catch {
+    throw new LaunchdError(`${environmentName} must identify an executable file`);
+  }
+  return canonical;
+}
+
+function fingerprint(label: string, files: string[], values: string[]): string {
+  const digest = createHash("sha256");
+  digest.update(`${label}\0`);
+  for (const value of values) digest.update(`value\0${value.length}\0${value}\0`);
+  for (const path of files) {
+    const canonical = realpathSync(path);
+    digest.update(`file\0${canonical}\0`);
+    digest.update(readFileSync(canonical));
+    digest.update("\0");
+  }
+  return digest.digest("hex");
 }
 
 function expandEnvironment(value: string): string {
@@ -161,7 +190,7 @@ function sleep(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function loadLaunchAgent(label: string, plist: string): void {
+function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverCurrent = false): void {
   const launchctl = which("launchctl");
   if (platform() !== "darwin" || launchctl === undefined) {
     console.log(`launchctl unavailable; not loaded: ${label}`);
@@ -171,6 +200,17 @@ function loadLaunchAgent(label: string, plist: string): void {
   const domain = `gui/${process.getuid()}`;
   const service = `${domain}/${label}`;
   const loaded = runStatus(launchctl, ["print", service], true).status === 0;
+  if (loaded && !reload) {
+    if (recoverCurrent) {
+      const result = runStatus(launchctl, ["kickstart", service], true);
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new LaunchdError(`launchctl kickstart failed: ${service}`);
+      console.log(`kickstarted ${service} (idempotent recovery)`);
+      return;
+    }
+    console.log(`loaded ${service} (current)`);
+    return;
+  }
   if (loaded) {
     const result = runStatus(launchctl, ["bootout", service], false);
     if (result.error) throw result.error;
@@ -266,13 +306,30 @@ function main(): number {
   };
   const herdr = valueAsTable(profile.herdr, "herdr");
   const ui = valueAsTable(profile.ui, "ui");
+  const beadsUiHost = valueAsString(ui.beads_ui_host, "ui.beads_ui_host");
+  const beadsUiPort = String(valueAsNumber(ui.beads_ui_port, "ui.beads_ui_port"));
+  const dashboardHost = valueAsString(ui.dashboard_host, "ui.dashboard_host");
+  const dashboardPort = String(valueAsNumber(ui.dashboard_port, "ui.dashboard_port"));
+  const beadsUiBin = command("bdui");
+  const nodeBin = configuredCommand("HANCHOU_PINNED_NODE_BIN", "node");
+  const herdrBin = configuredCommand("HANCHOU_PINNED_HERDR_BIN", "herdr");
+  const hanchouEntry = join(ROOT, "libexec", "hanchou.ts");
+  const versions = readToml(join(CONFIG_ROOT, "versions.toml"));
+  const versionComponents = valueAsTable(versions.components, "versions.components");
+  const beadsUiVersion = valueAsString(valueAsTable(versionComponents.beads_ui, "versions.components.beads_ui").version, "versions.components.beads_ui.version");
+  const beadsUiFingerprint = fingerprint("beads-ui", [beadsUiBin], [beadsUiHost, beadsUiPort, beadsUiVersion]);
+  const dashboardFingerprint = fingerprint(
+    "dashboard",
+    [hanchouEntry, join(ROOT, "lib", "dashboard.ts"), join(ROOT, "lib", "dashboard-snapshot.ts"), join(ROOT, "lib", "toml.ts"), join(CONFIG_ROOT, "profiles", `${args.profile}.toml`)],
+    [dashboardHost, dashboardPort, nodeBin],
+  );
   const specs: [string, string, Record<string, string>][] = [
     [
       join(ROOT, "templates", "launchd", "herdr.plist.tmpl"),
       join(generated, `dev.hanchou.${args.profile}.herdr.plist`),
       {
         ...common,
-        HERDR_BIN: command("herdr"),
+        HERDR_BIN: herdrBin,
         HERDR_SESSION: valueAsString(herdr.session, "herdr.session"),
       },
     ],
@@ -281,26 +338,42 @@ function main(): number {
       join(generated, `dev.hanchou.${args.profile}.beads-ui.plist`),
       {
         ...common,
-        BDUI_BIN: command("bdui"),
+        BDUI_BIN: beadsUiBin,
         BD_BIN: command("bd"),
-        HOST: valueAsString(ui.beads_ui_host, "ui.beads_ui_host"),
-        PORT: String(valueAsNumber(ui.beads_ui_port, "ui.beads_ui_port")),
+        HOST: beadsUiHost,
+        PORT: beadsUiPort,
+        FINGERPRINT: beadsUiFingerprint,
+      },
+    ],
+    [
+      join(ROOT, "templates", "launchd", "dashboard.plist.tmpl"),
+      join(generated, `dev.hanchou.${args.profile}.dashboard.plist`),
+      {
+        ...common,
+        NODE_BIN: nodeBin,
+        HANCHOU_ENTRY: hanchouEntry,
+        HOST: dashboardHost,
+        PORT: dashboardPort,
+        FINGERPRINT: dashboardFingerprint,
       },
     ],
   ];
 
   for (const [source, target, values] of specs) {
     const rendered = replacePlaceholders(readText(source), values);
-    if (existsSync(target) && readText(target) !== rendered) backup(target);
-    atomicWrite(target, rendered);
-    console.log(`wrote ${target}`);
+    const generatedChanged = !existsSync(target) || readText(target) !== rendered;
+    if (existsSync(target) && generatedChanged) backup(target);
+    if (generatedChanged) atomicWrite(target, rendered);
+    console.log(`${generatedChanged ? "wrote" : "current"} ${target}`);
     if (args.install) {
       const destination = join(homedir(), "Library", "LaunchAgents", basename(target));
       mkdirSync(dirname(destination), { recursive: true });
-      if (existsSync(destination) && readText(destination) !== rendered) backup(destination);
-      atomicWrite(destination, rendered);
-      console.log(`installed ${destination}`);
-      loadLaunchAgent(target.slice(0, -".plist".length).split("/").at(-1) as string, destination);
+      const destinationChanged = !existsSync(destination) || readText(destination) !== rendered;
+      if (existsSync(destination) && destinationChanged) backup(destination);
+      if (destinationChanged) atomicWrite(destination, rendered);
+      console.log(`${destinationChanged ? "installed" : "current"} ${destination}`);
+      const label = target.slice(0, -".plist".length).split("/").at(-1) as string;
+      loadLaunchAgent(label, destination, destinationChanged, label.endsWith(".beads-ui"));
     }
   }
   if (args.install) console.log("LaunchAgents installed and loaded in the current GUI domain.");

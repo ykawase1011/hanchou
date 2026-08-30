@@ -36,7 +36,8 @@ component.
 
 ### Implemented
 
-- profile plan/apply/doctor/status/open;
+- fixed-path human onboarding plus profile plan/apply/doctor/status/launch/open;
+- loopback-only read-only cross-system status Dashboard;
 - human-owned project authorization inspection and dispatch enforcement;
 - Orchestrator startup and generated Agent definitions;
 - provider usage snapshots and routing resolution;
@@ -129,7 +130,9 @@ hanchou project resolve --path /absolute/git/top-level --json
 ```
 
 The registry is human-owned and deny-by-default. Agents may inspect it but no
-Hanchou command exposed to them can broaden it.
+Hanchou command exposed to them can broaden it. A human may separately run the
+fixed-path, plan-first `hanchou onboard <profile> --yes` flow from an ordinary
+interactive terminal.
 
 ### Record a worker completion
 

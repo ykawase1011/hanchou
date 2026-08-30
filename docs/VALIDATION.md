@@ -34,6 +34,11 @@
   production Node/Bash preload options, effective-user HOME/XDG/mise root
   normalization, managed-runtime custom-config rejection, and safe
   missing-registry deny-all behavior;
+- human onboarding tests passed plan-only behavior, ordinary-terminal/TTY
+  enforcement, Herdr/Managed-Agent rejection, fixed-path mode 0700 creation,
+  mode 0600 registry append with backup/comment preservation, descendant Git
+  resolve, idempotence, project/workspace-root ID collision rejection without
+  partial mutation, and writable-parent rejection before mutation;
 - Delivery lifecycle passed `create → rendered → delivered`, including
   traversal/symlink rejection and duplicate concurrent-create exclusion;
   queue reconciliation preserved staged render/failure evidence, prevented a
@@ -51,6 +56,25 @@
   passed a live sandbox-proxy smoke test, overrode inherited unsafe local/socket
   settings, denied external domains, local TCP and a sibling Unix socket, and
   allowed only the selected Herdr Unix socket;
+- the read-only Dashboard passed literal-loopback bind enforcement, Host-header
+  validation, GET-only routing, security headers/CSP, no CORS or remote assets,
+  DOM text-only rendering of hostile values, bounded 5-second refresh,
+  degraded-snapshot isolation, and idempotent shutdown of a hanging request;
+  production snapshots run in one deduplicated subprocess with a four-second
+  deadline, one-MiB output limit, process-group termination, redacted failure
+  details, and a health endpoint that remains responsive while a probe hangs;
+- launch fake E2E passed strict Herdr 0.8.2 server-status JSON, all three service
+  readiness gates, ready and initialization-pending Orchestrators, browser
+  opt-out, no healthy Herdr/LaunchAgent restart, and optional Herdrm
+  missing/mismatched/matched socket behavior;
+- Herdrm compatibility tests rejected missing, regular-file, and different live
+  sockets and accepted only two paths resolving to the same live Unix socket;
+- LaunchAgent rendering produced pinned Herdr, beads-ui, and Dashboard plists,
+  embedded the exact validated mise Herdr/Node paths even when Herdr was absent
+  from `PATH`, left a second unchanged render current without backups, reloaded
+  only the service whose fingerprint changed, recovered an unchanged beads-ui
+  daemon idempotently without restarting Herdr, and validated all Dashboard
+  placeholders;
 - `hanchou-kingdom` passed secret-free repository checks;
 - old `hanchou-mailbox` files and command names were absent;
 - `make manifest` regenerates each release manifest from the Git index only;
@@ -73,6 +97,10 @@ On a target macOS host, 2026-08-30:
 
 ## Not yet proven
 
+- live installation and endpoint health of the new Dashboard LaunchAgent plus
+  one `hanchou launch work` run on the target Mac after this change;
+- Herdrm monitor/attach against a socket-compatible Hanchou session (Herdrm is
+  optional and the standard named-session layout is intentionally rejected);
 - a fresh live L0 task-status query after the managed Codex environment fix. A
   follow-up probe in the earlier L0 exposed that Codex's persistent app-server
   had lost `HERDR_ENV`; deterministic L0/worker argv tests now verify explicit

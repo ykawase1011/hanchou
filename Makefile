@@ -32,7 +32,13 @@ check: typecheck
 	mise exec -- bash tests/test-relay.sh
 	mise exec -- bash tests/test-delivery.sh
 	mise exec -- bash tests/test-projects.sh
+	mise exec -- bash tests/test-onboard.sh
 	mise exec -- bash tests/test-execution.sh
+	mise exec -- bash tests/test-launch.sh
+	mise exec -- node --experimental-strip-types tests/test-dashboard.ts
+	mise exec -- node --experimental-strip-types tests/test-dashboard-snapshot.ts
+	mise exec -- bash tests/test-herdrm.sh
+	mise exec -- bash tests/test-launchd.sh
 	mise exec -- bash tests/test-cli.sh
 	mise exec -- node --experimental-strip-types scripts/manifest.ts check
 

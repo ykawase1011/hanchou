@@ -22,6 +22,7 @@ Herdr runtime
 mise-managed Herdr 0.8.2 / Node.js 22
 Beads Task source
 beads-ui standard GUI
+Hanchou loopback read-only status Dashboard
 herdr-beads optional Herdr board
 herdr-automations Cron source
 Codex Sol L0
@@ -42,9 +43,10 @@ Relay Inbox + Delivery
 ## First implementation tasks
 
 1. Run `make check`.
-2. Run `mise install`, inspect `hanchou plan work`, then bootstrap a clean work
-   profile on a test HOME or target Mac.
-3. Start Herdr, beads-ui, and Codex Orchestrator.
+2. Run `mise install`, review `hanchou onboard work` and `hanchou plan work`,
+   then bootstrap a clean work profile on a test HOME or target Mac.
+3. Verify the Herdr, beads-ui, and Dashboard LaunchAgents, then start the Codex
+   Orchestrator with `hanchou launch work`.
 4. Implement/verify Beads↔Herdr dispatch command.
 5. Complete one Leaf task and prove later-turn Relay response.
 6. Prove Relay lease recovery and pending Delivery visibility.

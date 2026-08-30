@@ -23,6 +23,7 @@
 
 ## 運用・検証
 
+- `ONBOARDING.md`：初心者向けの専用workspace作成、起動、Herdr／Herdrm操作
 - `COMMANDS.md`：CLI surface
 - `CLI_AND_SKILL_BOUNDARY.md`：CLIを残す理由とupstream CLIとの境界
 - `CONFIGURATION_MATRIX.md`：設定値と所有repository

@@ -90,7 +90,10 @@ artifactを検証します。
 人間がexact Git repositoryまたはsecret-freeな専用workspace rootを許可し、
 Agentは`list/show/resolve/doctor`のみ行います。Beadのproject ID、canonical
 repository path、profileをdispatch前に再照合し、Agent自身が許可範囲を広げる
-commandは提供しません。Leafごとのworktreeは許可照合後に自動生成します。
+commandは提供しません。初回の専用rootだけは、通常terminalの人間が固定pathを
+plan確認後に登録する`hanchou onboard <profile> --yes`を提供します。この適用は
+Managed Agent環境と非対話実行から拒否します。Leafごとのworktreeは許可照合後に
+自動生成します。
 これはGit作業分離であり、host上のsecret read isolationではありません。
 
 ## 7. Scheduler
@@ -143,6 +146,8 @@ mechanicsを担当します。
 - 通常のfresh-agent Cronは`herdr-automations`。
 - Profile、routing、Relay、Delivery、cross-system operationは`hanchou`。
 - machine-local project authorizationの照合は`hanchou project`。
+- human-ownedな固定専用workspaceの初期登録は`hanchou onboard`。
+- service readiness、Orchestrator開始、read-only Dashboard起動は`hanchou launch`。
 
 GenericなTask／Agent facadeは作りません。`hanchou execution`は
 Beads↔Herdrをまたぐdispatch/reconcileに限定し、`hanchou schedule`は
@@ -189,8 +194,12 @@ brew install mise git gh beads
 cd hanchou
 mise install
 
+./bin/hanchou onboard work
+./bin/hanchou onboard work --yes
+./bin/hanchou plan work
 ./bin/hanchou bootstrap
 ./bin/hanchou doctor work
+./bin/hanchou launch work
 ```
 
 `bootstrap`はHerdrのCodex／Claude integration、Hanchou Skills、必要なHerdr
@@ -199,7 +208,17 @@ plugin等を初期設定します。既存のユーザー設定を変える場�
 
 `doctor`は少なくとも、mise、要求されたHerdr／Node.js version、Beads (`bd`)、
 Codex、Claude Code、Herdrの両provider integration、herdr-automations、beads-ui、
-Hanchou Skillsを検証します。
+loopback限定のHanchou Dashboard、Hanchou Skills、project registryを検証します。
+
+Hanchou DashboardはTask／Agentの新しい正本や操作GUIではありません。Herdr、
+Beads、Relay、workspace登録のread-only summaryと、各upstream UI／TUIへの入口だけを
+profile別loopback portで提供します。状態変更API、CORS、telemetryは持ちません。
+`launch`はbootstrap済みserviceのreadinessを確認してOrchestratorを開始・初期化し、
+このDashboardを開きます。
+
+Herdrmはoptionalです。Herdrm 0.5.xのdefault socketとHanchou named-session socketが
+同じ実体だと確認できる場合だけmonitor／attach用途で開きます。Hanchouは互換性の
+ためにsocket bridgeや別のdefault Herdr sessionを自動作成しません。
 
 `herdr-beads`はoptional dependencyでありCoreの成立条件に含めません。source
 buildに追加toolchainが必要な場合、利用者がHerdr内Boardを必要とするときだけ

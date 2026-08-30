@@ -3,7 +3,8 @@
 # mutating Inbox transition is accepted.
 
 # Project authorization is human-owned machine-local state. Managed Agents may
-# inspect and resolve it, but no command that expands or removes trust exists.
+# inspect and resolve it. `hanchou onboard --yes` expands trust, so it is
+# intentionally not allowlisted and is restricted to a human interactive shell.
 prefix_rule(
     pattern = ["hanchou", "project", ["list", "show", "resolve", "doctor"]],
     decision = "allow",

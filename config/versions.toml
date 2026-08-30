@@ -1,5 +1,5 @@
 schema_version = 1
-verified_at = "2026-08-30"
+verified_at = "2026-08-31"
 
 [components.beads]
 version = "1.2.2"
@@ -16,6 +16,11 @@ source = "DnzzL/herdr-automations"
 [components.herdr_beads]
 ref = "bef9e42a2dc915be65d87d96a8843301d3457a83"
 source = "miiraheart/herdr-beads"
+optional = true
+
+[components.herdrm]
+version = "0.5.3"
+source = "missuo/herdrm"
 optional = true
 
 [components.skills_cli]

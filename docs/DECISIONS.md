@@ -3,7 +3,7 @@
 ## 確定
 
 1. RuntimeはHerdrのみ。
-2. Task正本はBeads、標準GUIはbeads-ui、Herdr内表示はherdr-beads optional。
+2. Task正本はBeads、標準Task操作GUIはbeads-ui、Herdr内表示はherdr-beads optional。
 3. Cron正本はherdr-automations。
 4. L0 Orchestratorは当面Codex Sol。
 5. L2は原則Claude Sonnet／Codex Terra。
@@ -30,6 +30,12 @@
     deny-by-defaultとする。通常はexact repo、opt-inではsecret-freeな専用rootの
     descendant Git repoを許可する。Managed Agentは照合のみ行い、authorityを
     追加・拡張しない。
+19. 初回の専用root登録は、固定path・plan-first・対話TTY限定の
+    `hanchou onboard`を人間向けに提供する。Managed Agent環境からの適用と任意path
+    指定は認めない。
+20. HanchouはTask／Agent操作GUIを複製せず、Herdr、Beads、Relay、workspaceの状態と
+    upstream入口をまとめるloopback限定・read-only Dashboardだけを提供する。
+    Herdrmはnamed-session socket互換性を確認できる場合のoptional monitorとする。
 
 ## 初期default
 

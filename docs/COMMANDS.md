@@ -19,16 +19,23 @@ See `CLI_AND_SKILL_BOUNDARY.md` and the shared `hanchou-cli` Skill.
 ### Setup and UI
 
 ```bash
+hanchou onboard work
+hanchou onboard work --yes
 hanchou bootstrap [work|personal]
 hanchou plan work
 hanchou apply work --yes [--install-upstream]
 hanchou doctor work
 hanchou status work [--json]
+hanchou launch work [--no-browser] [--herdrm]
 hanchou start-orchestrator work
+hanchou open dashboard work
 hanchou open tasks work
 hanchou open herdr work
+hanchou open herdrm work
 hanchou open orchestrator work
 hanchou open automations work
+hanchou dashboard snapshot work
+hanchou dashboard serve work
 hanchou render-agents [--check]
 hanchou handoff
 ```
@@ -36,6 +43,25 @@ hanchou handoff
 `bootstrap` runs `mise install` from the Core repository and then performs the
 full idempotent apply. Use `plan` first to review user configuration files that
 may be backed up and replaced.
+
+`onboard` is the narrow human-only exception to the otherwise inspection-only
+project authorization surface. It takes no arbitrary path. The first invocation
+prints a plan for the fixed `~/HanchouWorkspace/<profile>/repositories` shelf;
+`--yes` applies it only from an ordinary interactive terminal outside a
+Herdr-managed Agent. It creates mode-0700 directories, atomically writes the
+mode-0600 registry, backs up changes, and is idempotent.
+
+`launch` does not install or silently replace services. After `bootstrap` has
+registered the macOS LaunchAgents, it verifies Herdr, beads-ui, and the
+read-only Hanchou Dashboard, starts or initializes the Orchestrator, and opens
+the Dashboard. `--herdrm` also attempts the optional native app, but inability
+to prove that Herdrm's default socket matches the Hanchou named-session socket
+is reported as a warning and never starts a second Herdr session.
+
+`dashboard serve` is normally owned by the LaunchAgent. It binds only to the
+configured literal loopback address and exposes GET-only `/`, `/health`, and
+`/api/status`. It has no state-changing action API. `dashboard snapshot` emits
+the same status model as JSON for diagnostics.
 
 ### Usage snapshot and routing
 
@@ -64,8 +90,9 @@ hanchou project doctor [<project-or-root-id>] --json
 
 These commands only inspect the fixed, human-owned machine-local registry at
 `~/.config/hanchou/<profile>/projects.local.toml`. There is intentionally no
-Agent-callable command to add a repository or broaden a workspace root. Exact
-repository entries are the default; a human may opt into one
+Agent-callable arbitrary command to add a repository or broaden a workspace
+root. Exact repository entries are the least-authority option; a human may use
+the interactive, fixed-path `hanchou onboard` flow to opt into one
 `descendant-git-repositories` root containing only Agent-safe repositories.
 See `PROJECT_WORKSPACES.md`.
 

@@ -121,6 +121,7 @@ const cases = [
   [["hanchou", "project", "resolve", "--path", "/workspace/example-app", "--json"], "allow"],
   [["hanchou", "project", "doctor"], "allow"],
   [["hanchou", "project", "add", "example-app", "--path", "/workspace/example-app"], null],
+  [["hanchou", "onboard", "work", "--yes"], null],
   [["hanchou", "inbox", "list", "--json"], "allow"],
   [["hanchou", "inbox", "show", "evt_example"], "allow"],
   [["hanchou", "inbox", "claim", "--to", "orchestrator", "--json"], "allow"],
@@ -176,6 +177,16 @@ fi
 grep -q 'hanchou: error: the following arguments are required: command' "$TMP/no-command.err"
 
 hanchou_test project --help | grep -q '{list,show,resolve,doctor}'
+hanchou_test onboard --help | grep -q -- '--yes'
+hanchou_test launch --help | grep -q -- '--no-browser'
+hanchou_test dashboard --help | grep -q '{serve,snapshot}'
+hanchou_test dashboard serve --help | grep -q '{personal,work}'
+hanchou_test open --help | grep -q 'dashboard,tasks,herdr,herdrm,orchestrator,automations'
+if hanchou_test dashboard future >/dev/null 2>"$TMP/dashboard-command.err"; then
+  echo "expected an unsupported dashboard command" >&2
+  exit 1
+fi
+grep -q "argument dashboard_command: invalid choice: 'future'" "$TMP/dashboard-command.err"
 if hanchou_test project resolve >/dev/null 2>"$TMP/project-path.err"; then
   echo "expected a missing project path parser failure" >&2
   exit 1
@@ -222,6 +233,12 @@ if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test execution inspect hch-examp
 fi
 grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
   "$TMP/custom-runtime-config.err"
+if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test launch work --no-browser >/dev/null 2>"$TMP/custom-launch-config.err"; then
+  echo "expected launch custom-config rejection" >&2
+  exit 1
+fi
+grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
+  "$TMP/custom-launch-config.err"
 node - "$CUSTOM_CONFIG/profiles/work.toml" <<'JS'
 const fs = require("node:fs");
 const path = process.argv[2];

@@ -3,7 +3,8 @@
 Hanchouは、Herdr上に1つの永続Orchestratorを置き、Beads、定期実行、
 Claude Code／Codex worker、共有Skillsを統合するための設定・policy・bridge
 distributionです。独自のPTY runtime、Task DB、Cron engine、Chat transport、
-GUIは再実装しません。
+書き込み可能なTask／Agent GUIは再実装しません。代わりに、各systemの状態と
+安全な入口だけをまとめたloopback限定・読み取り専用のDashboardを提供します。
 
 ## 名前
 
@@ -21,6 +22,7 @@ beads-ui          標準Task GUI
 herdr-beads       Herdr内のoptional Task board
 herdr-automations recurring scheduleとrun history
 Hanchou Relay     内部Inbox event、wake、user-facing Delivery
+Hanchou Dashboard loopback限定のread-only statusと操作入口
 Hanchou           Role、routing、設定、bridge、運用CLI
 ```
 
@@ -96,24 +98,64 @@ Roleごとに推測させません。詳細は`docs/CLI_AND_SKILL_BOUNDARY.md`�
 
 ## Quick start
 
+初めてでも次の順に進めれば、専用workspaceの作成からDashboard起動まで完了します。
+Coreが参照するPublic Skillsも必要なため、2つのrepositoryを同じ親directoryの
+`hanchou`／`hanchou-skills`として保持します。既に両方をこの配置でclone済みなら、
+clone部分は省略してください。
+
 ```bash
 brew install mise git gh beads
+
+mkdir -p "$HOME/HanchouSource"
+cd "$HOME/HanchouSource"
+git clone https://github.com/ykawase1011/hanchou.git
+git clone https://github.com/ykawase1011/hanchou-skills.git
+cd hanchou
+
 mise install
 mise exec -- npm ci
 make check
+
+# 人間がHanchouに自由な作業を許可する専用領域を確認して作る
+./bin/hanchou onboard work
+./bin/hanchou onboard work --yes
+
 ./bin/hanchou plan work
 ./bin/hanchou bootstrap work
+sleep 5
 ./bin/hanchou doctor work
-./bin/hanchou start-orchestrator work
-./bin/hanchou status work
+
+# Orchestratorを開始し、Hanchou Dashboardをブラウザで開く
+./bin/hanchou launch work
 ```
 
-新規projectのdispatchはdeny-by-defaultです。人間が通常terminalから
-`~/.config/hanchou/work/projects.local.toml`へ、対象Git repositoryを明示登録するか、
-secretを含まない専用repository rootを1つ許可します。Managed Agentは
-`hanchou project list/show/resolve/doctor`で照合できますが、許可範囲を追加・変更
-する通常のHanchou commandはありません。同一OS userに対するhard boundaryでは
-ないため、配置と設定例は`docs/PROJECT_WORKSPACES.md`を参照してください。
+`onboard`は最初にplanだけを表示し、`--yes`を付けた2回目だけ次を作成します。
+
+```text
+~/HanchouWorkspace/work/repositories/             Agent-safeなGit repository置き場
+~/.config/hanchou/work/projects.local.toml        human-ownedな許可設定
+```
+
+`--yes`は通常terminalの対話セッションでのみ受け付けます。Managed AgentやHerdr
+管理ペインはHanchouの通常command経由で許可範囲を拡張できません。専用領域には
+publicまたはAgentに見せてよいrepositoryだけを置き、secret、credential、private repository、
+downloadや雑多なfileは置かないでください。同一OS userに対するhard boundaryが
+必要なら、別OS userまたはKingdom／VMを使います。
+
+最初の対象repositoryは専用領域の直下へcloneし、dispatch可能か確認します。
+
+```bash
+cd ~/HanchouWorkspace/work/repositories
+gh repo clone OWNER/REPOSITORY
+
+hanchou project resolve \
+  --path "$(git -C REPOSITORY rev-parse --show-toplevel)"
+```
+
+`dispatch ready: yes`なら準備完了です。詳しい初心者向け手順、Herdrの画面操作、
+最初の依頼例、troubleshootingは[`docs/ONBOARDING.md`](docs/ONBOARDING.md)を参照して
+ください。配置とsecurity boundaryの詳細は
+[`docs/PROJECT_WORKSPACES.md`](docs/PROJECT_WORKSPACES.md)にあります。
 
 Leaf Taskをdispatchすると、固有branchと
 `~/.local/share/hanchou/<profile>/worktrees/<task>/<execution>/`が自動生成されます。
@@ -125,18 +167,28 @@ Beadsのstandalone Dolt serverは初期構成では不要です。Core CLI、val
 generatorはTypeScriptで実装し、Node.js 22が直接実行します。runtime npm
 dependencyとPython runtimeは必要ありません。
 
-Task UI：
+## 画面を開く
 
-```text
-work      http://127.0.0.1:3737
-personal  http://127.0.0.1:3837
-```
+| 画面 | work | personal | 開くcommand |
+|---|---:|---:|---|
+| Hanchou Dashboard | <http://127.0.0.1:3747> | <http://127.0.0.1:3847> | `hanchou open dashboard work` |
+| beads-ui | <http://127.0.0.1:3737> | <http://127.0.0.1:3837> | `hanchou open tasks work` |
+| Herdr TUI | terminal | terminal | `hanchou open herdr work` |
+| Orchestrator | terminal | terminal | `hanchou open orchestrator work` |
 
-Herdr：
+Dashboardは5秒ごとにHerdr、Beads、Relay、workspace登録を読み取ります。Task本文や
+artifact本文はDashboardに表示しませんが、Task titleやpathにはsecretを書かないでください。
+状態確認専用で、Task編集はbeads-ui、Agent操作はHerdrを使います。Herdr TUIから
+通常terminalへ戻るには、`Ctrl+B`を押してから`q`です。
+
+Herdrmはoptionalです。現在のHerdrm 0.5.xはdefault socketを使う一方、Hanchouは
+`work`／`personal`のnamed sessionを使うため、通常は同じsessionを表示できません。
+Hanchouは別sessionの誤起動を避けるため、socket一致を確認できない場合は
+`hanchou open herdrm work`を安全側に失敗させます。標準画面はHanchou Dashboardと
+Herdr TUIです。互換性が確認できる環境だけ、次を利用できます。
 
 ```bash
-herdr --session work
-herdr --session personal
+hanchou launch work --herdrm
 ```
 
 ## Authoritative documents

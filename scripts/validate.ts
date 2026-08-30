@@ -138,6 +138,9 @@ function main(): void {
     PATH: "/usr/local/bin:/usr/bin:/bin",
     BDUI_BIN: "/usr/local/bin/bdui",
     BD_BIN: "/usr/local/bin/bd",
+    NODE_BIN: "/usr/local/bin/node",
+    HANCHOU_ENTRY: "/tmp/hanchou-repo/libexec/hanchou.ts",
+    FINGERPRINT: "0123456789abcdef",
     HOST: "127.0.0.1",
     PORT: "3737",
   };

@@ -29,6 +29,8 @@ import { platform, tmpdir, userInfo } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseToml, readToml } from "../lib/toml.ts";
+import { createDashboardServer } from "../lib/dashboard.ts";
+import { createSnapshotSubprocessProvider } from "../lib/dashboard-snapshot.ts";
 
 type JsonObject = Record<string, any>;
 type RunResult = { returncode: number; stdout: string; stderr: string };
@@ -345,6 +347,157 @@ function operatorHome(): string {
 
 function projectRegistryPath(name: string): string {
   return join(operatorHome(), ".config", "hanchou", name, "projects.local.toml");
+}
+
+function defaultWorkspaceRoot(name: string): string {
+  return join(operatorHome(), "HanchouWorkspace", name, "repositories");
+}
+
+function onboardingWorkspacePath(value: string): string {
+  if (typeof value !== "string" || !value || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new CommandError("workspace root must be a non-empty path without control characters");
+  }
+  if (value.includes("$")) throw new CommandError("workspace root must not contain environment-variable expansion");
+  const home = operatorHome();
+  const rendered = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
+  if (!isAbsolute(rendered)) throw new CommandError("workspace root must be absolute or start with ~/");
+  const lexical = resolve(rendered);
+  if (pathWithin(lexical, home, true)) {
+    throw new CommandError(`workspace root must not be filesystem root, HOME, or an ancestor of HOME: ${lexical}`);
+  }
+  if (!pathWithin(home, lexical)) {
+    throw new CommandError(`onboarding workspace root must be strictly below the operator HOME: ${lexical}`);
+  }
+
+  let existing = lexical;
+  while (!lexists(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) break;
+    existing = parent;
+  }
+  if (lexists(existing)) {
+    let canonical: string;
+    try { canonical = realpathSync(existing); }
+    catch (error) { throw new CommandError(`cannot inspect workspace root ancestor ${existing}: ${error}`); }
+    if (canonical !== existing) {
+      throw new CommandError(`workspace root must not contain symlink components: ${existing} resolves to ${canonical}`);
+    }
+  }
+  if (lexists(lexical)) {
+    validateAuthorityComponent(lexical, "workspace root", false);
+    const canonical = realpathSync(lexical);
+    if (canonical !== lexical) throw new CommandError(`workspace root must not contain symlink components: ${lexical} resolves to ${canonical}`);
+  }
+  let component = home;
+  validateAuthorityComponent(component, "workspace root parent", false);
+  for (const part of relative(home, lexical).split(/[\\/]+/)) {
+    component = join(component, part);
+    if (!lexists(component)) break;
+    validateAuthorityComponent(component, "workspace root parent", false);
+  }
+  return lexical;
+}
+
+function createOnboardingWorkspace(path: string): void {
+  if (!lexists(path)) {
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    chmodSync(path, 0o700);
+  }
+  let component = operatorHome();
+  for (const part of relative(component, path).split(/[\\/]+/)) {
+    component = join(component, part);
+    validateAuthorityComponent(component, "workspace root parent", false);
+  }
+  validateAuthorizedDirectory(realpathSync(path), "workspace root");
+}
+
+function ensureOnboardingRegistryDirectory(path: string): void {
+  const home = operatorHome();
+  for (const candidate of [join(home, ".config"), join(home, ".config", "hanchou"), dirname(path)]) {
+    if (!lexists(candidate)) mkdirSync(candidate, { mode: 0o700 });
+    validateAuthorityComponent(candidate, "Hanchou onboarding config directory", false);
+  }
+}
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+export function onboardProfile(args: JsonObject, name: string, interactive = Boolean(process.stdin.isTTY)): void {
+  const workspaceRoot = onboardingWorkspacePath(defaultWorkspaceRoot(name));
+  const registryPath = projectRegistryPath(name);
+  const rootId = `${name}-repositories`;
+  let alreadyRegistered = false;
+  if (existsSync(registryPath) && existsSync(workspaceRoot)) {
+    const registry = loadProjectRegistry(name, false);
+    alreadyRegistered = registry.workspace_roots.some((item) => item.id === rootId && item.canonical_path === workspaceRoot && item.allowed_profiles.includes(name));
+  }
+
+  console.log(`Hanchou onboarding plan: ${name}`);
+  console.log(`  dedicated workspace: ${workspaceRoot}${existsSync(workspaceRoot) ? " (exists)" : " (create with mode 0700)"}`);
+  console.log(`  human-owned registry: ${registryPath}${alreadyRegistered ? " (current)" : existsSync(registryPath) ? " (backup before change)" : " (create with mode 0600)"}`);
+  console.log(`  authorization: workspace root ${rootId} / descendant-git-repositories${alreadyRegistered ? " (already registered)" : ""}`);
+  console.log("  effect: every Git repository created strictly below this dedicated root is dispatch-authorized");
+  console.log("  boundary: keep secrets, private repositories, downloads, and mixed local files outside this root");
+
+  if (!args.yes) {
+    console.log(`\nNo changes made. Review the plan, then run from your ordinary terminal:\n  hanchou onboard ${name} --yes`);
+    return;
+  }
+  if (process.env.HERDR_ENV === "1" || process.env.HANCHOU_AGENT_ID) {
+    throw new CommandError("onboard changes human-owned trust and must be run from an ordinary terminal outside a Herdr-managed pane");
+  }
+  if (!interactive) throw new CommandError("onboard --yes requires an interactive terminal controlled by the human operator");
+
+  const registry = loadProjectRegistry(name, true);
+  const conflictingProjectId = registry.projects.find((item) => item.id === rootId);
+  if (conflictingProjectId) {
+    throw new CommandError(`workspace root id ${rootId} conflicts with existing project authority: ${conflictingProjectId.canonical_path}`);
+  }
+  const conflictingProjectPath = registry.projects.find((item) => item.canonical_path === workspaceRoot);
+  if (conflictingProjectPath) {
+    throw new CommandError(`workspace root path is already registered as project ${conflictingProjectPath.id}: ${workspaceRoot}`);
+  }
+  const sameId = registry.workspace_roots.find((item) => item.id === rootId);
+  if (sameId && (sameId.canonical_path !== workspaceRoot || !sameId.allowed_profiles.includes(name))) {
+    throw new CommandError(`workspace root id ${rootId} is already registered with different authority: ${sameId.canonical_path}`);
+  }
+  const samePath = registry.workspace_roots.find((item) => item.canonical_path === workspaceRoot);
+  if (samePath && samePath.id !== rootId) {
+    throw new CommandError(`workspace root path is already registered as ${samePath.id}: ${workspaceRoot}`);
+  }
+  for (const item of registry.workspace_roots) {
+    if (item.id === rootId) continue;
+    if (pathWithin(item.canonical_path, workspaceRoot, true) || pathWithin(workspaceRoot, item.canonical_path, true)) {
+      throw new CommandError(`workspace roots must not overlap: ${item.id} (${item.canonical_path}) and ${rootId} (${workspaceRoot})`);
+    }
+  }
+
+  createOnboardingWorkspace(workspaceRoot);
+  ensureOnboardingRegistryDirectory(registryPath);
+
+  if (!sameId) {
+    const snippet = [
+      "[[workspace_roots]]",
+      `id = ${tomlString(rootId)}`,
+      `path = ${tomlString(workspaceRoot)}`,
+      `allowed_profiles = [${tomlString(name)}]`,
+      'trust = "descendant-git-repositories"',
+    ].join("\n");
+    const current = existsSync(registryPath) ? readText(registryPath).trimEnd() : 'schema_version = 1\ndefault_policy = "deny"';
+    const candidate = `${current}\n\n${snippet}\n`;
+    try { parseToml(candidate); }
+    catch (error) { throw new CommandError(`cannot append workspace authorization to ${registryPath}: ${error}`); }
+    backupAndWrite(registryPath, candidate);
+  }
+
+  const verified = loadProjectRegistry(name, false);
+  const registered = verified.workspace_roots.find((item) => item.id === rootId && item.canonical_path === workspaceRoot && item.allowed_profiles.includes(name));
+  if (!registered) throw new CommandError(`workspace authorization verification failed: ${rootId}`);
+  console.log(`\nonboarding workspace ready: ${workspaceRoot}`);
+  console.log(`authorization ready: ${rootId}`);
+  console.log(`next: clone or create only Agent-safe Git repositories below ${workspaceRoot}`);
+  console.log(`then: hanchou bootstrap ${name} && hanchou launch ${name}`);
 }
 
 function validateAuthorityComponent(path: string, label: string, requireFile: boolean): void {
@@ -1078,7 +1231,10 @@ function renderHerdrConfig(name: string, profile: JsonObject): string {
 function renderLaunchd(name: string, profile: JsonObject, install: boolean): void {
   const argv = [commandPath("node"), join(ROOT, "scripts", "render-launchd.ts"), name];
   if (install) argv.push("--install");
-  run(argv, { env: profileEnv(name, profile) });
+  const env = profileEnv(name, profile);
+  env.HANCHOU_PINNED_NODE_BIN = commandPath("node");
+  env.HANCHOU_PINNED_HERDR_BIN = commandPath("herdr");
+  run(argv, { env });
 }
 
 function renderAgents(check = false): void {
@@ -1238,6 +1394,7 @@ function printPlan(name: string, profile: JsonObject): void {
   console.log(`  Herdr session: ${profile.herdr.session}`);
   console.log(`  state: ${paths.root}`);
   console.log(`  Beads: ${paths.beads_dir} (${profile.beads.mode})`);
+  console.log(`  Hanchou dashboard: ${dashboardUrl(profile)}`);
   console.log(`  task UI: http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`);
   console.log(`  install mise tools from ${MISE_CONFIG}: Herdr ${tools.herdr}, Node.js ${tools.node}`);
   console.log("  render canonical roles to .codex/agents and .claude/agents");
@@ -1250,7 +1407,7 @@ function printPlan(name: string, profile: JsonObject): void {
   console.log(`  Relay state: ${paths.relay_dir} (Inbox + Delivery)`);
   console.log("  reporting defaults: root on_terminal, child parent_only, automation on_failure, daily digest always");
   console.log("  initialize central Beads store and provider integrations");
-  console.log("  backup + render/install ~/Library/LaunchAgents entries for Herdr and beads-ui");
+  console.log("  backup + render/install ~/Library/LaunchAgents entries for Herdr, beads-ui, and the read-only Hanchou dashboard");
   console.log(`  model routing: ${routingPolicyPath(profile)}`);
   console.log(`  usage snapshot: ${usageSnapshotPath(profile)}`);
   console.log(`  project registry: ${projects.registry_path} (${projects.projects.length} explicit, ${projects.workspace_roots.length} trusted roots${projects.registry_digest ? "" : "; absent means dispatch deny-all"})`);
@@ -3218,16 +3375,258 @@ function executionReconcile(args: JsonObject, name: string, profile: JsonObject)
   for (const result of results) console.log(`${result.task_id}: ${result.phase} / ${result.binding_state} / actions=${result.actions.length} anomalies=${result.anomalies.length}`);
 }
 
-function startOrchestrator(name: string, profile: JsonObject): void {
+function dashboardUrl(profile: JsonObject): string {
+  const host = String(profile.ui.dashboard_host);
+  const port = Number(profile.ui.dashboard_port);
+  if (host !== "127.0.0.1" && host !== "::1") throw new CommandError(`dashboard host must be loopback: ${host}`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new CommandError(`dashboard port must be an integer from 1 to 65535: ${port}`);
+  return `http://${host === "::1" ? `[${host}]` : host}:${port}`;
+}
+
+function taskUiUrl(profile: JsonObject): string {
+  const host = String(profile.ui.beads_ui_host);
+  const port = Number(profile.ui.beads_ui_port);
+  if (host !== "127.0.0.1" && host !== "::1") throw new CommandError(`beads-ui host must be loopback: ${host}`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new CommandError(`beads-ui port must be an integer from 1 to 65535: ${port}`);
+  return `http://${host === "::1" ? `[${host}]` : host}:${port}`;
+}
+
+function recordArray(value: any, pluralKey: string, predicate: (item: JsonObject) => boolean): JsonObject[] {
+  const results: JsonObject[] = [];
+  const seen = new Set<any>();
+  const visit = (candidate: any): void => {
+    if (!candidate || typeof candidate !== "object" || seen.has(candidate)) return;
+    seen.add(candidate);
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        if (item && typeof item === "object" && !Array.isArray(item) && predicate(item)) results.push(item);
+        else visit(item);
+      }
+      return;
+    }
+    if (Array.isArray(candidate[pluralKey])) visit(candidate[pluralKey]);
+    for (const [key, child] of Object.entries(candidate)) if (key !== pluralKey && new Set(["result", "data", "items", "issues", "agents"]).has(key)) visit(child);
+  };
+  visit(value);
+  return results;
+}
+
+function dashboardTasks(name: string, profile: JsonObject): JsonObject {
+  try {
+    const proc = bdRun(name, profile, ["list", "--json"], null, false);
+    if (proc.returncode !== 0) throw new CommandError(`bd list failed (${proc.returncode})`);
+    let value: unknown;
+    try { value = JSON.parse(proc.stdout); }
+    catch { throw new CommandError("bd list returned invalid JSON"); }
+    const records = recordArray(value, "issues", (item) => typeof item.id === "string" && typeof item.status === "string");
+    const byStatus: Record<string, number> = {};
+    const terminal = new Set(["closed", "completed", "done", "cancelled", "canceled"]);
+    for (const item of records) {
+      const status = String(item.status).toLowerCase();
+      byStatus[status] = (byStatus[status] ?? 0) + 1;
+    }
+    const active = records.filter((item) => !terminal.has(String(item.status).toLowerCase()));
+    return {
+      available: true,
+      active: active.length,
+      total: records.length,
+      by_status: byStatus,
+      items: active.slice(0, 50).map((item) => ({ id: String(item.id), title: String(item.title ?? "(untitled)"), status: String(item.status) })),
+    };
+  } catch (error) {
+    return { available: false, active: null, total: null, by_status: {}, items: [], error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function dashboardAgents(name: string): { available: boolean; items: JsonObject[]; error?: string } {
+  try {
+    const proc = run(herdrArgv(name, "agent", "list"), { check: false, capture: true, timeout: 15_000 });
+    if (proc.returncode !== 0) throw new CommandError(`herdr agent list failed (${proc.returncode})`);
+    let value: unknown;
+    try { value = JSON.parse(proc.stdout); }
+    catch { throw new CommandError("herdr agent list returned invalid JSON"); }
+    const records = recordArray(value, "agents", (item) => Boolean(item.agent_name ?? item.name ?? item.agent ?? item.pane_id) && Boolean(findAgentStatus(item)));
+    const unique = new Map<string, JsonObject>();
+    for (const item of records) {
+      const nameValue = String(item.agent_name ?? item.name ?? item.agent ?? item.pane_id);
+      unique.set(nameValue, {
+        name: nameValue,
+        role: String(item.role ?? item.agent_kind ?? item.kind ?? "agent"),
+        status: findAgentStatus(item) ?? "unknown",
+      });
+    }
+    return { available: true, items: [...unique.values()] };
+  } catch (error) {
+    return { available: false, items: [], error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function herdrStatusSnapshot(name: string, timeout = 15_000): JsonObject {
+  try {
+    const proc = run(herdrArgv(name, "status", "server", "--json"), { check: false, capture: true, timeout });
+    if (proc.returncode !== 0) return { running: false, version: null, error: `herdr server status failed (${proc.returncode})` };
+    let value: unknown;
+    try { value = JSON.parse(proc.stdout); }
+    catch { return { running: false, version: null, error: "herdr server status returned invalid JSON" }; }
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { running: false, version: null, error: "herdr server status returned invalid JSON" };
+    const status = String((value as JsonObject).status ?? "");
+    const version = typeof (value as JsonObject).version === "string" ? (value as JsonObject).version : null;
+    return { running: status === "running", version, error: null };
+  } catch (error) {
+    return { running: false, version: null, error: error instanceof Error ? error.message : "herdr server status failed" };
+  }
+}
+
+export function herdrmCompatibility(name: string, profile: JsonObject): JsonObject {
+  const home = operatorHome();
+  const applications = [
+    "/Applications/herdrm.app", "/Applications/HerdrM.app",
+    join(home, "Applications", "herdrm.app"), join(home, "Applications", "HerdrM.app"),
+  ];
+  const application = applications.find((candidate) => isDirectory(candidate)) ?? null;
+  const session = String(profile.herdr.session ?? name);
+  const defaultSocket = join(home, ".config", "herdr", "herdr.sock");
+  const namedSocket = session === "default" ? defaultSocket : join(home, ".config", "herdr", "sessions", session, "herdr.sock");
+  let compatible = false;
+  let socketIdentity: JsonObject | null = null;
+  if (lexists(defaultSocket) && lexists(namedSocket)) {
+    try {
+      const defaultInfo = statSync(defaultSocket);
+      const namedInfo = statSync(namedSocket);
+      compatible = defaultInfo.isSocket() && namedInfo.isSocket() && defaultInfo.dev === namedInfo.dev && defaultInfo.ino === namedInfo.ino;
+      if (compatible) socketIdentity = { device: String(defaultInfo.dev), inode: String(defaultInfo.ino) };
+    } catch { compatible = false; }
+  }
+  let message: string;
+  if (!application) message = "Herdrmは未installです（optional）。";
+  else if (!compatible) message = `Herdrm 0.5.xはdefault socket固定のため、live Unix socketの同一性を証明できないHanchou session \`${session}\`には安全に接続できません。別sessionの自動起動を防ぐためopenしません。`;
+  else message = "同じHerdr socketを確認しました。監視・attach専用で利用できます。";
+  return { installed: Boolean(application), application, compatible, session, default_socket: defaultSocket, named_socket: namedSocket, socket_identity: socketIdentity, message };
+}
+
+async function dashboardSnapshot(name: string, profile: JsonObject): Promise<JsonObject> {
+  const paths = profilePaths(profile);
+  const registry = loadProjectRegistry(name, true);
+  const herdr = herdrStatusSnapshot(name);
+  const tasks = dashboardTasks(name, profile);
+  const agentResult = dashboardAgents(name);
+  const taskUrl = taskUiUrl(profile);
+  const taskUiRunning = await endpointOk(`${taskUrl}/`, 2_000);
+  const orchestratorStatus = getAgentStatus(name, String(profile.orchestrator.agent_name));
+  const pendingInbox = existsSync(paths.relay_dir) ? iterEvents(paths.relay_dir, "pending").length : 0;
+  const pendingDeliveries = existsSync(paths.relay_dir) ? iterDeliveries(paths.relay_dir, "pending").length : 0;
+  return {
+    generated_at: utcnow(),
+    profile: name,
+    system: {
+      herdr_running: Boolean(herdr.running), herdr_version: herdr.version,
+      orchestrator_status: orchestratorStatus ?? "not-running",
+      task_ui_running: taskUiRunning,
+      dashboard_url: dashboardUrl(profile), task_ui_url: taskUrl,
+    },
+    tasks,
+    agents: agentResult.items,
+    agents_available: agentResult.available,
+    agents_error: agentResult.error ?? null,
+    relay: { pending_inbox: pendingInbox, pending_deliveries: pendingDeliveries },
+    workspace: {
+      registry_configured: Boolean(registry.registry_digest), registry_path: registry.registry_path,
+      roots: registry.workspace_roots.filter((item) => item.allowed_profiles.includes(name)).map((item) => ({ id: item.id, path: item.canonical_path })),
+      projects: registry.projects.filter((item) => item.allowed_profiles.includes(name)).length,
+    },
+    herdrm: herdrmCompatibility(name, profile),
+    commands: {
+      herdr: `hanchou open herdr ${name}`,
+      orchestrator: `hanchou open orchestrator ${name}`,
+      tasks: `hanchou open tasks ${name}`,
+      automations: `hanchou open automations ${name}`,
+      herdrm: `hanchou open herdrm ${name}`,
+    },
+  };
+}
+
+async function dashboardCommand(args: JsonObject, name: string, profile: JsonObject): Promise<void> {
+  if (args.dashboard_command === "snapshot") {
+    const snapshot = await dashboardSnapshot(name, profile);
+    jsonPrint(snapshot, true);
+    return;
+  }
+  const host = String(profile.ui.dashboard_host);
+  const port = Number(profile.ui.dashboard_port);
+  const snapshot = createSnapshotSubprocessProvider({
+    command: process.execPath,
+    args: ["--experimental-strip-types", fileURLToPath(import.meta.url), "dashboard", "snapshot", name],
+    cwd: ROOT,
+    env: profileEnv(name, profile),
+    timeoutMs: 4_000,
+    maxOutputBytes: 1024 * 1024,
+  });
+  const handle = await createDashboardServer({ host, port, profile: name, snapshot });
+  console.log(`Hanchou dashboard listening: ${handle.url}`);
+  const close = (): void => {
+    void handle.close().catch((error) => {
+      process.stderr.write(`hanchou: cannot close dashboard: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
+  };
+  process.once("SIGTERM", close);
+  process.once("SIGINT", close);
+}
+
+function openUrl(url: string): void {
+  console.log(url);
+  const opener = platform() === "darwin" ? "open" : platform() === "win32" ? "cmd" : "xdg-open";
+  const args = platform() === "win32" ? ["/c", "start", "", url] : [url];
+  try {
+    const child = spawn(opener, args, { detached: true, stdio: "ignore" });
+    child.once("error", () => { /* URL was printed for manual use. */ });
+    child.unref();
+  }
+  catch { /* URL was printed for manual use */ }
+}
+
+function openHerdrm(name: string, profile: JsonObject): void {
+  if (platform() !== "darwin") throw new CommandError("Herdrm is a macOS 14+ native application");
+  const state = herdrmCompatibility(name, profile);
+  if (!state.installed) throw new CommandError("Herdrm is optional and not installed; install it manually with `brew install owo-network/brew/herdrm`");
+  if (!state.compatible) throw new CommandError(String(state.message));
+  console.log("WARNING: use Herdrm only to monitor or attach to Hanchou Agents. Do not create Hanchou Orchestrators or workers from Herdrm New Agent.");
+  const child = spawn("open", ["-a", "herdrm"], { detached: true, stdio: "ignore" });
+  child.once("error", () => { /* Compatibility was reported; the operator can open the app manually. */ });
+  child.unref();
+}
+
+async function launchProfile(args: JsonObject, name: string, profile: JsonObject): Promise<void> {
+  const [herdr, dashboardReady, tasksReady] = await Promise.all([
+    waitForHerdrReady(name, 8_000),
+    waitForEndpoint(`${dashboardUrl(profile)}/health`, 8_000, dashboardHealthMatches),
+    waitForEndpoint(`${taskUiUrl(profile)}/`, 8_000, beadsUiMatches),
+  ]);
+  if (!herdr.ready || !dashboardReady || !tasksReady) {
+    const missing = [!herdr.ready ? "Herdr" : null, !dashboardReady ? "dashboard" : null, !tasksReady ? "beads-ui" : null].filter(Boolean).join(", ");
+    throw new CommandError(`Hanchou services are not ready (${missing}); run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+  }
+  const orchestrator = startOrchestrator(name, profile);
+  if (!args.no_browser) openUrl(dashboardUrl(profile));
+  if (args.herdrm) {
+    try { openHerdrm(name, profile); }
+    catch (error) { console.log(`WARN Herdrm not opened: ${error instanceof Error ? error.message : error}`); }
+  }
+  console.log(orchestrator === "ready" ? `Hanchou ready: ${name}` : `Hanchou services ready; Orchestrator initialization pending: ${name}`);
+  console.log(`dashboard: ${dashboardUrl(profile)}`);
+  console.log(`Herdr TUI: hanchou open herdr ${name}`);
+}
+
+function startOrchestrator(name: string, profile: JsonObject): "ready" | "pending" {
   ensureState(name, profile);
   const agentName = profile.orchestrator.agent_name;
   const beadsDirectory = profilePaths(profile).beads_dir;
   const initial = `Initialize as the Hanchou L0 Orchestrator for profile \`${name}\`. Read AGENTS.md, roles/orchestrator/ROLE.md, docs/SESSION_HANDOFF.md, docs/RELAY.md, and docs/REPORTING.md. The authoritative Beads store is \`BEADS_DIR=${beadsDirectory}\`. Use that absolute path for every \`bd\` command if BEADS_DIR is not already inherited; never fall back to a project-local Beads store. Run \`hanchou status ${name}\` and inspect only the control-plane state. If the Codex workspace sandbox denies that bounded command, retry the exact command through normal approval/escalation without using a bypass. Do not research or modify project repositories in this session. Reply with readiness and any blocking setup issue.`;
-  const initialize = (record: JsonObject): void => {
+  const initialize = (record: JsonObject): "ready" | "pending" => {
     const identity = String(record.terminal_id || record.pane_id || "unknown");
     const marker = join(profilePaths(profile).control_dir, ".hanchou-orchestrator-init.json");
     if (existsSync(marker)) {
-      try { if (JSON.parse(readText(marker)).identity === identity) { console.log(`orchestrator already exists: ${agentName}`); return; } }
+      try { if (JSON.parse(readText(marker)).identity === identity) { console.log(`orchestrator already exists: ${agentName}`); return "ready"; } }
       catch { /* initialize again */ }
     }
     const statusValue = record.agent_status;
@@ -3235,15 +3634,16 @@ function startOrchestrator(name: string, profile: JsonObject): void {
       console.log(`orchestrator \`${agentName}\` exists with status ${statusValue}; initialization remains pending`);
       console.log(`attach with \`hanchou open orchestrator ${name}\``);
       console.log(`if this Agent was started before the latest \`hanchou apply ${name} --yes\`, exit that attached Agent with \`/exit\`, then run \`hanchou start-orchestrator ${name}\` again`);
-      return;
+      return "pending";
     }
     const promptArgv = herdrArgv(name, "agent", "prompt", agentName, initial);
     run(promptArgv, { capture: true, displayArgv: promptArgv.map((value) => value === initial ? "<redacted-prompt>" : value), redactOutput: true });
     atomicWrite(marker, `${JSON.stringify({ identity, initialized_at: utcnow() })}\n`);
     console.log(`initialized orchestrator \`${agentName}\``);
+    return "ready";
   };
   const existing = getAgentInfo(name, agentName);
-  if (existing) { initialize(existing); return; }
+  if (existing) return initialize(existing);
   const managedAgentId = validateAgentId(agentName, "managed Agent ID");
   const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
   const data = parseJsonOutput(created);
@@ -3270,24 +3670,26 @@ function startOrchestrator(name: string, profile: JsonObject): void {
   }
   const started = run(argv, { check: false, capture: true });
   if (started.returncode !== 0) {
-    if (getAgentStatus(name, agentName) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`hanchou open orchestrator ${name}\``); return; }
+    if (getAgentStatus(name, agentName) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`hanchou open orchestrator ${name}\``); return "pending"; }
     throw new CommandError(`cannot start orchestrator: ${(started.stderr || started.stdout).trim()}`);
   }
   const record = getAgentInfo(name, agentName);
   if (!record) throw new CommandError(`orchestrator started but Herdr did not register \`${agentName}\``);
-  initialize(record);
+  const state = initialize(record);
   console.log(`started ${kind} orchestrator \`${agentName}\` in pane ${paneId}`);
+  return state;
 }
 
 function openTarget(name: string, profile: JsonObject, target: string): never | void {
-  if (target === "tasks") {
-    const url = `http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`;
-    console.log(url);
-    const opener = platform() === "darwin" ? "open" : platform() === "win32" ? "cmd" : "xdg-open";
-    const args = platform() === "win32" ? ["/c", "start", "", url] : [url];
-    try { const child = spawn(opener, args, { detached: true, stdio: "ignore" }); child.unref(); } catch { /* URL was printed */ }
+  if (target === "dashboard") {
+    openUrl(dashboardUrl(profile));
     return;
   }
+  if (target === "tasks") {
+    openUrl(taskUiUrl(profile));
+    return;
+  }
+  if (target === "herdrm") { openHerdrm(name, profile); return; }
   if (target === "herdr" || target === "orchestrator") {
     const argv = target === "herdr" ? herdrArgv(name) : herdrArgv(name, "agent", "attach", profile.orchestrator.agent_name);
     const result = run(argv, { check: false }); process.exit(result.returncode);
@@ -3446,29 +3848,102 @@ function statusCommand(name: string, profile: JsonObject, asJson: boolean): void
     beads_dir: paths.beads_dir, relay_dir: paths.relay_dir,
     pending_inbox: existsSync(paths.relay_dir) ? iterEvents(paths.relay_dir, "pending").length : 0,
     pending_deliveries: pendingDeliveries,
-    task_ui: `http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`,
+    dashboard: dashboardUrl(profile),
+    task_ui: taskUiUrl(profile),
+    herdrm: herdrmCompatibility(name, profile),
     usage_snapshot: usageSnapshotPath(profile),
     project_registry: { path: projects.registry_path, configured: Boolean(projects.registry_digest), projects: projects.projects.length, workspace_roots: projects.workspace_roots.length, default_policy: "deny" },
-    commands: { herdr: `herdr --session ${name}`, orchestrator: `herdr --session ${name} agent attach ${agent}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}` },
+    commands: { dashboard: `hanchou open dashboard ${name}`, herdr: `herdr --session ${name}`, orchestrator: `herdr --session ${name} agent attach ${agent}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}`, herdrm: `hanchou open herdrm ${name}` },
   };
   if (asJson) jsonPrint(result, true);
   else {
     console.log(`profile:       ${name}`); console.log(`config root:   ${CONFIG_ROOT}`);
     console.log(`orchestrator:  ${result.orchestrator.kind} / ${result.orchestrator.model || "provider-default"} / ${agent} / ${result.orchestrator.status || "not-running"}`);
-    console.log(`Herdr:        herdr --session ${name}`); console.log(`Task UI:      ${result.task_ui}`); console.log(`Beads:        ${paths.beads_dir}`); console.log(`Relay:        ${paths.relay_dir}`);
+    console.log(`Dashboard:    ${result.dashboard}`); console.log(`Herdr:        herdr --session ${name}`); console.log(`Task UI:      ${result.task_ui}`); console.log(`Beads:        ${paths.beads_dir}`); console.log(`Relay:        ${paths.relay_dir}`);
     console.log(`Inbox pending: ${result.pending_inbox}`); console.log(`Delivery pending: ${result.pending_deliveries}`); console.log(`Usage:        ${result.usage_snapshot}`);
     console.log(`Projects:     ${projects.registry_path} / ${projects.projects.length} explicit / ${projects.workspace_roots.length} roots${projects.registry_digest ? "" : " / deny-all"}`);
   }
 }
 
-function endpointOk(url: string, timeout: number): Promise<boolean> {
+type EndpointProbe = { status: number; content_type: string; body: string };
+
+function probeEndpoint(url: string, timeout: number): Promise<EndpointProbe | null> {
   return new Promise((resolvePromise) => {
     let settled = false;
-    const finish = (value: boolean): void => { if (!settled) { settled = true; resolvePromise(value); } };
-    const request = httpGet(url, (response) => { response.resume(); finish(Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 400)); });
-    request.setTimeout(timeout, () => { request.destroy(); finish(false); });
-    request.on("error", () => finish(false));
+    const finish = (value: EndpointProbe | null): void => {
+      if (!settled) { settled = true; resolvePromise(value); }
+    };
+    const request = httpGet(url, { headers: { Accept: "text/html, application/json" } }, (response) => {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      response.on("data", (chunk: Buffer | string) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        bytes += buffer.length;
+        if (bytes > 64 * 1024) {
+          response.destroy();
+          finish(null);
+          return;
+        }
+        chunks.push(buffer);
+      });
+      response.on("end", () => finish({
+        status: response.statusCode ?? 0,
+        content_type: String(response.headers["content-type"] ?? ""),
+        body: Buffer.concat(chunks).toString("utf8"),
+      }));
+      response.on("aborted", () => finish(null));
+      response.on("error", () => finish(null));
+    });
+    request.setTimeout(timeout, () => { request.destroy(); finish(null); });
+    request.on("error", () => finish(null));
   });
+}
+
+function dashboardHealthMatches(probe: EndpointProbe): boolean {
+  if (probe.status !== 200 || !probe.content_type.toLowerCase().startsWith("application/json")) return false;
+  try {
+    const value = JSON.parse(probe.body);
+    return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1 && value.status === "ok");
+  } catch { return false; }
+}
+
+function beadsUiMatches(probe: EndpointProbe): boolean {
+  return probe.status === 200
+    && probe.content_type.toLowerCase().startsWith("text/html")
+    && /<title>\s*Beads\s*<\/title>/i.test(probe.body);
+}
+
+async function waitForEndpoint(url: string, timeout: number, matches: (probe: EndpointProbe) => boolean): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  do {
+    const remaining = deadline - Date.now();
+    const probe = await probeEndpoint(url, Math.max(250, Math.min(1_000, remaining)));
+    if (probe && matches(probe)) return true;
+    const afterProbe = deadline - Date.now();
+    if (afterProbe <= 0) break;
+    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, Math.min(250, afterProbe)));
+  } while (Date.now() < deadline);
+  return false;
+}
+
+async function endpointOk(url: string, timeout: number): Promise<boolean> {
+  const probe = await probeEndpoint(url, timeout);
+  return Boolean(probe && probe.status >= 200 && probe.status < 300);
+}
+
+async function waitForHerdrReady(name: string, timeout: number): Promise<JsonObject> {
+  const expectedVersion = miseTools().herdr;
+  const deadline = Date.now() + timeout;
+  let snapshot: JsonObject = { running: false, version: null, error: "not checked" };
+  do {
+    const remaining = deadline - Date.now();
+    snapshot = herdrStatusSnapshot(name, Math.max(250, Math.min(2_000, remaining)));
+    if (snapshot.running && snapshot.version === expectedVersion) return { ...snapshot, ready: true };
+    const afterProbe = deadline - Date.now();
+    if (afterProbe <= 0) break;
+    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, Math.min(250, afterProbe)));
+  } while (Date.now() < deadline);
+  return { ...snapshot, ready: false };
 }
 
 async function doctor(name: string, profile: JsonObject): Promise<number> {
@@ -3509,8 +3984,12 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
     const proc = run([commandPath("bd"), "ready", "--json"], { env, cwd: profilePaths(profile).control_dir, check: false, capture: true, timeout: 15_000 });
     const ok = proc.returncode === 0; console.log(`${ok ? "ok  " : "FAIL"} Beads ready access`); if (!ok) failures += 1;
   } catch (error) { console.log(`FAIL Beads ready access: ${error instanceof Error ? error.message : error}`); failures += 1; }
-  const taskUiUrl = `http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}/`;
-  const uiOk = await endpointOk(taskUiUrl, 5_000); console.log(`${uiOk ? "ok  " : "FAIL"} beads-ui endpoint: ${taskUiUrl}`); if (!uiOk) failures += 1;
+  const taskUiEndpoint = `${taskUiUrl(profile)}/`;
+  const uiOk = await waitForEndpoint(taskUiEndpoint, 5_000, beadsUiMatches); console.log(`${uiOk ? "ok  " : "FAIL"} beads-ui endpoint: ${taskUiEndpoint}`); if (!uiOk) failures += 1;
+  const dashboardEndpoint = `${dashboardUrl(profile)}/health`;
+  const dashboardOk = await waitForEndpoint(dashboardEndpoint, 5_000, dashboardHealthMatches); console.log(`${dashboardOk ? "ok  " : "FAIL"} Hanchou dashboard endpoint: ${dashboardEndpoint}`); if (!dashboardOk) failures += 1;
+  const herdrm = herdrmCompatibility(name, profile);
+  console.log(`ok   Herdrm optional: ${herdrm.installed ? herdrm.compatible ? "installed / compatible" : "installed / named-session incompatible" : "not installed"}`);
   try {
     const proc = run([commandPath("herdr"), "integration", "status"], { env, cwd: ROOT, check: false, capture: true, timeout: 15_000 }); const output = `${proc.stdout}\n${proc.stderr}`;
     for (const [provider, label] of [["codex", "Herdr Codex integration"], ["claude", "Herdr Claude integration"]]) {
@@ -3644,12 +4123,12 @@ function choice(value: any, values: Set<string>, label: string): void {
 
 function printHelp(): void {
   console.log(`usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
+               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
 
 Herdr-first Hanchou control utility
 
 positional arguments:
-  {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
+  {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
 
 options:
   -h, --help            show this help message and exit
@@ -3678,6 +4157,17 @@ options:
 }
 
 const HELP_SURFACES: Record<string, string> = {
+  onboard: `usage: hanchou onboard [-h] [--yes] [{personal,work}]
+
+Create the fixed dedicated repository shelf and add its human-owned workspace-root authorization.
+Without --yes this command only prints the plan. Applying requires an ordinary interactive terminal.
+
+positional arguments:
+  {personal,work}
+
+options:
+  -h, --help       show this help message and exit
+  --yes            apply the reviewed onboarding plan`,
   plan: profileHelp("plan"),
   bootstrap: profileHelp("bootstrap"),
   doctor: profileHelp("doctor"),
@@ -3691,6 +4181,17 @@ options:
   -h, --help          show this help message and exit
   --yes
   --install-upstream`,
+  launch: `usage: hanchou launch [-h] [--no-browser] [--herdrm] [{personal,work}]
+
+Verify the Hanchou services, start or initialize the Orchestrator, and open the dashboard.
+
+positional arguments:
+  {personal,work}
+
+options:
+  -h, --help       show this help message and exit
+  --no-browser     do not open the dashboard in the default browser
+  --herdrm         also try the optional Herdrm app after compatibility checks`,
   status: `usage: hanchou status [-h] [--json] [{personal,work}]
 
 positional arguments:
@@ -3699,11 +4200,20 @@ positional arguments:
 options:
   -h, --help       show this help message and exit
   --json`,
-  open: `usage: hanchou open [-h]
-                    {tasks,herdr,orchestrator,automations} [{personal,work}]
+  dashboard: `usage: hanchou dashboard [-h] {serve,snapshot} ...
 
 positional arguments:
-  {tasks,herdr,orchestrator,automations}
+  {serve,snapshot}
+
+options:
+  -h, --help       show this help message and exit`,
+  "dashboard serve": profileHelp("dashboard serve"),
+  "dashboard snapshot": profileHelp("dashboard snapshot"),
+  open: `usage: hanchou open [-h]
+                    {dashboard,tasks,herdr,herdrm,orchestrator,automations} [{personal,work}]
+
+positional arguments:
+  {dashboard,tasks,herdr,herdrm,orchestrator,automations}
   {personal,work}
 
 options:
@@ -4036,7 +4546,7 @@ function helpSurfaceKey(argv: string[]): string | null {
     if (commands.length === 2) break;
   }
   if (!commands.length) return "";
-  const nested = new Set(["project", "usage", "route", "execution", "relay", "inbox", "delivery"]);
+  const nested = new Set(["dashboard", "project", "usage", "route", "execution", "relay", "inbox", "delivery"]);
   return nested.has(commands[0]) && commands.length > 1 ? `${commands[0]} ${commands[1]}` : commands[0];
 }
 
@@ -4071,16 +4581,28 @@ function parseCliUnchecked(argv: string[]): JsonObject {
     return { ...result, ...parsed };
   };
   if (result.command === "plan" || result.command === "bootstrap" || result.command === "doctor" || result.command === "start-orchestrator") return profileCommand();
+  if (result.command === "onboard") return profileCommand([["yes", "boolean"]]);
+  if (result.command === "launch") return profileCommand([["no-browser", "boolean"], ["herdrm", "boolean"]]);
   if (result.command === "apply") return profileCommand([["yes", "boolean"], ["install-upstream", "boolean"]]);
   if (result.command === "status") return profileCommand([["json", "boolean"]]);
   if (result.command === "open") {
     const parsed = parseOptionTokens(rest, {}); const rows = positionals(parsed, 1, 2); parsed.target = rows[0]; parsed.profile_name = rows[1] ?? null;
-    choice(parsed.target, new Set(["tasks", "herdr", "orchestrator", "automations"]), "target");
+    choice(parsed.target, new Set(["dashboard", "tasks", "herdr", "herdrm", "orchestrator", "automations"]), "target");
     if (parsed.profile_name !== null) choice(parsed.profile_name, new Set(["personal", "work"]), "profile_name");
     return { ...result, ...parsed };
   }
   if (result.command === "render-agents") { const parsed = parseOptionTokens(rest, definitions([["check", "boolean"]])); positionals(parsed, 0); return { ...result, ...parsed }; }
   if (result.command === "handoff") { const parsed = parseOptionTokens(rest, {}); positionals(parsed, 0); return { ...result, ...parsed }; }
+  if (result.command === "dashboard") {
+    if (!rest.length) throw new CommandError("the following arguments are required: dashboard_command");
+    const subcommand = rest[0];
+    choice(subcommand, new Set(["serve", "snapshot"]), "dashboard_command");
+    const parsed = parseOptionTokens(rest.slice(1), {});
+    const rows = positionals(parsed, 0, 1);
+    parsed.profile_name = rows[0] ?? null;
+    if (parsed.profile_name !== null) choice(parsed.profile_name, new Set(["personal", "work"]), "profile_name");
+    return { ...result, ...parsed, dashboard_command: subcommand };
+  }
   if (new Set(["project", "usage", "route", "execution", "relay", "inbox", "delivery"]).has(result.command)) {
     if (!rest.length) throw new CommandError(`the following arguments are required: ${result.command}_command`);
     const subcommand = rest[0]; const tokens = rest.slice(1); result[`${result.command}_command`] = subcommand;
@@ -4165,11 +4687,12 @@ function parseCliUnchecked(argv: string[]): JsonObject {
 }
 
 const SUBCOMMAND_CHOICES: Record<string, string[]> = {
+  dashboard: ["serve", "snapshot"],
   project: ["list", "show", "resolve", "doctor"], usage: ["set", "show", "recommend"], route: ["resolve"], execution: ["dispatch", "inspect", "reconcile"],
   relay: ["emit", "recover", "dispatch", "daemon"], inbox: ["list", "claim", "show", "ack", "retry", "dead-letter"],
   delivery: ["create", "list", "show", "mark-rendered", "mark-delivered", "fail", "retry"],
 };
-const TOP_LEVEL_COMMANDS = ["plan", "bootstrap", "apply", "status", "doctor", "start-orchestrator", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
+const TOP_LEVEL_COMMANDS = ["onboard", "plan", "bootstrap", "apply", "launch", "status", "doctor", "start-orchestrator", "dashboard", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
 const REQUIRED_FLAGS: Record<string, string[]> = {
   "project resolve": ["path"], "usage set": ["weekly-remaining"], "usage recommend": ["role"], "route resolve": ["role"],
   "relay emit": ["type", "from-agent", "from-role", "to-agent", "to-role", "summary"],
@@ -4206,7 +4729,7 @@ function argumentContext(argv: string[]): string {
 
 function argumentUsage(context: string): string {
   if (!context) return `usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {plan,bootstrap,apply,status,doctor,start-orchestrator,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
+               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
   return (HELP_SURFACES[context] ?? HELP_SURFACES[context.split(" ")[0]]).split("\n\n")[0];
 }
 
@@ -4216,7 +4739,7 @@ function hasFlag(argv: string[], flag: string): boolean {
 
 function normalizeArgumentMessage(argv: string[], context: string, raw: string): string {
   if (!context && raw.startsWith("invalid choice:")) return `argument command: ${raw} (choose from '${TOP_LEVEL_COMMANDS.join("', '")}')`;
-  const unknownSubcommand = raw.match(/^unknown (project|usage|route|execution|relay|inbox|delivery) command: (.+)$/);
+  const unknownSubcommand = raw.match(/^unknown (dashboard|project|usage|route|execution|relay|inbox|delivery) command: (.+)$/);
   if (unknownSubcommand) {
     const command = unknownSubcommand[1]; const value = unknownSubcommand[2];
     return `argument ${command}_command: invalid choice: '${value}' (choose from '${SUBCOMMAND_CHOICES[command].join("', '")}')`;
@@ -4246,7 +4769,7 @@ async function main(): Promise<void> {
     const args = parseCli(process.argv.slice(2));
     if (args.command === "__help__") return;
     CONFIG_ROOT = args.config_root ? expand(args.config_root) : process.env.HANCHOU_CONFIG_ROOT ? expand(process.env.HANCHOU_CONFIG_ROOT) : DEFAULT_CONFIG_ROOT;
-    const managedRuntime = args.command === "start-orchestrator" || args.command === "execution";
+    const managedRuntime = args.command === "start-orchestrator" || args.command === "launch" || args.command === "execution";
     if (managedRuntime) {
       let selectedConfig: string;
       let defaultConfig: string;
@@ -4265,12 +4788,15 @@ async function main(): Promise<void> {
     const [name, profile] = loadProfile(args.profile_name || args.profile);
     for (const [key, value] of Object.entries(profileEnv(name, profile))) if ((key.startsWith("HANCHOU_") || new Set(["BEADS_DIR", "BD_AGENT_PROFILE"]).has(key)) && value !== undefined) process.env[key] = value;
     switch (args.command) {
+      case "onboard": onboardProfile(args, name); break;
       case "plan": printPlan(name, profile); break;
       case "bootstrap": bootstrapProfile(name, profile); break;
       case "apply": applyProfile(name, profile, Boolean(args.yes), Boolean(args.install_upstream)); break;
+      case "launch": await launchProfile(args, name, profile); break;
       case "status": statusCommand(name, profile, Boolean(args.json)); break;
       case "doctor": process.exitCode = await doctor(name, profile); break;
       case "start-orchestrator": startOrchestrator(name, profile); break;
+      case "dashboard": await dashboardCommand(args, name, profile); break;
       case "open": openTarget(name, profile, args.target); break;
       case "project": if (args.project_command === "list") projectList(args, name); else if (args.project_command === "show") projectShow(args, name); else if (args.project_command === "resolve") projectResolve(args, name); else projectDoctor(args, name); break;
       case "usage": if (args.usage_command === "set") usageSet(args, name, profile); else if (args.usage_command === "show") usageShow(args, name, profile); else usageRecommend(args, name, profile); break;

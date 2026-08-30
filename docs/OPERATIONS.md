@@ -8,10 +8,13 @@ profile state, and optionally installs pinned upstream components and
 LaunchAgents. Existing Automation YAML is preserved.
 
 ```bash
+hanchou onboard work
+hanchou onboard work --yes
 hanchou plan work
 hanchou bootstrap work
 hanchou apply work --yes
 hanchou apply work --yes --install-upstream
+hanchou launch work
 ```
 
 Herdr and Node.js are resolved from the repository's `mise.toml`; Homebrew is
@@ -28,12 +31,14 @@ Attach to the named Agent, review the exact sources, and trust only the intended
 Hanchou/Herdr integration. Hanchou never bypasses Codex approvals or sandboxing.
 That first project/hook decision is intentionally not auto-approved.
 
-New project dispatch is separately deny-by-default. A human reviews and edits
-`~/.config/hanchou/<profile>/projects.local.toml`; managed Agents only use
-`hanchou project list/show/resolve/doctor`. Do not authorize `$HOME` or a mixed
-directory containing secrets. Prefer exact repositories, or one dedicated
-secret-free repository shelf with
-`trust = "descendant-git-repositories"`. See `PROJECT_WORKSPACES.md`.
+New project dispatch is separately deny-by-default. A human either reviews and
+edits `~/.config/hanchou/<profile>/projects.local.toml` for exact entries, or
+uses the fixed-path, interactive `hanchou onboard <profile> [--yes]` flow for
+the dedicated Agent-safe repository shelf. Managed Agents only use
+`hanchou project list/show/resolve/doctor`; `onboard --yes` rejects a
+Herdr-managed environment, an Agent identity, and non-interactive input. Do not
+authorize `$HOME` or a mixed directory containing secrets. See
+`PROJECT_WORKSPACES.md`.
 The production `bin/hanchou` wrapper starts Bash with `-p` (startup hardening;
 it grants no OS privilege) so caller-provided `BASH_ENV`/inherited functions
 cannot replace its sanitization.
@@ -57,10 +62,11 @@ managed environment and reloads the project-local command policy.
 Routine control commands use the checked-in project policy at
 `.codex/rules/hanchou.rules`. It automatically allows the read-only
 `hanchou project list/show/resolve/doctor` commands and only the canonical
-`hanchou inbox list/show/claim/ack` forms in this trusted checkout. Project
-trust mutation commands do not exist. Inbox `retry` and `dead-letter` still
-prompt because they alter delivery semantics, and unknown future commands
-receive no blanket permission. Never add a user-global
+`hanchou inbox list/show/claim/ack` forms in this trusted checkout. Arbitrary
+project trust mutation commands do not exist, and the human-only
+`onboard --yes` command is not allowed by this Agent policy. Inbox `retry` and
+`dead-letter` still prompt because they alter delivery semantics, and unknown
+future commands receive no blanket permission. Never add a user-global
 `prefix_rule(pattern=["hanchou", "inbox"], decision="allow")`: it also allows
 destructive and future subcommands in unrelated Codex projects. Back up and
 remove such a remembered rule from `~/.codex/rules/default.rules`, then restart
@@ -91,22 +97,46 @@ approval review; the dangerous approval/sandbox bypass flag is never used.
 
 ## Startup
 
-On macOS, a GUI-domain LaunchAgent starts only Herdr and beads-ui. Herdr plugin
-startup launches herdr-automations and runs one Relay recovery/dispatch pass.
-If scheduler crash supervision proves insufficient, promote its daemon to a
-separate LaunchAgent rather than running two schedulers.
+On macOS, GUI-domain LaunchAgents start Herdr, beads-ui, and the loopback-only
+read-only Hanchou Dashboard. Reapplying an unchanged plist leaves the running
+service in place; a changed managed plist is backed up, replaced, and reloaded.
+Because beads-ui intentionally daemonizes, an unchanged reapply idempotently
+kickstarts only its short-lived launcher; a healthy Herdr or Dashboard is not
+restarted. Each profile uses a separate beads-ui runtime/PID directory.
+Herdr plugin startup launches herdr-automations and runs one Relay
+recovery/dispatch pass. If scheduler crash supervision proves insufficient,
+promote its daemon to a separate LaunchAgent rather than running two schedulers.
+
+After bootstrap, the normal entrypoint is:
+
+```bash
+hanchou launch work
+```
+
+It verifies that the three LaunchAgent-owned services are ready, starts or
+initializes the Orchestrator, and opens the Dashboard. It does not reinstall
+missing services; run `hanchou bootstrap work` when readiness fails.
 
 ## UI
 
 ```text
-work      http://127.0.0.1:3737
-personal  http://127.0.0.1:3837
+                 work                       personal
+Dashboard        http://127.0.0.1:3747      http://127.0.0.1:3847
+beads-ui          http://127.0.0.1:3737      http://127.0.0.1:3837
 ```
 
 ```bash
-herdr --session work
-herdr --session personal
+hanchou open dashboard work
+hanchou open tasks work
+hanchou open herdr work
+hanchou open orchestrator work
 ```
+
+Herdrm is optional and is not a Core readiness condition. Herdrm 0.5.x uses the
+default local socket while Hanchou uses named sessions. `hanchou open herdrm`
+therefore refuses to open unless both paths resolve to the same socket; Hanchou
+does not create a socket bridge or start a second default session. Even when
+compatible, use it only for monitoring or attaching to Hanchou-created Agents.
 
 ## Health checks
 
@@ -123,6 +153,8 @@ herdr --session personal
 - Relay directories, expired leases, pending Deliveries;
 - Automation config, daemon, misses, repeated failures;
 - beads-ui endpoint;
+- Hanchou Dashboard endpoint;
+- optional Herdrm presence/compatibility without making absence a failure;
 - generated agent and Skill freshness;
 - the project-local Codex control policy and absence of a broad user-level
   Inbox allow rule.
