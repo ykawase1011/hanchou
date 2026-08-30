@@ -99,6 +99,7 @@ Roleごとに推測させません。詳細は`docs/CLI_AND_SKILL_BOUNDARY.md`�
 ```bash
 brew install mise git gh beads
 mise install
+mise exec -- npm ci
 make check
 ./bin/hanchou plan work
 ./bin/hanchou bootstrap work
@@ -109,8 +110,9 @@ make check
 
 Herdr 0.8.2とNode.js 22は`mise.toml`で管理します。HerdrをHomebrewから直接
 installしたり、`latest`へ自動追従させたりしません。`herdr-beads`はoptional、
-Beadsのstandalone Dolt serverは初期構成では不要です。CLI runtimeのPythonも
-同じfileでpinされるため、macOS標準Pythonのversionには依存しません。
+Beadsのstandalone Dolt serverは初期構成では不要です。Core CLI、validator、
+generatorはTypeScriptで実装し、Node.js 22が直接実行します。runtime npm
+dependencyとPython runtimeは必要ありません。
 
 Task UI：
 

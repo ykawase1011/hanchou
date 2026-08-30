@@ -1,6 +1,6 @@
 PROFILE ?= work
 
-.PHONY: plan apply apply-all doctor agents manifest manifest-check check open-tasks handoff
+.PHONY: plan apply apply-all doctor agents manifest manifest-check typecheck check open-tasks handoff
 
 plan:
 	./bin/hanchou plan $(PROFILE)
@@ -15,22 +15,25 @@ doctor:
 	./bin/hanchou doctor $(PROFILE)
 
 agents:
-	./bin/hanchou render-agents
+	mise exec -- node --experimental-strip-types scripts/render-agents.ts
 
 manifest:
-	python3 scripts/manifest.py generate
+	mise exec -- node --experimental-strip-types scripts/manifest.ts generate
 
 manifest-check:
-	python3 scripts/manifest.py check
+	mise exec -- node --experimental-strip-types scripts/manifest.ts check
 
-check:
-	./bin/hanchou render-agents --check
-	mise exec -- python3 scripts/validate.py
-	bash tests/test-relay.sh
-	bash tests/test-delivery.sh
-	bash tests/test-execution.sh
-	bash tests/test-cli.sh
-	python3 scripts/manifest.py check
+typecheck:
+	mise exec -- npm run typecheck
+
+check: typecheck
+	mise exec -- node --experimental-strip-types scripts/render-agents.ts --check
+	mise exec -- node --experimental-strip-types scripts/validate.ts
+	mise exec -- bash tests/test-relay.sh
+	mise exec -- bash tests/test-delivery.sh
+	mise exec -- bash tests/test-execution.sh
+	mise exec -- bash tests/test-cli.sh
+	mise exec -- node --experimental-strip-types scripts/manifest.ts check
 
 open-tasks:
 	./bin/hanchou open tasks $(PROFILE)

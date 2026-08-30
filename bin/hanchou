@@ -14,4 +14,4 @@ if ! command -v mise >/dev/null 2>&1; then
   exit 127
 fi
 
-exec mise -C "$ROOT" exec -- python3 "$ROOT/libexec/hanchou.py" "$@"
+exec mise -C "$ROOT" exec -- node --experimental-strip-types "$ROOT/libexec/hanchou.ts" "$@"

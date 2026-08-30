@@ -162,8 +162,11 @@ herdr = "0.8.2"
 node = "22"
 ```
 
-CLI実装runtimeのPythonも同じ`mise.toml`でpinします。これはmacOS標準Pythonの
-version差に依存せず、`./bin/hanchou`を再現可能にするためです。
+Core CLI、validator、generatorはerasable TypeScriptで実装し、pinされた
+Node.js 22が直接実行します。runtime npm dependencyやcompile済みartifactを
+要求せず、`mise install`直後から`./bin/hanchou`を再現可能にします。
+TypeScript compilerとNode型定義はtypecheck専用のdev dependencyとしてlock
+します。Python runtimeはHanchouの成立条件に含めません。
 
 Herdrはplugin API、Socket API、Agent lifecycle、event、CLI contractへ
 Hanchouが依存するため、`latest`へ自動追従しません。Herdrをupgradeする場合は

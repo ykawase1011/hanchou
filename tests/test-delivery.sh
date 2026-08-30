@@ -13,10 +13,10 @@ OUT="$(HOME="$TMP" "$ROOT/bin/hanchou" --profile work delivery create \
   --destination '{"type":"local_session","agent":"orchestrator"}' \
   --summary 'Task completed' \
   --json)"
-DELIVERY_ID="$(printf '%s' "$OUT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["delivery_id"])')"
+DELIVERY_ID="$(printf '%s' "$OUT" | node -e 'let text=""; process.stdin.on("data", chunk => text += chunk).on("end", () => console.log(JSON.parse(text).delivery_id))')"
 
 HOME="$TMP" "$ROOT/bin/hanchou" --profile work delivery mark-rendered "$DELIVERY_ID" --by orchestrator --message 'Completed.' >/dev/null
 HOME="$TMP" "$ROOT/bin/hanchou" --profile work delivery mark-delivered "$DELIVERY_ID" --adapter local-session >/dev/null
-HOME="$TMP" "$ROOT/bin/hanchou" --profile work delivery show "$DELIVERY_ID" | python3 -c 'import json,sys; row=json.load(sys.stdin); assert row["state"]=="delivered"'
+HOME="$TMP" "$ROOT/bin/hanchou" --profile work delivery show "$DELIVERY_ID" | node -e 'let text=""; process.stdin.on("data", chunk => text += chunk).on("end", () => { if (JSON.parse(text).state !== "delivered") process.exit(1); })'
 
 echo "delivery lifecycle ok"

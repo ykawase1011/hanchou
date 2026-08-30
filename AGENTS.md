@@ -45,10 +45,9 @@ interfaces, and the ownership boundaries in `docs/REPOSITORY_BOUNDARIES.md`.
 ## Validation
 
 ```bash
-./bin/hanchou render-agents --check
-python3 scripts/validate.py
-bash tests/test-relay.sh
-bash tests/test-delivery.sh
+mise install
+mise exec -- npm ci
+make check
 ./bin/hanchou plan work
 ./bin/hanchou plan personal
 ```

@@ -45,4 +45,6 @@ jobs:
         with:
           cache: true
 
+      - run: mise exec -- npm ci
+
       - run: make check

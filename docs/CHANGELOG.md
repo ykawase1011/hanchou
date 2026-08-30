@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- rewrote the Core CLI, execution bridge, Relay/Delivery mechanics, validators,
+  and generators in TypeScript;
+- made Node.js 22 the only Hanchou implementation runtime and removed Python;
+- added strict TypeScript typechecking while retaining zero runtime npm
+  dependencies.
+
 ## v2.3.1 final design
 
 - renamed Mailbox subsystem to Hanchou Relay;

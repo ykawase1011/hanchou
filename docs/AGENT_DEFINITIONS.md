@@ -7,7 +7,7 @@ roles/<role>/role.toml
 roles/<role>/ROLE.md
 ```
 
-`render-agents.py` generates:
+`render-agents.ts` generates:
 
 ```text
 .codex/agents/<role>.toml

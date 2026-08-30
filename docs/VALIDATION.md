@@ -4,7 +4,8 @@
 
 - 24 TOML files parsed;
 - all JSON schemas/contracts and plist templates parsed;
-- Python sources compiled and shell scripts passed syntax checks;
+- TypeScript sources passed strict typechecking and Node.js 22 execution;
+- compatibility shell launchers and E2E harnesses passed syntax checks;
 - 12 Public Skills validated, including `hanchou-cli`;
 - canonical Role → Codex/Claude definitions were current;
 - Writer/Editor remained Codex-only;
@@ -23,7 +24,7 @@
 
 On a target macOS host, 2026-08-30:
 
-- `mise install` resolved Herdr 0.8.2, Node.js 22, and the pinned Python runtime;
+- `mise install` resolved Herdr 0.8.2 and the TypeScript runtime, Node.js 22;
 - `hanchou bootstrap work` installed the Codex/Claude integrations, Hanchou
   Skills, `herdr-automations`, and `beads-ui`, and initialized embedded Beads;
 - `hanchou doctor work` passed every required tool, integration, plugin,

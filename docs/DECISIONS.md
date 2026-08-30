@@ -23,6 +23,9 @@
 16. HerdrとNode.jsのversion管理は`mise`を標準とし、`hanchou/mise.toml`を
     要求versionの正本にする。HerdrはCore E2Eを伴う明示的upgradeのみ許可し、
     Homebrewからの直接installや`latest`への自動追従を標準手順にしない。
+17. Hanchouのproduction実装、validator、generatorはTypeScriptへ統一する。
+    Node.js 22のnative type strippingで実行し、runtime npm dependencyとPython
+    runtimeを要求しない。TypeScript compilerはCI/typecheck専用とする。
 
 ## 初期default
 
