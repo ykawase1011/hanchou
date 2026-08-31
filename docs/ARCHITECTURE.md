@@ -42,6 +42,10 @@ A long-running L0 wait loop is prohibited.
 ## Restart model
 
 - Herdr restores session shape and supported provider sessions.
+- Hanchou records one exact Orchestrator workspace/tab/pane/terminal binding per
+  profile before Agent startup and serializes create/reuse against that record.
+- A missing Agent name never authorizes a second Orchestrator workspace when a
+  recorded or legacy candidate remains; ambiguous legacy state fails closed.
 - Beads restores Task truth.
 - Relay recovers expired Inbox leases and pending Deliveries.
 - Plugin startup runs one idempotent Relay dispatch.

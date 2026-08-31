@@ -241,7 +241,7 @@ Dashboardは全体の状態確認、beads-uiはTask確認、HerdrはAgentのterm
 |---|---|
 | Dashboardを開く | `hanchou open dashboard work` |
 | Herdr TUI全体を開く | `hanchou open herdr work` |
-| Orchestratorへ直接attach | `hanchou open orchestrator work` |
+| OrchestratorへfocusしたHerdr TUIを開く | `hanchou open orchestrator work` |
 | Task画面を開く | `hanchou open tasks work` |
 | Automation boardを開く | `hanchou open automations work` |
 
@@ -250,6 +250,10 @@ Dashboardは全体の状態確認、beads-uiはTask確認、HerdrはAgentのterm
 ```bash
 hanchou open orchestrator work
 ```
+
+このcommandは排他的なdirect attachではありません。Orchestratorのpaneへfocusして、
+複数clientから表示できる通常のHerdr TUIを開きます。開いたterminalへそのまま日本語で
+依頼を入力してください。
 
 初回初期化時は、Orchestratorがcontrol planeの接続確認として次の内容を自動確認します。
 既に初期化済みのOrchestratorを使っている場合だけ、同じ質問をその画面へ送ります。
@@ -280,6 +284,9 @@ Herdr TUIから通常terminalへ戻る操作は次です。
 
 これはAgentを停止せず、画面からdetachする操作です。再び
 `hanchou open orchestrator work`で戻れます。
+
+`/exit`は別の操作です。これは表示だけでなくCodex／Claude Agent自体を終了します。
+画面を切り替えるだけなら`/exit`を使わず、`Ctrl+B`、`q`を使ってください。
 
 ## 7. 自動worktreeの範囲
 
@@ -354,19 +361,26 @@ hanchou launch work --herdrm
 OrchestratorやWorkerを新規作成しないでください。標準操作はHanchou Dashboardと
 `hanchou open herdr work`です。
 
+Herdrmでpaneへattachする操作と、`herdr agent attach`／`herdr terminal attach`は
+同じpaneに対して同時に使えません。direct attachの書き込みownerは1つだけです。
+前のdirect viewを`Ctrl+B`、`q`でdetachしてから別のdirect clientを使ってください。
+`Another client took this pane over`と表示された場合、Agentが停止したのではなく、
+後から接続したclientへ表示・入力ownerが移ったという意味です。通常は
+`hanchou open orchestrator work`のfull Herdr TUIを使えばこの競合を避けられます。
+
 ## 10. よくある状態
 
 ### `orchestrator ... blocked; initialization remains pending`
 
-初回のproject／hook review待ちです。次でattachし、表示された対象が意図した
+初回のproject／hook review待ちです。次でfull Herdr viewを開き、表示された対象が意図した
 Hanchou checkoutとHerdr integrationであることを確認してからtrustします。
 
 ```bash
 hanchou open orchestrator work
 ```
 
-古いAgentを`apply`より前から動かしていた場合は、attached Agent内で`/exit`し、
-通常terminalへ戻って次を実行します。
+古いAgentを`apply`より前から動かしていた場合は、Agent内で`/exit`し、`Ctrl+B`、`q`で
+通常terminalへ戻って次を実行します。同じworkspace／paneが再利用されます。
 
 ```bash
 hanchou start-orchestrator work
@@ -378,6 +392,34 @@ hanchou start-orchestrator work
 
 ```bash
 hanchou launch work
+hanchou open orchestrator work
+```
+
+### `00-orchestrator`が複数表示される
+
+過去版では、初回trust待ち、Herdr再起動、または`/exit`後にAgent名が見えなくなると、
+残っているworkspaceを認識できず新しい`00-orchestrator`を作ることがありました。
+現行版は作成したworkspace／pane IDを保存し、起動を直列化して同じpaneを再利用します。
+未管理の古い候補が残っている場合は、新しいworkspaceを作らず停止します。ただし、
+要求kind、`00-orchestrator` label、1 tab／1 pane、no-worktree、Core cwd、全IDが一致する
+live named `orchestrator`だけは、過去版から安全にbindingへ移行してそのまま維持します。
+
+通常terminalから次を実行します。
+
+```bash
+hanchou open herdr work
+```
+
+sidebarでAgent名`orchestrator`がいる`00-orchestrator`を1つ残します。それ以外は、
+空のshellであることを目で確認してから、そのrowを選び、`Ctrl+B`を押して指を離し、
+`Shift+D`を押してcloseを承認します。live Agentがどこにもいなければ、古い
+`00-orchestrator`をすべて閉じます。Git checkoutは削除されませんが、そのworkspaceの
+PTYは終了するため、内容が不明なrowは閉じないでください。
+
+整理後、通常terminalへ戻って次を1回だけ実行します。
+
+```bash
+hanchou start-orchestrator work
 hanchou open orchestrator work
 ```
 

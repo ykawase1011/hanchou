@@ -178,12 +178,20 @@ dependencyとPython runtimeは必要ありません。
 | Hanchou Dashboard | <http://127.0.0.1:3747> | <http://127.0.0.1:3847> | `hanchou open dashboard work` |
 | beads-ui | <http://127.0.0.1:3737> | <http://127.0.0.1:3837> | `hanchou open tasks work` |
 | Herdr TUI | terminal | terminal | `hanchou open herdr work` |
-| Orchestrator | terminal | terminal | `hanchou open orchestrator work` |
+| OrchestratorへfocusしたHerdr TUI | terminal | terminal | `hanchou open orchestrator work` |
 
 Dashboardは5秒ごとにHerdr、Beads、Relay、workspace登録を読み取ります。Task本文や
 artifact本文はDashboardに表示しませんが、Task titleやpathにはsecretを書かないでください。
 状態確認専用で、Task編集はbeads-ui、Agent操作はHerdrを使います。Herdr TUIから
 通常terminalへ戻るには、`Ctrl+B`を押してから`q`です。
+
+`hanchou open orchestrator work`はOrchestratorへfocusして通常のHerdr TUIを開きます。
+単一ownerのdirect attachではないため、複数のHerdr clientから同じsessionを表示できます。
+`launch`／`start-orchestrator`はprofile単位で直列化され、作成したworkspace／pane IDを
+保存して再利用します。過去版が残した未管理の`00-orchestrator`を検出した場合は、
+新しいworkspaceを追加せず、安全な手動整理手順を表示します。唯一の例外として、要求kind、
+single-pane形状、no-worktree、Core cwd、全IDが一致するlive named `orchestrator`は、
+過去版から安全にbindingへ移行して維持します。
 
 Herdrmはoptionalです。現在のHerdrm 0.5.xはdefault socketを使う一方、Hanchouは
 `work`／`personal`のnamed sessionを使うため、通常は同じsessionを表示できません。
@@ -191,6 +199,9 @@ Hanchouは別sessionの誤起動を避けるため、socket一致を確認でき
 `hanchou open herdrm work`を安全側に失敗させます。default socketが存在しない場合だけ、
 明示的なHerdrm起動commandはlive named socketへのcompatibility linkを作成できます。
 既存default sessionは上書きしません。標準画面はHanchou DashboardとHerdr TUIです。
+Herdrmのpane attachと`herdr agent attach`／`herdr terminal attach`は、同じpaneに対して
+同時に使わないでください。direct attachは書き込みownerが1つだけで、後から接続した
+clientが前のclientをtake overします。前のdirect viewは`Ctrl+B`、`q`でdetachします。
 
 ```bash
 hanchou launch work --herdrm

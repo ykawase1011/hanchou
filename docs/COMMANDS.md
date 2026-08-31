@@ -64,6 +64,22 @@ is reported as a warning and never starts a second Herdr session. If the default
 path is absent, an explicit Herdrm open may link it to the verified pinned,
 live, same-user named socket; an existing path is never replaced.
 
+Orchestrator creation is serialized per profile. Hanchou atomically records the
+exact workspace, tab, pane, and terminal IDs before Agent startup and reuses
+that binding after `/exit`, a blocked first run, or a failed start. It never
+closes a workspace from `launch` or `start-orchestrator`. If an unbound legacy
+workspace with the configured label exists, Hanchou fails closed and prints the
+manual Herdr cleanup flow instead of creating another one. The only migration
+exception is a live named Agent whose kind, label, one-tab/one-pane shape,
+no-worktree state, Core cwd, and all opaque IDs match exactly; Hanchou binds and
+keeps that Agent without creating or restarting a workspace.
+
+`open orchestrator` focuses the bound Orchestrator and opens the ordinary full
+Herdr client. It does not use the single-owner `agent attach` surface. Full
+Herdr clients may coexist; a direct `agent attach`/`terminal attach` and a
+Herdrm attach to the same pane may not. Detach a direct view with `Ctrl+B`, then
+`q` before another direct client takes ownership.
+
 `dashboard serve` is normally owned by the LaunchAgent. It binds only to the
 configured literal loopback address and exposes GET-only `/`, `/health`, and
 `/api/status`. It has no state-changing action API. `dashboard snapshot` emits

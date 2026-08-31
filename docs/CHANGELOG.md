@@ -25,6 +25,12 @@
   options;
 - made managed Codex command networking fail closed through an explicit proxy,
   empty external-domain policy, and exact Herdr Unix-socket allowlist.
+- made Orchestrator startup profile-serialized and crash-safe with a durable
+  exact workspace/tab/pane/terminal binding, same-pane retry/restart, strict
+  legacy migration checks, duplicate detection, and no automatic workspace
+  deletion;
+- changed `open orchestrator` from single-owner direct attach to a focused full
+  Herdr client, and documented Herdrm/direct-attach ownership and recovery.
 
 ## v2.3.1 final design
 

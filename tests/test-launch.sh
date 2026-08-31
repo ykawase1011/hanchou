@@ -8,7 +8,84 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
     [[ "${2:-}" == "work" ]] || { echo "unexpected fake session: ${2:-}" >&2; exit 98; }
     shift 2
   fi
+  if [[ "$#" == "0" ]]; then
+    printf '%s\n' '<tui>' >> "${FAKE_HERDR_LOG:?}"
+    exit 0
+  fi
   printf '%s\n' "$*" >> "${FAKE_HERDR_LOG:?}"
+
+  fake_agent_name() {
+    if [[ -e "${FAKE_HERDR_AGENT_NAME:?}" ]]; then
+      tr -d '\r\n' < "$FAKE_HERDR_AGENT_NAME"
+    else
+      printf '%s' orchestrator
+    fi
+  }
+
+  fake_agent_location() {
+    if [[ -s "${FAKE_HERDR_AGENT_LOCATION:?}" ]]; then
+      cat "$FAKE_HERDR_AGENT_LOCATION"
+    else
+      printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1'
+    fi
+  }
+
+  fake_print_agent() {
+    local name status workspace_id tab_id pane_id terminal_id
+    name="$(fake_agent_name)"
+    status="$(tr -d '\r\n' < "${FAKE_HERDR_AGENT_STATE:?}")"
+    IFS='|' read -r workspace_id tab_id pane_id terminal_id <<< "$(fake_agent_location)"
+    printf '{'
+    if [[ -n "$name" ]]; then printf '"name":"%s",' "$name"; fi
+    if [[ "${HANCHOU_TEST_AGENT_LAUNCH_PENDING:-0}" == "1" ]]; then
+      printf '"launch_pending":true,'
+    else
+      printf '"agent":"codex",'
+    fi
+    printf '"agent_status":"%s","workspace_id":"%s","tab_id":"%s","pane_id":"%s","terminal_id":"%s","focused":false,"interactive_ready":true,"state_change_seq":1,"revision":1}' \
+      "$status" "$workspace_id" "$tab_id" "$pane_id" "$terminal_id"
+  }
+
+  fake_find_workspace() {
+    local wanted="$1"
+    [[ -f "${FAKE_HERDR_WORKSPACES:?}" ]] || return 1
+    while IFS='|' read -r workspace_id label tab_id pane_id terminal_id cwd; do
+      if [[ "$workspace_id" == "$wanted" ]]; then
+        printf '%s|%s|%s|%s|%s|%s\n' "$workspace_id" "$label" "$tab_id" "$pane_id" "$terminal_id" "$cwd"
+        return 0
+      fi
+    done < "$FAKE_HERDR_WORKSPACES"
+    return 1
+  }
+
+  fake_print_pane() {
+    local record="$1"
+    local workspace_id workspace_label tab_id pane_id terminal_id workspace_cwd
+    local pane_status pane_agent agent_workspace agent_pane
+    IFS='|' read -r workspace_id workspace_label tab_id pane_id terminal_id workspace_cwd <<< "$record"
+    pane_status=unknown
+    pane_agent=""
+    if [[ -f "${FAKE_HERDR_AGENT_STATE:?}" ]]; then
+      IFS='|' read -r agent_workspace _ agent_pane _ <<< "$(fake_agent_location)"
+      if [[ "$agent_workspace" == "$workspace_id" && "$agent_pane" == "$pane_id" ]]; then
+        pane_status="$(tr -d '\r\n' < "$FAKE_HERDR_AGENT_STATE")"
+        pane_agent="$(fake_agent_name)"
+      fi
+    fi
+    printf '{"pane_id":"%s","terminal_id":"%s","workspace_id":"%s","tab_id":"%s","focused":false,"cwd":"%s","foreground_cwd":"%s",' \
+      "$pane_id" "$terminal_id" "$workspace_id" "$tab_id" "$workspace_cwd" "$workspace_cwd"
+    if [[ -n "$pane_agent" ]]; then printf '"agent":"%s",' "$pane_agent"; fi
+    printf '"agent_status":"%s","revision":1}' "$pane_status"
+  }
+
+  fake_lock_state() {
+    while ! mkdir "${FAKE_HERDR_STATE_LOCK:?}" 2>/dev/null; do sleep 0.01; done
+  }
+
+  fake_unlock_state() {
+    rmdir "${FAKE_HERDR_STATE_LOCK:?}" 2>/dev/null || true
+  }
+
   case "${1:-} ${2:-}" in
     "status server")
       [[ "${3:-}" == "--json" ]] || { echo "unexpected fake status argv: $*" >&2; exit 98; }
@@ -28,8 +105,16 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
         printf '%s\n' '{"error":{"code":"agent_not_found"}}' >&2
         exit 1
       fi
-      AGENT_STATUS="$(tr -d '\r\n' < "$FAKE_HERDR_AGENT_STATE")"
-      printf '{"result":{"agent":{"name":"orchestrator","agent_status":"%s","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:t1:p1","terminal_id":"term-orchestrator"}}}\n' "$AGENT_STATUS"
+      AGENT_NAME="$(fake_agent_name)"
+      IFS='|' read -r AGENT_WORKSPACE AGENT_TAB AGENT_PANE AGENT_TERMINAL <<< "$(fake_agent_location)"
+      AGENT_TARGET="${3:-}"
+      if [[ "$AGENT_TARGET" != "$AGENT_NAME" && "$AGENT_TARGET" != "$AGENT_PANE" && "$AGENT_TARGET" != "$AGENT_TERMINAL" ]]; then
+        printf '%s\n' '{"error":{"code":"agent_not_found"}}' >&2
+        exit 1
+      fi
+      printf '{"result":{"agent":'
+      fake_print_agent
+      printf '}}\n'
       exit 0
       ;;
     "agent list")
@@ -37,21 +122,134 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
         printf '%s\n' '{"error":{"code":"server_unavailable","message":"server is shutting down"}}' >&2
         exit 1
       fi
-      printf '%s\n' '{"result":{"agents":[]}}'
+      printf '{"result":{"type":"agent_list","agents":['
+      if [[ -f "${FAKE_HERDR_AGENT_STATE:?}" ]]; then fake_print_agent; fi
+      printf ']}}\n'
+      exit 0
+      ;;
+    "workspace list")
+      printf '{"result":{"type":"workspace_list","workspaces":['
+      FIRST=1
+      if [[ -f "${FAKE_HERDR_WORKSPACES:?}" ]]; then
+        while IFS='|' read -r WORKSPACE_ID WORKSPACE_LABEL TAB_ID PANE_ID TERMINAL_ID WORKSPACE_CWD; do
+          [[ -n "$WORKSPACE_ID" ]] || continue
+          if [[ "$FIRST" != "1" ]]; then printf ','; fi
+          FIRST=0
+          WORKSPACE_STATUS=unknown
+          if [[ -f "${FAKE_HERDR_AGENT_STATE:?}" ]]; then
+            IFS='|' read -r AGENT_WORKSPACE _ _ _ <<< "$(fake_agent_location)"
+            if [[ "$AGENT_WORKSPACE" == "$WORKSPACE_ID" ]]; then
+              WORKSPACE_STATUS="$(tr -d '\r\n' < "$FAKE_HERDR_AGENT_STATE")"
+            fi
+          fi
+          printf '{"workspace_id":"%s","number":1,"label":"%s","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"%s","agent_status":"%s"}' \
+            "$WORKSPACE_ID" "$WORKSPACE_LABEL" "$TAB_ID" "$WORKSPACE_STATUS"
+        done < "$FAKE_HERDR_WORKSPACES"
+      fi
+      printf ']}}\n'
+      exit 0
+      ;;
+    "workspace focus")
+      [[ -n "${3:-}" ]] || { echo "unexpected fake workspace focus argv: $*" >&2; exit 98; }
+      fake_find_workspace "$3" >/dev/null || { printf '%s\n' '{"error":{"code":"workspace_not_found"}}' >&2; exit 1; }
+      printf '%s\n' '{"result":{"type":"ok"}}'
+      exit 0
+      ;;
+    "pane list")
+      printf '{"result":{"type":"pane_list","panes":['
+      if [[ "$#" == "2" ]]; then
+        FIRST=1
+        if [[ -f "${FAKE_HERDR_WORKSPACES:?}" ]]; then
+          while IFS= read -r WORKSPACE_RECORD; do
+            [[ -n "$WORKSPACE_RECORD" ]] || continue
+            if [[ "$FIRST" != "1" ]]; then printf ','; fi
+            FIRST=0
+            fake_print_pane "$WORKSPACE_RECORD"
+          done < "$FAKE_HERDR_WORKSPACES"
+        fi
+      elif [[ "${3:-}" == "--workspace" && -n "${4:-}" && "$#" == "4" ]]; then
+        if WORKSPACE_RECORD="$(fake_find_workspace "$4")"; then fake_print_pane "$WORKSPACE_RECORD"; fi
+      else
+        echo "unexpected fake pane list argv: $*" >&2
+        exit 98
+      fi
+      printf ']}}\n'
       exit 0
       ;;
     "workspace create")
-      printf '%s\n' '{"result":{"type":"workspace_created","workspace":{"workspace_id":"w1"},"tab":{"tab_id":"w1:t1"},"root_pane":{"pane_id":"w1:t1:p1"}}}'
+      WORKSPACE_CWD=""
+      WORKSPACE_LABEL=""
+      PREVIOUS=""
+      for ARG in "$@"; do
+        if [[ "$PREVIOUS" == "--cwd" ]]; then WORKSPACE_CWD="$ARG"; fi
+        if [[ "$PREVIOUS" == "--label" ]]; then WORKSPACE_LABEL="$ARG"; fi
+        PREVIOUS="$ARG"
+      done
+      fake_lock_state
+      trap fake_unlock_state EXIT
+      WORKSPACE_NUMBER=0
+      if [[ -s "${FAKE_HERDR_WORKSPACE_COUNTER:?}" ]]; then
+        WORKSPACE_NUMBER="$(tr -d '\r\n' < "$FAKE_HERDR_WORKSPACE_COUNTER")"
+      fi
+      WORKSPACE_NUMBER=$((WORKSPACE_NUMBER + 1))
+      printf '%s\n' "$WORKSPACE_NUMBER" > "$FAKE_HERDR_WORKSPACE_COUNTER"
+      WORKSPACE_ID="w${WORKSPACE_NUMBER}"
+      TAB_ID="${WORKSPACE_ID}:t1"
+      PANE_ID="${TAB_ID}:p1"
+      TERMINAL_ID="term-${WORKSPACE_ID}"
+      printf '%s|%s|%s|%s|%s|%s\n' "$WORKSPACE_ID" "$WORKSPACE_LABEL" "$TAB_ID" "$PANE_ID" "$TERMINAL_ID" "$WORKSPACE_CWD" >> "${FAKE_HERDR_WORKSPACES:?}"
+      fake_unlock_state
+      trap - EXIT
+      printf '{"result":{"type":"workspace_created","workspace":{"workspace_id":"%s","number":%s,"label":"%s","focused":false,"pane_count":1,"tab_count":1,"active_tab_id":"%s","agent_status":"unknown"},"tab":{"tab_id":"%s"},"root_pane":{"pane_id":"%s","terminal_id":"%s","workspace_id":"%s","tab_id":"%s"}}}\n' \
+        "$WORKSPACE_ID" "$WORKSPACE_NUMBER" "$WORKSPACE_LABEL" "$TAB_ID" "$TAB_ID" "$PANE_ID" "$TERMINAL_ID" "$WORKSPACE_ID" "$TAB_ID"
       exit 0
       ;;
     "agent start")
+      AGENT_NAME="${3:-}"
+      AGENT_PANE=""
+      PREVIOUS=""
+      for ARG in "$@"; do
+        if [[ "$PREVIOUS" == "--pane" ]]; then AGENT_PANE="$ARG"; fi
+        PREVIOUS="$ARG"
+      done
+      AGENT_WORKSPACE="${AGENT_PANE%%:t*}"
+      WORKSPACE_RECORD="$(fake_find_workspace "$AGENT_WORKSPACE")"
+      IFS='|' read -r AGENT_WORKSPACE WORKSPACE_LABEL AGENT_TAB AGENT_PANE AGENT_TERMINAL WORKSPACE_CWD <<< "$WORKSPACE_RECORD"
+      if [[ -n "${HANCHOU_TEST_AGENT_START_DELAY:-}" ]]; then sleep "$HANCHOU_TEST_AGENT_START_DELAY"; fi
+      if [[ "${FAKE_ORCHESTRATOR_MODE:-ready}" == "failed" ]]; then
+        printf '%s\n' '{"error":{"code":"agent_start_failed","message":"simulated start failure"}}' >&2
+        exit 1
+      fi
+      printf '%s\n' "$AGENT_WORKSPACE|$AGENT_TAB|$AGENT_PANE|$AGENT_TERMINAL" > "${FAKE_HERDR_AGENT_LOCATION:?}"
+      if [[ "${FAKE_ORCHESTRATOR_MODE:-ready}" == "unnamed" ]]; then
+        : > "${FAKE_HERDR_AGENT_NAME:?}"
+        printf '%s\n' idle > "${FAKE_HERDR_AGENT_STATE:?}"
+        printf '%s\n' '{"error":{"code":"agent_name_lost","message":"simulated unnamed Agent"}}' >&2
+        exit 1
+      fi
+      printf '%s\n' "$AGENT_NAME" > "${FAKE_HERDR_AGENT_NAME:?}"
       if [[ "${FAKE_ORCHESTRATOR_MODE:-ready}" == "blocked" ]]; then
         printf '%s\n' blocked > "${FAKE_HERDR_AGENT_STATE:?}"
         printf '%s\n' '{"error":{"code":"agent_not_ready"}}' >&2
         exit 1
       fi
       printf '%s\n' idle > "${FAKE_HERDR_AGENT_STATE:?}"
-      printf '%s\n' '{"result":{"agent":{"name":"orchestrator","agent_status":"idle","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:t1:p1","terminal_id":"term-orchestrator"}}}'
+      printf '{"result":{"agent":'
+      fake_print_agent
+      printf '}}\n'
+      exit 0
+      ;;
+    "agent rename")
+      [[ -f "${FAKE_HERDR_AGENT_STATE:?}" ]] || { printf '%s\n' '{"error":{"code":"agent_not_found"}}' >&2; exit 1; }
+      printf '%s\n' "${4:-}" > "${FAKE_HERDR_AGENT_NAME:?}"
+      printf '{"result":{"agent":'
+      fake_print_agent
+      printf '}}\n'
+      exit 0
+      ;;
+    "agent focus")
+      [[ -f "${FAKE_HERDR_AGENT_STATE:?}" && "$(fake_agent_name)" == "${3:-}" ]] || { printf '%s\n' '{"error":{"code":"agent_not_found"}}' >&2; exit 1; }
+      printf '%s\n' '{"result":{"type":"ok"}}'
       exit 0
       ;;
     "agent prompt")
@@ -98,6 +296,11 @@ export HANCHOU_TEST_OPERATOR_HOME="$TMP/operator"
 export HANCHOU_TEST_HIDE_SYSTEM_HERDRM=1
 export FAKE_HERDR_LOG="$TMP/herdr.log"
 export FAKE_HERDR_AGENT_STATE="$TMP/orchestrator.state"
+export FAKE_HERDR_AGENT_NAME="$TMP/orchestrator.name"
+export FAKE_HERDR_AGENT_LOCATION="$TMP/orchestrator.location"
+export FAKE_HERDR_WORKSPACES="$TMP/workspaces.state"
+export FAKE_HERDR_WORKSPACE_COUNTER="$TMP/workspace-counter.state"
+export FAKE_HERDR_STATE_LOCK="$TMP/herdr-state.lock"
 export FAKE_OPEN_LOG="$TMP/open.log"
 export FAKE_LAUNCHCTL_LOG="$TMP/launchctl.log"
 export FAKE_HTTP_LOG="$TMP/http.log"
@@ -111,6 +314,7 @@ NODE_BIN="$(command -v node)"
 PINNED_HERDR="$HANCHOU_TEST_OPERATOR_HOME/.local/share/mise/installs/herdr/0.8.2/herdr"
 CONTROL_DIR="$HANCHOU_TEST_OPERATOR_HOME/.local/share/hanchou/work/control"
 ORCHESTRATOR_MARKER="$CONTROL_DIR/.hanchou-orchestrator-init.json"
+ORCHESTRATOR_RUNTIME="$CONTROL_DIR/.hanchou-orchestrator-runtime.json"
 mkdir -p "$HOME" "$HANCHOU_TEST_OPERATOR_HOME" "$FAKE_BIN" "$(dirname "$PINNED_HERDR")"
 
 cp "$0" "$PINNED_HERDR"
@@ -165,17 +369,30 @@ hanchou_test() {
 }
 
 reset_fixture() {
-  rm -f "$FAKE_HERDR_AGENT_STATE" "$ORCHESTRATOR_MARKER" \
-    "$FAKE_OPEN_LOG" "$FAKE_LAUNCHCTL_LOG"
+  rm -f "$FAKE_HERDR_AGENT_STATE" "$FAKE_HERDR_AGENT_NAME" \
+    "$FAKE_HERDR_AGENT_LOCATION" "$FAKE_HERDR_WORKSPACES" \
+    "$FAKE_HERDR_WORKSPACE_COUNTER" "$ORCHESTRATOR_MARKER" \
+    "$ORCHESTRATOR_RUNTIME" "$FAKE_OPEN_LOG" "$FAKE_LAUNCHCTL_LOG"
+  rm -rf "$FAKE_HERDR_STATE_LOCK"
   : > "$FAKE_HERDR_LOG"
   : > "$FAKE_HTTP_LOG"
   unset FAKE_ORCHESTRATOR_MODE
+  unset HANCHOU_TEST_AGENT_START_DELAY
+  unset HANCHOU_TEST_AGENT_LAUNCH_PENDING
   unset HANCHOU_TEST_AGENT_GET_ERROR
   export HANCHOU_TEST_HERDR_CONTROL_READY=1
 }
 
 orchestrator_action_count() {
-  grep -Ec '^(workspace create|agent start|agent prompt)' "$FAKE_HERDR_LOG" || true
+  grep -Ec '^(workspace create|agent start|agent rename|agent prompt)' "$FAKE_HERDR_LOG" || true
+}
+
+workspace_create_count() {
+  grep -Ec '^workspace create ' "$FAKE_HERDR_LOG" || true
+}
+
+agent_start_count() {
+  grep -Ec '^agent start ' "$FAKE_HERDR_LOG" || true
 }
 
 assert_no_orchestrator_action() {
@@ -196,10 +413,63 @@ wait_for_file() {
   return 1
 }
 
+wait_for_log_pattern() {
+  local pattern="$1"
+  for _attempt in {1..100}; do
+    grep -Eq "$pattern" "$FAKE_HERDR_LOG" && return 0
+    sleep 0.02
+  done
+  echo "timed out waiting for Herdr log pattern: $pattern" >&2
+  cat "$FAKE_HERDR_LOG" >&2
+  return 1
+}
+
 write_ready_marker() {
+  local identity="${1:-term-w1}"
   mkdir -p "$CONTROL_DIR"
-  printf '%s\n' '{"identity":"term-orchestrator","initialized_at":"2026-08-31T00:00:00.000Z"}' \
+  printf '%s\n' "{\"identity\":\"$identity\",\"initialized_at\":\"2026-08-31T00:00:00.000Z\"}" \
     > "$ORCHESTRATOR_MARKER"
+}
+
+append_workspace() {
+  local workspace_id="$1"
+  local label="${2:-00-orchestrator}"
+  local workspace_cwd="${3:-$ROOT}"
+  local tab_id="${workspace_id}:t1"
+  local pane_id="${tab_id}:p1"
+  local terminal_id="${4:-term-${workspace_id}}"
+  printf '%s|%s|%s|%s|%s|%s\n' \
+    "$workspace_id" "$label" "$tab_id" "$pane_id" "$terminal_id" "$workspace_cwd" \
+    >> "$FAKE_HERDR_WORKSPACES"
+}
+
+write_runtime_binding() {
+  local workspace_id="${1:-w1}"
+  local terminal_id="${2:-term-${workspace_id}}"
+  local tab_id="${workspace_id}:t1"
+  local pane_id="${tab_id}:p1"
+  mkdir -p "$CONTROL_DIR"
+  printf '%s\n' "{\"schema\":\"hanchou.orchestrator-runtime.v1\",\"profile\":\"work\",\"session\":\"work\",\"agent_name\":\"orchestrator\",\"workspace_label\":\"00-orchestrator\",\"cwd\":\"$ROOT\",\"workspace_id\":\"$workspace_id\",\"tab_id\":\"$tab_id\",\"pane_id\":\"$pane_id\",\"terminal_id\":\"$terminal_id\",\"created_at\":\"2026-08-31T00:00:00.000Z\",\"updated_at\":\"2026-08-31T00:00:00.000Z\"}" \
+    > "$ORCHESTRATOR_RUNTIME"
+  chmod 600 "$ORCHESTRATOR_RUNTIME"
+}
+
+seed_bound_agent() {
+  local status="$1"
+  append_workspace w1
+  printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+  printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+  printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+  printf '%s\n' "$status" > "$FAKE_HERDR_AGENT_STATE"
+  write_runtime_binding w1
+}
+
+assert_no_workspace_close() {
+  if grep -q '^workspace close ' "$FAKE_HERDR_LOG"; then
+    echo "start-orchestrator must not destructively close a workspace" >&2
+    cat "$FAKE_HERDR_LOG" >&2
+    exit 1
+  fi
 }
 
 # All three services ready: create and initialize the Orchestrator exactly once.
@@ -218,6 +488,12 @@ grep -q '^http://127\.0\.0\.1:3747/health$' "$FAKE_HTTP_LOG"
 grep -q '^http://127\.0\.0\.1:3737/$' "$FAKE_HTTP_LOG"
 [[ ! -e "$FAKE_OPEN_LOG" ]]
 [[ ! -e "$FAKE_LAUNCHCTL_LOG" ]]
+[[ -s "$ORCHESTRATOR_RUNTIME" ]]
+grep -Fq '"schema":"hanchou.orchestrator-runtime.v1"' "$ORCHESTRATOR_RUNTIME"
+grep -Fq '"workspace_id":"w1"' "$ORCHESTRATOR_RUNTIME"
+grep -Fq '"pane_id":"w1:t1:p1"' "$ORCHESTRATOR_RUNTIME"
+grep -Fq '"terminal_id":"term-w1"' "$ORCHESTRATOR_RUNTIME"
+assert_no_workspace_close
 if grep -Eq '^server (start|stop|reload-config)' "$FAKE_HERDR_LOG"; then
   echo "launch restarted or reconfigured healthy Herdr" >&2
   exit 1
@@ -229,6 +505,7 @@ hanchou_test launch work --no-browser > "$TMP/ready-again.out"
 grep -q 'orchestrator already exists: orchestrator' "$TMP/ready-again.out"
 [[ "$(orchestrator_action_count)" == "$ACTIONS_BEFORE" ]]
 [[ ! -e "$FAKE_LAUNCHCTL_LOG" ]]
+assert_no_workspace_close
 
 expect_readiness_failure() {
   local label="$1"
@@ -281,16 +558,235 @@ grep -q 'server is shutting down' "$TMP/herdr-get.err"
 assert_no_orchestrator_action
 unset HANCHOU_TEST_AGENT_GET_ERROR
 
+# Legacy duplicate workspaces without a durable binding are ambiguous. Fail
+# closed instead of guessing which one to reuse or creating a third copy.
+reset_fixture
+append_workspace w1
+append_workspace w2
+printf '%s\n' 2 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+if hanchou_test start-orchestrator work > "$TMP/legacy-duplicates.out" 2> "$TMP/legacy-duplicates.err"; then
+  echo "expected start-orchestrator to reject ambiguous legacy workspaces" >&2
+  exit 1
+fi
+grep -q '00-orchestrator' "$TMP/legacy-duplicates.err"
+[[ "$(workspace_create_count)" == "0" ]]
+[[ "$(agent_start_count)" == "0" ]]
+[[ ! -e "$ORCHESTRATOR_RUNTIME" ]]
+assert_no_workspace_close
+
+# A live named Orchestrator is authoritative even when four stale workspaces
+# share its label. Keep and bind the live Agent, warn with the stale IDs, and
+# never create, restart, prompt, rename, or close anything automatically.
+reset_fixture
+append_workspace w1
+append_workspace w2
+append_workspace w3
+append_workspace w4
+append_workspace w5
+printf '%s\n' 5 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+write_ready_marker term-w1
+hanchou_test start-orchestrator work > "$TMP/named-with-duplicates.out"
+grep -q 'orchestrator already exists: orchestrator' "$TMP/named-with-duplicates.out"
+grep -q '^WARN ' "$TMP/named-with-duplicates.out"
+grep -q 'w2' "$TMP/named-with-duplicates.out"
+grep -q 'w5' "$TMP/named-with-duplicates.out"
+grep -q '^workspace list$' "$FAKE_HERDR_LOG"
+[[ "$(orchestrator_action_count)" == "0" ]]
+[[ -s "$ORCHESTRATOR_RUNTIME" ]]
+grep -Fq '"workspace_id":"w1"' "$ORCHESTRATOR_RUNTIME"
+[[ "$(grep -c '|00-orchestrator|' "$FAKE_HERDR_WORKSPACES" || true)" == "5" ]]
+assert_no_workspace_close
+
+# A managed name alone must not override a durable binding. If `orchestrator`
+# appears in another same-label workspace, fail closed and leave the recorded
+# w1 binding byte-for-byte unchanged.
+reset_fixture
+append_workspace w1
+append_workspace w2
+printf '%s\n' 2 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_runtime_binding w1
+RUNTIME_BEFORE="$(cksum "$ORCHESTRATOR_RUNTIME")"
+printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w2|w2:t1|w2:t1:p1|term-w2' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+if hanchou_test start-orchestrator work > "$TMP/named-outside-binding.out" 2> "$TMP/named-outside-binding.err"; then
+  echo "expected start-orchestrator to reject a named Agent outside its binding" >&2
+  exit 1
+fi
+grep -q 'does not match recorded workspace_id' "$TMP/named-outside-binding.err"
+[[ "$(cksum "$ORCHESTRATOR_RUNTIME")" == "$RUNTIME_BEFORE" ]]
+[[ "$(orchestrator_action_count)" == "0" ]]
+grep -Fq '"workspace_id":"w1"' "$ORCHESTRATOR_RUNTIME"
+assert_no_workspace_close
+
+# Herdr may expose the exact bound named Agent before kind detection settles.
+# `launch_pending:true` plus matching durable IDs is genuine pending state, not
+# an invitation to create or start a replacement. Repeated retries stay inert.
+reset_fixture
+append_workspace w1
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_runtime_binding w1
+printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' unknown > "$FAKE_HERDR_AGENT_STATE"
+export HANCHOU_TEST_AGENT_LAUNCH_PENDING=1
+hanchou_test start-orchestrator work > "$TMP/bound-launch-pending.out"
+grep -q 'exists with status unknown; initialization remains pending' "$TMP/bound-launch-pending.out"
+hanchou_test start-orchestrator work > "$TMP/bound-launch-pending-again.out"
+grep -q 'exists with status unknown; initialization remains pending' "$TMP/bound-launch-pending-again.out"
+[[ "$(orchestrator_action_count)" == "0" ]]
+grep -Fq '"workspace_id":"w1"' "$ORCHESTRATOR_RUNTIME"
+assert_no_workspace_close
+unset HANCHOU_TEST_AGENT_LAUNCH_PENDING
+
+# Without a binding, a correctly named Agent is adoptable only from the exact
+# dedicated Hanchou cwd. Do not create a binding or send the initialization
+# prompt when its same-label pane belongs to another directory.
+reset_fixture
+UNBOUND_WRONG_CWD="$TMP/unbound-wrong-cwd"
+mkdir -p "$UNBOUND_WRONG_CWD"
+append_workspace w1 00-orchestrator "$UNBOUND_WRONG_CWD"
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+if hanchou_test start-orchestrator work > "$TMP/unbound-wrong-cwd.out" 2> "$TMP/unbound-wrong-cwd.err"; then
+  echo "expected start-orchestrator to reject an unbound named Agent in another cwd" >&2
+  exit 1
+fi
+grep -q 'does not match the dedicated Hanchou pane identity' "$TMP/unbound-wrong-cwd.err"
+[[ ! -e "$ORCHESTRATOR_RUNTIME" ]]
+[[ "$(orchestrator_action_count)" == "0" ]]
+assert_no_workspace_close
+
+# If the recorded workspace disappeared but its terminal moved into another
+# workspace, preserve the binding and fail closed instead of treating w1 as a
+# safely deleted workspace and creating a replacement.
+reset_fixture
+write_runtime_binding w1
+MOVED_RUNTIME_BEFORE="$(cksum "$ORCHESTRATOR_RUNTIME")"
+append_workspace w2 00-orchestrator "$ROOT" term-w1
+printf '%s\n' 2 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+if hanchou_test start-orchestrator work > "$TMP/binding-moved.out" 2> "$TMP/binding-moved.err"; then
+  echo "expected start-orchestrator to reject a bound terminal moved to w2" >&2
+  exit 1
+fi
+grep -q 'moved to workspace w2' "$TMP/binding-moved.err"
+[[ "$(cksum "$ORCHESTRATOR_RUNTIME")" == "$MOVED_RUNTIME_BEFORE" ]]
+grep -q '^pane list$' "$FAKE_HERDR_LOG"
+[[ "$(orchestrator_action_count)" == "0" ]]
+assert_no_workspace_close
+
+# A trusted binding is still only reusable when the live pane identity matches
+# every recorded ID. A changed terminal fails closed without lifecycle writes.
+reset_fixture
+append_workspace w1
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_runtime_binding w1 term-stale
+if hanchou_test start-orchestrator work > "$TMP/binding-terminal.out" 2> "$TMP/binding-terminal.err"; then
+  echo "expected start-orchestrator to reject a changed bound terminal" >&2
+  exit 1
+fi
+grep -q 'recorded Orchestrator pane identity changed' "$TMP/binding-terminal.err"
+[[ "$(orchestrator_action_count)" == "0" ]]
+assert_no_workspace_close
+
+# The same fail-closed rule applies when the bound pane moved to another cwd.
+reset_fixture
+MISMATCH_CWD="$TMP/not-hanchou"
+mkdir -p "$MISMATCH_CWD"
+append_workspace w1 00-orchestrator "$MISMATCH_CWD"
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_runtime_binding w1
+if hanchou_test start-orchestrator work > "$TMP/binding-cwd.out" 2> "$TMP/binding-cwd.err"; then
+  echo "expected start-orchestrator to reject a changed bound cwd" >&2
+  exit 1
+fi
+grep -q 'recorded Orchestrator pane identity changed' "$TMP/binding-cwd.err"
+[[ "$(orchestrator_action_count)" == "0" ]]
+assert_no_workspace_close
+
+# A failed provider start leaves the newly-created workspace and its durable
+# binding intact. Retrying reuses the exact same pane and never creates or
+# closes a replacement workspace.
+reset_fixture
+export FAKE_ORCHESTRATOR_MODE=failed
+if hanchou_test start-orchestrator work > "$TMP/start-failed.out" 2> "$TMP/start-failed.err"; then
+  echo "expected the simulated provider start failure" >&2
+  exit 1
+fi
+grep -q 'simulated start failure' "$TMP/start-failed.err"
+[[ -s "$ORCHESTRATOR_RUNTIME" ]]
+grep -Fq '"pane_id":"w1:t1:p1"' "$ORCHESTRATOR_RUNTIME"
+[[ "$(workspace_create_count)" == "1" ]]
+[[ "$(agent_start_count)" == "1" ]]
+assert_no_workspace_close
+unset FAKE_ORCHESTRATOR_MODE
+hanchou_test start-orchestrator work > "$TMP/start-retry.out"
+grep -q 'started codex orchestrator `orchestrator` in pane w1:t1:p1' "$TMP/start-retry.out"
+[[ "$(workspace_create_count)" == "1" ]]
+[[ "$(agent_start_count)" == "2" ]]
+[[ "$(grep -Ec '^agent start orchestrator .*--pane w1:t1:p1' "$FAKE_HERDR_LOG" || true)" == "2" ]]
+assert_no_workspace_close
+
+# A blocked first-run Agent is also retained on its bound pane. A second start
+# observes the named Agent and does not mutate the lifecycle again.
+reset_fixture
+export FAKE_ORCHESTRATOR_MODE=blocked
+hanchou_test start-orchestrator work > "$TMP/start-blocked.out"
+grep -q 'exists with status blocked; initialization remains pending' "$TMP/start-blocked.out"
+[[ -s "$ORCHESTRATOR_RUNTIME" ]]
+[[ "$(workspace_create_count)" == "1" ]]
+[[ "$(agent_start_count)" == "1" ]]
+unset FAKE_ORCHESTRATOR_MODE
+hanchou_test start-orchestrator work > "$TMP/start-blocked-again.out"
+grep -q 'exists with status blocked; initialization remains pending' "$TMP/start-blocked-again.out"
+[[ "$(workspace_create_count)" == "1" ]]
+[[ "$(agent_start_count)" == "1" ]]
+assert_no_workspace_close
+
+# Herdr can report a provider Agent on the bound pane before its managed name
+# settles. Recover it by pane identity, rename it, and initialize it in place.
+reset_fixture
+export FAKE_ORCHESTRATOR_MODE=unnamed
+hanchou_test start-orchestrator work > "$TMP/start-unnamed.out"
+grep -q 'initialized orchestrator `orchestrator`' "$TMP/start-unnamed.out"
+grep -Eq '^agent rename (w1:t1:p1|term-w1) orchestrator$' "$FAKE_HERDR_LOG"
+grep -q '^agent prompt orchestrator ' "$FAKE_HERDR_LOG"
+[[ "$(workspace_create_count)" == "1" ]]
+[[ "$(agent_start_count)" == "1" ]]
+assert_no_workspace_close
+
+# Concurrent callers serialize the lookup/create/start transition. Hold the
+# first fake start briefly so the second caller overlaps the critical section.
+reset_fixture
+export HANCHOU_TEST_AGENT_START_DELAY=0.4
+hanchou_test start-orchestrator work > "$TMP/concurrent-first.out" 2> "$TMP/concurrent-first.err" &
+FIRST_START_PID=$!
+wait_for_log_pattern '^agent start orchestrator '
+hanchou_test start-orchestrator work > "$TMP/concurrent-second.out" 2> "$TMP/concurrent-second.err" &
+SECOND_START_PID=$!
+wait "$FIRST_START_PID"
+wait "$SECOND_START_PID"
+unset HANCHOU_TEST_AGENT_START_DELAY
+[[ "$(workspace_create_count)" == "1" ]]
+[[ "$(agent_start_count)" == "1" ]]
+[[ "$(grep -c '^w1|00-orchestrator|' "$FAKE_HERDR_WORKSPACES" || true)" == "1" ]]
+assert_no_workspace_close
+
 # An existing working Agent remains pending and is not duplicated or prompted.
 reset_fixture
-printf '%s\n' working > "$FAKE_HERDR_AGENT_STATE"
+seed_bound_agent working
 hanchou_test launch work --no-browser > "$TMP/pending.out"
 grep -q 'exists with status working; initialization remains pending' "$TMP/pending.out"
 assert_no_orchestrator_action
 
 # Browser opening is opt-out and is routed only to the configured dashboard.
 reset_fixture
-printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+seed_bound_agent idle
 write_ready_marker
 hanchou_test launch work > "$TMP/browser.out"
 wait_for_file "$FAKE_OPEN_LOG"
@@ -300,6 +796,35 @@ hanchou_test launch work --no-browser > "$TMP/no-browser.out"
 sleep 0.1
 [[ ! -e "$FAKE_OPEN_LOG" ]]
 
+# Orchestrator opening focuses the Agent and enters the normal multi-client
+# Herdr TUI. It must not use the exclusive direct agent-attach transport.
+reset_fixture
+seed_bound_agent idle
+write_ready_marker
+hanchou_test open orchestrator work > "$TMP/open-orchestrator.out"
+grep -Fxq 'agent focus orchestrator' "$FAKE_HERDR_LOG"
+grep -Fxq '<tui>' "$FAKE_HERDR_LOG"
+if grep -q '^agent attach ' "$FAKE_HERDR_LOG"; then
+  echo "open orchestrator used exclusive direct attach" >&2
+  exit 1
+fi
+
+# When the durable pane is empty and the managed Agent name is absent, focus
+# its owning workspace with Herdr 0.8.2's supported command before opening the
+# same full TUI. `pane focus` is not a valid 0.8.2 CLI fallback.
+reset_fixture
+append_workspace w1
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_runtime_binding w1
+hanchou_test open orchestrator work > "$TMP/open-orchestrator-binding.out"
+grep -Fxq 'workspace focus w1' "$FAKE_HERDR_LOG"
+grep -Fxq '<tui>' "$FAKE_HERDR_LOG"
+if grep -Eq '^(agent attach|pane focus) ' "$FAKE_HERDR_LOG"; then
+  echo "open orchestrator used an unsupported or exclusive binding fallback" >&2
+  cat "$FAKE_HERDR_LOG" >&2
+  exit 1
+fi
+
 # HerdrM is optional: absence and socket mismatch warn without opening it.
 HERDRM_APP="$HANCHOU_TEST_OPERATOR_HOME/Applications/HerdrM.app"
 NAMED_SOCKET="$HANCHOU_TEST_OPERATOR_HOME/.config/herdr/sessions/work/herdr.sock"
@@ -307,7 +832,7 @@ DEFAULT_SOCKET="$HANCHOU_TEST_OPERATOR_HOME/.config/herdr/herdr.sock"
 SOCKET_READY="$TMP/socket-ready"
 rm -rf "$(dirname "$DEFAULT_SOCKET")" "$HANCHOU_TEST_OPERATOR_HOME/Applications"
 reset_fixture
-printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+seed_bound_agent idle
 write_ready_marker
 hanchou_test launch work --no-browser --herdrm > "$TMP/herdrm-missing.out"
 grep -q 'WARN Herdrm not opened: Herdrm is optional and not installed' "$TMP/herdrm-missing.out"
@@ -376,6 +901,8 @@ start_socket_fixture match
 rm -f "$FAKE_OPEN_LOG"
 hanchou_test launch work --no-browser --herdrm > "$TMP/herdrm-match.out"
 grep -q 'WARNING: use Herdrm only to monitor or attach' "$TMP/herdrm-match.out"
+grep -q 'hanchou open orchestrator' "$TMP/herdrm-match.out"
+grep -Eiq 'ctrl\+b( then)? q' "$TMP/herdrm-match.out"
 wait_for_file "$FAKE_OPEN_LOG"
 grep -Fxq -- '-a herdrm' "$FAKE_OPEN_LOG"
 

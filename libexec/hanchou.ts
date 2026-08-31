@@ -107,6 +107,21 @@ type ProjectAuthorization = {
   registry_digest: string;
 };
 
+type OrchestratorRuntimeBinding = {
+  schema: "hanchou.orchestrator-runtime.v1";
+  profile: string;
+  session: string;
+  agent_name: string;
+  workspace_label: string;
+  cwd: string;
+  workspace_id: string;
+  tab_id: string;
+  pane_id: string;
+  terminal_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export class CommandError extends Error {
   constructor(message: string) {
     super(message);
@@ -1181,14 +1196,14 @@ function ruleKeywordArguments(body: string): Map<string, string> {
   return fields;
 }
 
-function withLock<T>(lockPath: string, operation: () => T): T {
+function withLock<T>(lockPath: string, operation: () => T, timeoutMs = 120_000): T {
   mkdirSync(dirname(lockPath), { recursive: true });
   const marker = openSync(lockPath, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW, 0o600);
   closeSync(marker);
   const heldPath = `${lockPath}.held`;
   const token = `${process.pid}:${randomBytes(16).toString("hex")}`;
   let fd: number | null = null;
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + timeoutMs;
   while (fd === null) {
     try {
       fd = openSync(heldPath, "wx", 0o600);
@@ -1602,6 +1617,173 @@ function getAgentInfo(profileName: string, agent: string, strict = false): JsonO
     if (strict) throw error;
     return null;
   }
+}
+
+function herdrRecords(profileName: string, noun: "agent" | "workspace" | "pane", key: string, ...args: string[]): JsonObject[] {
+  const value = parseJsonOutput(run(herdrArgv(profileName, noun, "list", ...args), { capture: true }));
+  const records = value?.result?.[key];
+  if (!Array.isArray(records) || records.some((record) => !record || typeof record !== "object" || Array.isArray(record))) {
+    throw new CommandError(`unexpected Herdr ${noun} list response: ${pyCompact(value)}`);
+  }
+  return records;
+}
+
+function orchestratorRuntimePath(profile: JsonObject): string {
+  return join(profilePaths(profile).control_dir, ".hanchou-orchestrator-runtime.json");
+}
+
+function orchestratorRuntimeBinding(name: string, profile: JsonObject): OrchestratorRuntimeBinding | null {
+  const path = orchestratorRuntimePath(profile);
+  if (!existsSync(path)) return null;
+  const info = lstatSync(path);
+  if (!info.isFile() || info.isSymbolicLink()) throw new CommandError(`Orchestrator runtime binding must be a regular file: ${path}`);
+  if (typeof process.getuid === "function" && info.uid !== process.getuid()) throw new CommandError(`Orchestrator runtime binding must be owned by the effective OS user: ${path}`);
+  if ((info.mode & 0o077) !== 0) throw new CommandError(`Orchestrator runtime binding must have mode 0600: ${path}`);
+  let value: JsonObject;
+  try { value = readJsonFile(path, "Orchestrator runtime binding"); }
+  catch (error) { throw new CommandError(`cannot trust Orchestrator runtime binding ${path}: ${error}`); }
+  const expected = {
+    schema: "hanchou.orchestrator-runtime.v1",
+    profile: name,
+    session: validatedHerdrSession(name, profile),
+    agent_name: String(profile.orchestrator.agent_name),
+    workspace_label: String(profile.orchestrator.workspace_label),
+    cwd: realpathSync(ROOT),
+  };
+  for (const [key, required] of Object.entries(expected)) {
+    if (value[key] !== required) throw new CommandError(`Orchestrator runtime binding mismatch for ${key}: expected ${required}, got ${String(value[key])}`);
+  }
+  for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id", "created_at", "updated_at"]) {
+    if (typeof value[key] !== "string" || !value[key]) throw new CommandError(`Orchestrator runtime binding has invalid ${key}: ${path}`);
+  }
+  return value as OrchestratorRuntimeBinding;
+}
+
+function saveOrchestratorRuntime(
+  name: string,
+  profile: JsonObject,
+  record: JsonObject,
+  previous: OrchestratorRuntimeBinding | null = null,
+): OrchestratorRuntimeBinding {
+  const ids: Record<string, string> = {};
+  for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"]) {
+    if (typeof record[key] !== "string" || !record[key]) throw new CommandError(`cannot bind Orchestrator: Herdr record has no ${key}`);
+    ids[key] = record[key];
+    if (previous && previous[key as keyof OrchestratorRuntimeBinding] !== record[key]) {
+      throw new CommandError(`cannot replace recorded Orchestrator ${key}; live identity changed during reconciliation`);
+    }
+  }
+  const now = utcnow();
+  const binding: OrchestratorRuntimeBinding = {
+    schema: "hanchou.orchestrator-runtime.v1",
+    profile: name,
+    session: validatedHerdrSession(name, profile),
+    agent_name: String(profile.orchestrator.agent_name),
+    workspace_label: String(profile.orchestrator.workspace_label),
+    cwd: realpathSync(ROOT),
+    workspace_id: ids.workspace_id,
+    tab_id: ids.tab_id,
+    pane_id: ids.pane_id,
+    terminal_id: ids.terminal_id,
+    created_at: previous?.created_at ?? now,
+    updated_at: now,
+  };
+  atomicWrite(orchestratorRuntimePath(profile), `${JSON.stringify(binding)}\n`);
+  return binding;
+}
+
+function sameExistingDirectory(left: unknown, right: string): boolean {
+  if (typeof left !== "string" || !left) return false;
+  try { return realpathSync(left) === realpathSync(right); }
+  catch { return false; }
+}
+
+function boundOrchestratorPane(
+  name: string,
+  binding: OrchestratorRuntimeBinding,
+  workspaces: JsonObject[],
+): JsonObject | null {
+  const workspace = workspaces.find((item) => item.workspace_id === binding.workspace_id);
+  if (!workspace) return null;
+  const mismatch = (
+    workspace.label !== binding.workspace_label
+    || workspace.pane_count !== 1
+    || workspace.tab_count !== 1
+    || (workspace.worktree !== undefined && workspace.worktree !== null)
+  );
+  if (mismatch) throw new CommandError(`recorded Orchestrator workspace ${binding.workspace_id} changed shape; no replacement was created`);
+  const panes = herdrRecords(name, "pane", "panes", "--workspace", binding.workspace_id);
+  if (panes.length !== 1) throw new CommandError(`recorded Orchestrator workspace ${binding.workspace_id} no longer has exactly one pane; no replacement was created`);
+  const pane = panes[0];
+  if (
+    pane.workspace_id !== binding.workspace_id
+    || pane.tab_id !== binding.tab_id
+    || pane.pane_id !== binding.pane_id
+    || pane.terminal_id !== binding.terminal_id
+    || !sameExistingDirectory(pane.cwd, binding.cwd)
+  ) {
+    throw new CommandError(`recorded Orchestrator pane identity changed in ${binding.workspace_id}; no replacement was created`);
+  }
+  return pane;
+}
+
+function validateNamedOrchestrator(
+  name: string,
+  profile: JsonObject,
+  record: JsonObject,
+  workspaces: JsonObject[],
+  binding: OrchestratorRuntimeBinding | null,
+): JsonObject {
+  const agentName = String(profile.orchestrator.agent_name);
+  const expectedKind = String(profile.orchestrator.kind ?? "codex").toLowerCase();
+  const detectedKind = String(record.agent ?? "").toLowerCase();
+  const boundLaunchPending = Boolean(binding && record.launch_pending === true && !detectedKind);
+  if (record.name !== agentName || (detectedKind !== expectedKind && !boundLaunchPending)) {
+    throw new CommandError(`Agent \`${agentName}\` does not match the configured ${expectedKind} Orchestrator identity; no workspace was created`);
+  }
+  if (binding) {
+    const pane = boundOrchestratorPane(name, binding, workspaces);
+    if (!pane) throw new CommandError(`recorded Orchestrator workspace ${binding.workspace_id} is missing; no replacement was created`);
+    for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"]) {
+      if (record[key] !== binding[key as keyof OrchestratorRuntimeBinding]) {
+        throw new CommandError(`named Agent \`${agentName}\` does not match recorded ${key}; no replacement was created`);
+      }
+    }
+    return pane;
+  }
+  const workspace = workspaces.find((item) => item.workspace_id === record.workspace_id);
+  if (
+    !workspace
+    || workspace.label !== String(profile.orchestrator.workspace_label)
+    || workspace.pane_count !== 1
+    || workspace.tab_count !== 1
+    || (workspace.worktree !== undefined && workspace.worktree !== null)
+  ) {
+    throw new CommandError(`unbound Agent \`${agentName}\` is not in a dedicated single-pane \`${profile.orchestrator.workspace_label}\` workspace; no workspace was created`);
+  }
+  const panes = herdrRecords(name, "pane", "panes", "--workspace", String(record.workspace_id));
+  if (panes.length !== 1) throw new CommandError(`unbound Agent \`${agentName}\` workspace does not have exactly one pane; no workspace was created`);
+  const pane = panes[0];
+  if (
+    pane.workspace_id !== record.workspace_id
+    || pane.tab_id !== record.tab_id
+    || pane.pane_id !== record.pane_id
+    || pane.terminal_id !== record.terminal_id
+    || !sameExistingDirectory(pane.cwd, ROOT)
+  ) {
+    throw new CommandError(`unbound Agent \`${agentName}\` does not match the dedicated Hanchou pane identity; no workspace was created`);
+  }
+  return pane;
+}
+
+function legacyOrchestratorWorkspaces(profile: JsonObject, workspaces: JsonObject[]): JsonObject[] {
+  const label = String(profile.orchestrator.workspace_label);
+  return workspaces.filter((workspace) => workspace.label === label);
+}
+
+function legacyOrchestratorMessage(name: string, profile: JsonObject, workspaces: JsonObject[]): string {
+  const ids = workspaces.map((workspace) => String(workspace.workspace_id ?? "unknown")).join(", ");
+  return `found ${workspaces.length} unbound Herdr workspace(s) labeled \`${profile.orchestrator.workspace_label}\` (${ids}); no new workspace was created. Open \`hanchou open herdr ${name}\`, keep any workspace containing Agent \`${profile.orchestrator.agent_name}\`, and close only the verified empty duplicates with Ctrl+B then Shift+D. If no live Agent exists, close every stale labeled workspace, then rerun \`hanchou start-orchestrator ${name}\``;
 }
 
 function nudgeAgent(profileName: string, agent: string): [boolean, string | null] {
@@ -3687,6 +3869,7 @@ function openHerdrm(name: string, profile: JsonObject): void {
   const state = ensureHerdrmCompatibility(name, profile);
   if (!state.compatible) throw new CommandError(String(state.message));
   console.log("WARNING: use Herdrm only to monitor or attach to Hanchou Agents. Do not create Hanchou Orchestrators or workers from Herdrm New Agent.");
+  console.log(`WARNING: a direct Herdr agent/terminal attach has one writable owner. Detach any old \`hanchou open orchestrator ${name}\` direct view with Ctrl+B then q before attaching to the same pane in Herdrm.`);
   const child = spawn("open", ["-a", "herdrm"], { detached: true, stdio: "ignore" });
   child.once("error", () => { /* Compatibility was reported; the operator can open the app manually. */ });
   child.unref();
@@ -3727,65 +3910,178 @@ async function launchProfile(args: JsonObject, name: string, profile: JsonObject
 
 function startOrchestrator(name: string, profile: JsonObject): "ready" | "pending" {
   ensureState(name, profile);
-  const agentName = profile.orchestrator.agent_name;
-  const beadsDirectory = profilePaths(profile).beads_dir;
-  const initial = `Initialize as the Hanchou L0 Orchestrator for profile \`${name}\`. Read AGENTS.md, roles/orchestrator/ROLE.md, docs/SESSION_HANDOFF.md, docs/RELAY.md, and docs/REPORTING.md. The authoritative Beads store is \`BEADS_DIR=${beadsDirectory}\`. Use that absolute path for every \`bd\` command if BEADS_DIR is not already inherited; never fall back to a project-local Beads store. Run \`hanchou status ${name}\` and inspect only the control-plane state. If the Codex workspace sandbox denies that bounded command, retry the exact command through normal approval/escalation without using a bypass. Do not research or modify project repositories in this session. In the readiness reply, list any in-progress or blocked Beads tasks, inspect the Herdr Agents, and state the number of currently running delegated tasks; explicitly report zero for each empty result. Also report any blocking setup issue.`;
-  const initialize = (record: JsonObject): "ready" | "pending" => {
-    const identity = String(record.terminal_id || record.pane_id || "unknown");
-    const marker = join(profilePaths(profile).control_dir, ".hanchou-orchestrator-init.json");
-    if (existsSync(marker)) {
-      try { if (JSON.parse(readText(marker)).identity === identity) { console.log(`orchestrator already exists: ${agentName}`); return "ready"; } }
-      catch { /* initialize again */ }
+  const control = profilePaths(profile).control_dir;
+  return withLock(join(control, ".hanchou-orchestrator-lifecycle.lock"), () => {
+    const agentName = String(profile.orchestrator.agent_name);
+    const managedAgentId = validateAgentId(agentName, "managed Agent ID");
+    const kind = String(profile.orchestrator.kind ?? "codex");
+    const marker = join(control, ".hanchou-orchestrator-init.json");
+    const beadsDirectory = profilePaths(profile).beads_dir;
+    const initial = `Initialize as the Hanchou L0 Orchestrator for profile \`${name}\`. Read AGENTS.md, roles/orchestrator/ROLE.md, docs/SESSION_HANDOFF.md, docs/RELAY.md, and docs/REPORTING.md. The authoritative Beads store is \`BEADS_DIR=${beadsDirectory}\`. Use that absolute path for every \`bd\` command if BEADS_DIR is not already inherited; never fall back to a project-local Beads store. Run \`hanchou status ${name}\` and inspect only the control-plane state. If the Codex workspace sandbox denies that bounded command, retry the exact command through normal approval/escalation without using a bypass. Do not research or modify project repositories in this session. In the readiness reply, list any in-progress or blocked Beads tasks, inspect the Herdr Agents, and state the number of currently running delegated tasks; explicitly report zero for each empty result. Also report any blocking setup issue.`;
+    const initialize = (record: JsonObject): "ready" | "pending" => {
+      const identity = String(record.terminal_id || record.pane_id || "unknown");
+      if (existsSync(marker)) {
+        try { if (JSON.parse(readText(marker)).identity === identity) { console.log(`orchestrator already exists: ${agentName}`); return "ready"; } }
+        catch { /* initialize again */ }
+      }
+      const statusValue = String(record.agent_status ?? "unknown");
+      if (!new Set(["idle", "done"]).has(statusValue)) {
+        console.log(`orchestrator \`${agentName}\` exists with status ${statusValue}; initialization remains pending`);
+        console.log(`open its full Herdr view with \`hanchou open orchestrator ${name}\``);
+        console.log(`if this Agent must be replaced, enter \`/exit\` inside it, detach with Ctrl+B then q, and rerun \`hanchou start-orchestrator ${name}\`; Hanchou will reuse the same workspace`);
+        return "pending";
+      }
+      const promptArgv = herdrArgv(name, "agent", "prompt", agentName, initial);
+      run(promptArgv, { capture: true, displayArgv: promptArgv.map((value) => value === initial ? "<redacted-prompt>" : value), redactOutput: true });
+      atomicWrite(marker, `${JSON.stringify({ identity, initialized_at: utcnow() })}\n`);
+      console.log(`initialized orchestrator \`${agentName}\``);
+      return "ready";
+    };
+    const keepNamed = (record: JsonObject): "ready" | "pending" => {
+      const knownWorkspaces = herdrRecords(name, "workspace", "workspaces");
+      const previous = orchestratorRuntimeBinding(name, profile);
+      validateNamedOrchestrator(name, profile, record, knownWorkspaces, previous);
+      saveOrchestratorRuntime(name, profile, record, previous);
+      const matching = legacyOrchestratorWorkspaces(profile, knownWorkspaces);
+      if (matching.length > 1) {
+        const staleIds = matching.filter((workspace) => workspace.workspace_id !== record.workspace_id).map((workspace) => workspace.workspace_id).join(", ");
+        console.log(`WARN ${matching.length} workspaces are labeled \`${profile.orchestrator.workspace_label}\`; the live named Agent in ${record.workspace_id} was kept and no workspace was created. Inspect possible duplicates ${staleIds} with \`hanchou open herdr ${name}\`.`);
+      }
+      return initialize(record);
+    };
+    const existing = getAgentInfo(name, agentName, true);
+    if (existing) return keepNamed(existing);
+
+    let agents = herdrRecords(name, "agent", "agents");
+    const listedNamed = agents.find((agent) => agent.name === agentName);
+    if (listedNamed) return keepNamed(listedNamed);
+    const workspaces = herdrRecords(name, "workspace", "workspaces");
+    let binding = orchestratorRuntimeBinding(name, profile);
+    let pane: JsonObject | null = null;
+    if (binding) {
+      pane = boundOrchestratorPane(name, binding, workspaces);
+      if (!pane) {
+        const moved = herdrRecords(name, "pane", "panes").find((item) => item.terminal_id === binding?.terminal_id);
+        if (moved) {
+          throw new CommandError(`recorded Orchestrator terminal ${binding.terminal_id} moved to workspace ${String(moved.workspace_id ?? "unknown")}; no replacement was created`);
+        }
+        const legacy = legacyOrchestratorWorkspaces(profile, workspaces);
+        if (legacy.length) throw new CommandError(legacyOrchestratorMessage(name, profile, legacy));
+        unlinkSync(orchestratorRuntimePath(profile));
+        binding = null;
+      } else {
+        const occupants = agents.filter((agent) => agent.workspace_id === binding?.workspace_id && agent.pane_id === binding?.pane_id);
+        if (occupants.length > 1) throw new CommandError(`recorded Orchestrator pane ${binding.pane_id} has multiple Agent records; no replacement was created`);
+        const occupant = occupants[0];
+        if (occupant) {
+          if (occupant.name && occupant.name !== agentName) throw new CommandError(`recorded Orchestrator pane ${binding.pane_id} belongs to Agent \`${occupant.name}\`; no replacement was created`);
+          if (!occupant.name && !occupant.launch_pending) {
+            if (String(occupant.agent ?? "").toLowerCase() !== kind.toLowerCase()) {
+              throw new CommandError(`recorded Orchestrator pane ${binding.pane_id} contains an unexpected ${String(occupant.agent ?? "unknown")} Agent; no replacement was created`);
+            }
+            const renamed = run(herdrArgv(name, "agent", "rename", binding.pane_id, agentName), { check: false, capture: true });
+            if (renamed.returncode === 0) {
+              const recovered = getAgentInfo(name, agentName, true);
+              if (!recovered) throw new CommandError(`Herdr renamed the recorded Agent but did not return \`${agentName}\``);
+              saveOrchestratorRuntime(name, profile, recovered, binding);
+              console.log(`recovered Orchestrator name \`${agentName}\` in workspace ${binding.workspace_id}`);
+              return initialize(recovered);
+            }
+          }
+          console.log(`recorded Orchestrator Agent in pane ${binding.pane_id} is still starting or awaiting review; no replacement was created`);
+          console.log(`open it with \`hanchou open orchestrator ${name}\``);
+          return "pending";
+        }
+        if (pane.agent !== undefined || pane.agent_session !== undefined) {
+          throw new CommandError(`recorded Orchestrator pane ${binding.pane_id} is occupied; no replacement was created`);
+        }
+      }
     }
-    const statusValue = record.agent_status;
-    if (!new Set(["idle", "done"]).has(statusValue)) {
-      console.log(`orchestrator \`${agentName}\` exists with status ${statusValue}; initialization remains pending`);
-      console.log(`attach with \`hanchou open orchestrator ${name}\``);
-      console.log(`if this Agent was started before the latest \`hanchou apply ${name} --yes\`, exit that attached Agent with \`/exit\`, then run \`hanchou start-orchestrator ${name}\` again`);
-      return "pending";
+
+    if (!binding) {
+      const legacy = legacyOrchestratorWorkspaces(profile, workspaces);
+      if (legacy.length) throw new CommandError(legacyOrchestratorMessage(name, profile, legacy));
+      const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
+      const data = parseJsonOutput(created);
+      const workspaceId = data?.result?.workspace?.workspace_id ?? null;
+      const tabId = data?.result?.tab?.tab_id ?? nestedValue(data, "tab_id");
+      const paneId = data?.result?.root_pane?.pane_id;
+      let terminalId = data?.result?.root_pane?.terminal_id;
+      if (typeof workspaceId !== "string" || typeof tabId !== "string" || typeof paneId !== "string") {
+        throw new CommandError(`cannot read workspace/tab/root pane IDs from Herdr response: ${pyCompact(data)}`);
+      }
+      if (typeof terminalId !== "string" || !terminalId) {
+        const createdPanes = herdrRecords(name, "pane", "panes", "--workspace", workspaceId);
+        const createdPane = createdPanes.find((item) => item.pane_id === paneId);
+        terminalId = createdPane?.terminal_id;
+      }
+      if (typeof terminalId !== "string" || !terminalId) throw new CommandError(`cannot read root terminal ID for new Orchestrator workspace ${workspaceId}`);
+      const createdPaneRecord = { ...data.result.root_pane, workspace_id: workspaceId, tab_id: tabId, pane_id: paneId, terminal_id: terminalId };
+      pane = createdPaneRecord;
+      binding = saveOrchestratorRuntime(name, profile, createdPaneRecord);
     }
-    const promptArgv = herdrArgv(name, "agent", "prompt", agentName, initial);
-    run(promptArgv, { capture: true, displayArgv: promptArgv.map((value) => value === initial ? "<redacted-prompt>" : value), redactOutput: true });
-    atomicWrite(marker, `${JSON.stringify({ identity, initialized_at: utcnow() })}\n`);
-    console.log(`initialized orchestrator \`${agentName}\``);
-    return "ready";
-  };
-  const existing = getAgentInfo(name, agentName, true);
-  if (existing) return initialize(existing);
-  const managedAgentId = validateAgentId(agentName, "managed Agent ID");
-  const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
-  const data = parseJsonOutput(created);
-  const paneId = data?.result?.root_pane?.pane_id;
-  const workspaceId = data?.result?.workspace?.workspace_id ?? null;
-  const tabId = data?.result?.tab?.tab_id ?? nestedValue(data, "tab_id");
-  if (typeof workspaceId !== "string" || typeof tabId !== "string" || typeof paneId !== "string") throw new CommandError(`cannot read workspace/tab/root pane IDs from Herdr response: ${pyCompact(data)}`);
-  const kind = profile.orchestrator.kind ?? "codex";
-  const argv = herdrArgv(name, "agent", "start", managedAgentId, "--kind", kind, "--pane", paneId, "--timeout", "120000");
-  const model = profile.orchestrator.model;
-  if (model) argv.push("--", kind === "claude" ? "--model" : "-m", model);
-  if (kind === "codex") {
-    if (!argv.includes("--")) argv.push("--");
-    const paths = profilePaths(profile);
-    const sessionDirectory = join(operatorHome(), ".config", "herdr", "sessions", name);
-    argv.push(
-      "--approve-for-me",
-      "--add-dir", paths.root,
-      "--add-dir", sessionDirectory,
-      "--add-dir", join(operatorHome(), ".config", "herdr", "plugins", "config"),
-      ...codexManagedNetworkArgs(name),
-      ...codexManagedEnvironmentArgs(name, profile, agentName, paneId, workspaceId, tabId),
-    );
-  }
-  const started = run(argv, { check: false, capture: true });
-  if (started.returncode !== 0) {
-    if (getAgentStatus(name, agentName, true) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`hanchou open orchestrator ${name}\``); return "pending"; }
-    throw new CommandError(`cannot start orchestrator: ${(started.stderr || started.stdout).trim()}`);
-  }
-  const record = getAgentInfo(name, agentName, true);
-  if (!record) throw new CommandError(`orchestrator started but Herdr did not register \`${agentName}\``);
-  const state = initialize(record);
-  console.log(`started ${kind} orchestrator \`${agentName}\` in pane ${paneId}`);
-  return state;
+
+    try { if (existsSync(marker)) unlinkSync(marker); } catch (error) { throw new CommandError(`cannot reset Orchestrator initialization marker: ${error}`); }
+    const argv = herdrArgv(name, "agent", "start", managedAgentId, "--kind", kind, "--pane", binding.pane_id, "--timeout", "120000");
+    const model = profile.orchestrator.model;
+    if (model) argv.push("--", kind === "claude" ? "--model" : "-m", model);
+    if (kind === "codex") {
+      if (!argv.includes("--")) argv.push("--");
+      const paths = profilePaths(profile);
+      const sessionDirectory = join(operatorHome(), ".config", "herdr", "sessions", name);
+      argv.push(
+        "--approve-for-me",
+        "--add-dir", paths.root,
+        "--add-dir", sessionDirectory,
+        "--add-dir", join(operatorHome(), ".config", "herdr", "plugins", "config"),
+        ...codexManagedNetworkArgs(name),
+        ...codexManagedEnvironmentArgs(name, profile, agentName, binding.pane_id, binding.workspace_id, binding.tab_id),
+      );
+    }
+    const started = run(argv, { check: false, capture: true });
+    if (started.returncode !== 0) {
+      agents = herdrRecords(name, "agent", "agents");
+      const pending = agents.find((agent) => agent.workspace_id === binding?.workspace_id && agent.pane_id === binding?.pane_id);
+      if (pending) {
+        if (!pending.name && !pending.launch_pending) {
+          if (String(pending.agent ?? "").toLowerCase() !== kind.toLowerCase()) {
+            throw new CommandError(`recorded Orchestrator pane ${binding.pane_id} contains an unexpected ${String(pending.agent ?? "unknown")} Agent after startup; no replacement was created`);
+          }
+          const renamed = run(herdrArgv(name, "agent", "rename", binding.pane_id, agentName), { check: false, capture: true });
+          if (renamed.returncode === 0) {
+            const recovered = getAgentInfo(name, agentName, true);
+            if (!recovered) throw new CommandError(`Herdr renamed the started Agent but did not return \`${agentName}\``);
+            saveOrchestratorRuntime(name, profile, recovered, binding);
+            console.log(`recovered Orchestrator name \`${agentName}\` in workspace ${binding.workspace_id}`);
+            const state = initialize(recovered);
+            console.log(`started ${kind} orchestrator \`${agentName}\` in pane ${binding.pane_id}`);
+            return state;
+          }
+        }
+        if (pending.name === agentName) {
+          saveOrchestratorRuntime(name, profile, pending, binding);
+          return initialize(pending);
+        }
+        console.log(`orchestrator in pane ${binding.pane_id} is awaiting startup or first-run trust/hook review; no replacement was created`);
+        console.log(`open it with \`hanchou open orchestrator ${name}\``);
+        return "pending";
+      }
+      throw new CommandError(`cannot start orchestrator in recorded workspace ${binding.workspace_id}; the binding was kept for a safe retry: ${(started.stderr || started.stdout).trim()}`);
+    }
+    let record = getAgentInfo(name, agentName, true);
+    if (!record) {
+      const byPane = getAgentInfo(name, binding.pane_id, true);
+      if (byPane && !byPane.name && !byPane.launch_pending && String(byPane.agent ?? "").toLowerCase() === kind.toLowerCase()) {
+        run(herdrArgv(name, "agent", "rename", binding.pane_id, agentName), { capture: true });
+        record = getAgentInfo(name, agentName, true);
+      }
+    }
+    if (!record) throw new CommandError(`orchestrator started in recorded workspace ${binding.workspace_id} but Herdr did not register \`${agentName}\``);
+    saveOrchestratorRuntime(name, profile, record, binding);
+    const state = initialize(record);
+    console.log(`started ${kind} orchestrator \`${agentName}\` in pane ${binding.pane_id}`);
+    return state;
+  }, 180_000);
 }
 
 async function openTarget(name: string, profile: JsonObject, target: string): Promise<never | void> {
@@ -3806,11 +4102,25 @@ async function openTarget(name: string, profile: JsonObject, target: string): Pr
     }
   }
   if (target === "herdr" || target === "orchestrator") {
-    if (target === "orchestrator" && !getAgentInfo(name, String(profile.orchestrator.agent_name), true)) {
-      throw new CommandError(`agent target ${profile.orchestrator.agent_name} not found; run \`hanchou launch ${name}\` first`);
+    if (target === "orchestrator") {
+      const agentName = String(profile.orchestrator.agent_name);
+      const record = getAgentInfo(name, agentName, true);
+      const binding = orchestratorRuntimeBinding(name, profile);
+      const workspaces = herdrRecords(name, "workspace", "workspaces");
+      if (record) {
+        validateNamedOrchestrator(name, profile, record, workspaces, binding);
+        const focused = run(herdrArgv(name, "agent", "focus", agentName), { check: false, capture: true });
+        if (focused.returncode !== 0) run(herdrArgv(name, "workspace", "focus", String(record.workspace_id)), { capture: true });
+      } else {
+        if (!binding) throw new CommandError(`agent target ${agentName} not found; run \`hanchou launch ${name}\` first`);
+        if (!boundOrchestratorPane(name, binding, workspaces)) {
+          throw new CommandError(`recorded Orchestrator workspace ${binding.workspace_id} is missing; run \`hanchou start-orchestrator ${name}\` to reconcile it`);
+        }
+        run(herdrArgv(name, "workspace", "focus", binding.workspace_id), { capture: true });
+      }
+      console.log("Opening the full Herdr client on the Orchestrator. This view is multi-client safe; detach with Ctrl+B then q without stopping the Agent.");
     }
-    const argv = target === "herdr" ? herdrArgv(name) : herdrArgv(name, "agent", "attach", profile.orchestrator.agent_name);
-    const result = run(argv, { check: false }); process.exit(result.returncode);
+    const result = run(herdrArgv(name), { check: false }); process.exit(result.returncode);
   }
   if (target === "automations") { run(herdrArgv(name, "plugin", "pane", "open", "--plugin", "dnzzl.automations", "--entrypoint", "board", "--placement", "overlay")); return; }
   throw new CommandError(`unknown open target: ${target}`);
@@ -3971,7 +4281,7 @@ function statusCommand(name: string, profile: JsonObject, asJson: boolean): void
     herdrm: herdrmCompatibility(name, profile),
     usage_snapshot: usageSnapshotPath(profile),
     project_registry: { path: projects.registry_path, configured: Boolean(projects.registry_digest), projects: projects.projects.length, workspace_roots: projects.workspace_roots.length, default_policy: "deny" },
-    commands: { dashboard: `hanchou open dashboard ${name}`, herdr: `herdr --session ${name}`, orchestrator: `herdr --session ${name} agent attach ${agent}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}`, herdrm: `hanchou open herdrm ${name}` },
+    commands: { dashboard: `hanchou open dashboard ${name}`, herdr: `hanchou open herdr ${name}`, orchestrator: `hanchou open orchestrator ${name}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}`, herdrm: `hanchou open herdrm ${name}` },
   };
   if (asJson) jsonPrint(result, true);
   else {
@@ -4096,6 +4406,42 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
   const server = herdrOperationalSnapshot(name, 15_000);
   const serverOk = server.running && server.operational && server.version === requiredTools.herdr;
   console.log(`${serverOk ? "ok  " : "FAIL"} Herdr server/session${serverOk ? "" : `: ${server.error ?? "control plane unavailable"}`}`); if (!serverOk) failures += 1;
+  if (serverOk) {
+    try {
+      const agents = herdrRecords(name, "agent", "agents");
+      const workspaces = herdrRecords(name, "workspace", "workspaces");
+      const matching = legacyOrchestratorWorkspaces(profile, workspaces);
+      const agentName = String(profile.orchestrator.agent_name);
+      const named = agents.find((agent) => agent.name === agentName);
+      const binding = orchestratorRuntimeBinding(name, profile);
+      let problem: string | null = null;
+      if (named) validateNamedOrchestrator(name, profile, named, workspaces, binding);
+      if (matching.length > 1) problem = `${matching.length} workspaces labeled ${profile.orchestrator.workspace_label}; open \`hanchou open herdr ${name}\` and close only verified empty duplicates`;
+      else if (binding && !named) {
+        const pane = boundOrchestratorPane(name, binding, workspaces);
+        if (!pane) {
+          const moved = herdrRecords(name, "pane", "panes").find((item) => item.terminal_id === binding.terminal_id);
+          problem = moved
+            ? `recorded terminal ${binding.terminal_id} moved to workspace ${String(moved.workspace_id ?? "unknown")}`
+            : `recorded workspace ${binding.workspace_id} is missing`;
+        }
+        else {
+          const occupants = agents.filter((agent) => agent.workspace_id === binding.workspace_id && agent.pane_id === binding.pane_id);
+          const occupant = occupants[0];
+          const expectedKind = String(profile.orchestrator.kind ?? "codex").toLowerCase();
+          if (occupants.length > 1) problem = `recorded pane ${binding.pane_id} has multiple Agent records`;
+          else if (occupant?.name) problem = `recorded pane ${binding.pane_id} belongs to unexpected Agent ${occupant.name}`;
+          else if (occupant && !occupant.launch_pending && String(occupant.agent ?? "").toLowerCase() !== expectedKind) problem = `recorded pane ${binding.pane_id} contains unexpected ${String(occupant.agent ?? "unknown")} Agent`;
+          else if (!occupant && (pane.agent !== undefined || pane.agent_session !== undefined)) problem = `recorded pane ${binding.pane_id} is occupied without a matching Agent record`;
+        }
+      } else if (matching.length && !named) problem = `unbound legacy workspace ${matching[0].workspace_id}; inspect it before starting another Orchestrator`;
+      console.log(`${problem ? "FAIL" : "ok  "} Orchestrator workspace topology${problem ? `: ${problem}` : `: ${matching.length} workspace(s) / ${binding ? "bound" : named ? "live Agent" : "not started"}`}`);
+      if (problem) failures += 1;
+    } catch (error) {
+      console.log(`FAIL Orchestrator workspace topology: ${error instanceof Error ? error.message : error}`);
+      failures += 1;
+    }
+  }
   try {
     const proc = run([commandPath("bd"), "ready", "--json"], { env, cwd: profilePaths(profile).control_dir, check: false, capture: true, timeout: 15_000 });
     const ok = proc.returncode === 0; console.log(`${ok ? "ok  " : "FAIL"} Beads ready access`); if (!ok) failures += 1;

@@ -52,6 +52,21 @@ Relay Inbox + Delivery
 6. Prove Relay lease recovery and pending Delivery visibility.
 7. Implement daily digest schedule only after the completion loop passes.
 
+## Current target-Mac handoff
+
+Orchestrator duplicate prevention and multi-client-safe opening are implemented
+and fake-E2E tested. After updating the target checkout, run
+`hanchou start-orchestrator work` once. A rigorously matched live legacy Agent
+is bound in place; ambiguous empty legacy spaces do not cause another create.
+Open `hanchou open herdr work`, keep the row containing the live named
+`orchestrator`, and let the human close only verified empty duplicate rows with
+`Ctrl+B` then `Shift+D`. `hanchou open orchestrator work` now focuses the target
+and opens the full Herdr client instead of exclusive direct attach.
+
+The Core goal remains open until that live Agent answers the initial status
+query using both Beads and Herdr and explicitly reports zero for empty active,
+blocked, and delegated-task results.
+
 ## Do not change without explicit decision
 
 - no second Task/Cron/runtime;

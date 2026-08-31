@@ -209,14 +209,73 @@ function fakeHerdr(input: readonly string[]): number {
     console.log(JSON.stringify({ result: { agents: Object.values(state.agents ?? {}) } }));
     return 0;
   }
+  if (args[0] === "workspace" && args[1] === "list" && args.length === 2) {
+    console.log(JSON.stringify({
+      result: {
+        type: "workspace_list",
+        workspaces: Object.values(state.workspace_records ?? {}),
+      },
+    }));
+    return 0;
+  }
+  if (args[0] === "workspace" && args[1] === "focus" && args.length === 3) {
+    const workspaceId = args[2] as string;
+    const workspace = state.workspace_records?.[workspaceId];
+    if (!workspace) {
+      console.error(JSON.stringify({ error: { code: "workspace_not_found" } }));
+      return 1;
+    }
+    for (const record of Object.values(state.workspace_records) as JsonObject[]) record.focused = false;
+    workspace.focused = true;
+    writeJson(statePath, state);
+    console.log(JSON.stringify({ result: { type: "ok" } }));
+    return 0;
+  }
+  if (args[0] === "pane" && args[1] === "list") {
+    assert.ok(
+      args.length === 2 || (args.length === 4 && args[2] === "--workspace"),
+      `unsupported fake Herdr pane list: ${JSON.stringify(args)}`,
+    );
+    const workspaceId = args.length === 4 ? args[3] : undefined;
+    const panes = (Object.values(state.pane_records ?? {}) as JsonObject[])
+      .filter((pane) => workspaceId === undefined || pane.workspace_id === workspaceId);
+    console.log(JSON.stringify({ result: { type: "pane_list", panes } }));
+    return 0;
+  }
   if (args[0] === "workspace" && args[1] === "create") {
     assertKnownOptions(args, 2, ["--cwd", "--label", "--env"], ["--no-focus", "--focus"]);
     state.counter += 1;
     const workspace = `w${String(state.counter)}`;
     const tab = `${workspace}:t1`;
     const pane = `${tab}:p1`;
+    const terminal = `term-${pane}`;
+    const cwd = option(args, "--cwd");
+    const label = option(args, "--label");
     state.workspaces ??= [];
     state.workspaces.push(args);
+    state.workspace_records ??= {};
+    state.workspace_records[workspace] = {
+      workspace_id: workspace,
+      number: state.counter,
+      label,
+      focused: !args.includes("--no-focus"),
+      pane_count: 1,
+      tab_count: 1,
+      active_tab_id: tab,
+      agent_status: "unknown",
+    };
+    state.pane_records ??= {};
+    state.pane_records[pane] = {
+      pane_id: pane,
+      terminal_id: terminal,
+      workspace_id: workspace,
+      tab_id: tab,
+      focused: true,
+      cwd,
+      foreground_cwd: cwd,
+      agent_status: "unknown",
+      revision: 1,
+    };
     state.pane_env ??= {};
     state.pane_env[pane] = environmentOptions(args);
     state.tab_counters ??= {};
@@ -227,9 +286,9 @@ function fakeHerdr(input: readonly string[]): number {
       JSON.stringify({
         result: {
           type: "workspace_created",
-          workspace: { workspace_id: workspace },
+          workspace: state.workspace_records[workspace],
           tab: { tab_id: tab },
-          root_pane: { pane_id: pane },
+          root_pane: state.pane_records[pane],
         },
       }),
     );
@@ -256,6 +315,38 @@ function fakeHerdr(input: readonly string[]): number {
     const workspace = `w${String(state.counter)}`;
     const tab = `${workspace}:t1`;
     const pane = `${tab}:p1`;
+    const terminal = `term-${pane}`;
+    const label = option(args, "--label");
+    state.workspace_records ??= {};
+    state.workspace_records[workspace] = {
+      workspace_id: workspace,
+      number: state.counter,
+      label,
+      focused: !args.includes("--no-focus"),
+      pane_count: 1,
+      tab_count: 1,
+      active_tab_id: tab,
+      agent_status: "unknown",
+      worktree: {
+        repo_key: repository,
+        repo_name: repository.split("/").filter(Boolean).at(-1) ?? "repository",
+        repo_root: repository,
+        checkout_path: target,
+        is_linked_worktree: true,
+      },
+    };
+    state.pane_records ??= {};
+    state.pane_records[pane] = {
+      pane_id: pane,
+      terminal_id: terminal,
+      workspace_id: workspace,
+      tab_id: tab,
+      focused: true,
+      cwd: target,
+      foreground_cwd: target,
+      agent_status: "unknown",
+      revision: 1,
+    };
     state.pane_env ??= {};
     state.pane_env[pane] = {};
     state.tab_counters ??= {};
@@ -266,9 +357,9 @@ function fakeHerdr(input: readonly string[]): number {
       JSON.stringify({
         result: {
           type: "worktree_created",
-          workspace: { workspace_id: workspace },
+          workspace: state.workspace_records[workspace],
           tab: { tab_id: tab },
-          root_pane: { pane_id: pane },
+          root_pane: state.pane_records[pane],
           worktree: { path: target },
         },
       }),
@@ -282,18 +373,52 @@ function fakeHerdr(input: readonly string[]): number {
     state.tab_counters[workspace] = Number(state.tab_counters[workspace] ?? 1) + 1;
     const tab = `${workspace}:t${String(state.tab_counters[workspace])}`;
     const pane = `${tab}:p1`;
+    const terminal = `term-${pane}`;
+    const cwd = option(args, "--cwd");
     state.tabs ??= [];
     state.tabs.push(args);
+    state.pane_records ??= {};
+    state.pane_records[pane] = {
+      pane_id: pane,
+      terminal_id: terminal,
+      workspace_id: workspace,
+      tab_id: tab,
+      focused: true,
+      cwd,
+      foreground_cwd: cwd,
+      label: option(args, "--label"),
+      agent_status: "unknown",
+      revision: 1,
+    };
+    const workspaceRecord = state.workspace_records?.[workspace];
+    if (workspaceRecord) {
+      workspaceRecord.pane_count = Number(workspaceRecord.pane_count) + 1;
+      workspaceRecord.tab_count = Number(workspaceRecord.tab_count) + 1;
+      workspaceRecord.active_tab_id = tab;
+    }
     state.pane_env ??= {};
     state.pane_env[pane] = environmentOptions(args);
     writeJson(statePath, state);
-    console.log(JSON.stringify({ result: { type: "tab_created", tab: { tab_id: tab }, root_pane: { pane_id: pane } } }));
+    console.log(JSON.stringify({ result: { type: "tab_created", tab: { tab_id: tab }, root_pane: state.pane_records[pane] } }));
     return 0;
   }
   if (args[0] === "tab" && args[1] === "close") {
     assert.equal(args.length, 3, `unsupported fake Herdr tab close: ${JSON.stringify(args)}`);
+    const tabId = args[2] as string;
     state.tab_closes ??= [];
-    state.tab_closes.push(args[2]);
+    state.tab_closes.push(tabId);
+    const closedPanes = (Object.values(state.pane_records ?? {}) as JsonObject[])
+      .filter((pane) => pane.tab_id === tabId);
+    for (const pane of closedPanes) delete state.pane_records[pane.pane_id];
+    const workspaceId = tabId.split(":", 1)[0] as string;
+    const workspaceRecord = state.workspace_records?.[workspaceId];
+    if (workspaceRecord) {
+      workspaceRecord.pane_count = Math.max(0, Number(workspaceRecord.pane_count) - closedPanes.length);
+      workspaceRecord.tab_count = Math.max(0, Number(workspaceRecord.tab_count) - 1);
+      const remaining = (Object.values(state.pane_records ?? {}) as JsonObject[])
+        .find((pane) => pane.workspace_id === workspaceId);
+      if (remaining) workspaceRecord.active_tab_id = remaining.tab_id;
+    }
     writeJson(statePath, state);
     console.log(JSON.stringify({ result: { type: "ok" } }));
     return 0;
@@ -308,25 +433,44 @@ function fakeHerdr(input: readonly string[]): number {
     const pane = option(args, "--pane");
     const workspace = pane.split(":", 1)[0];
     const tab = pane.split(":").slice(0, 2).join(":");
+    const kind = option(args, "--kind");
+    const paneRecord = state.pane_records?.[pane] as JsonObject | undefined;
+    const terminal = String(paneRecord?.terminal_id ?? `term-${pane}`);
     state.starts ??= [];
     state.starts.push(args);
     state.agents[name] = {
       name,
+      agent: kind,
       agent_status: "idle",
       workspace_id: workspace,
       tab_id: tab,
       pane_id: pane,
+      terminal_id: terminal,
+      focused: false,
+      interactive_ready: true,
       launch_env: { ...(state.pane_env?.[pane] ?? {}) },
       state_change_seq: 1,
+      cwd: paneRecord?.cwd,
+      foreground_cwd: paneRecord?.foreground_cwd,
+      revision: 1,
       agent_session: {
         source: "fake",
-        agent: "codex",
+        agent: kind,
         kind: "id",
         value: `session-${name}`,
       },
     };
+    if (paneRecord) {
+      paneRecord.agent = kind;
+      paneRecord.agent_status = "idle";
+      paneRecord.revision = Number(paneRecord.revision ?? 0) + 1;
+    }
+    const workspaceRecord = state.workspace_records?.[workspace];
+    if (workspaceRecord) workspaceRecord.agent_status = "idle";
     if (process.env.FAKE_HERDR_BLOCK_START === "1") {
       state.agents[name].agent_status = "blocked";
+      if (paneRecord) paneRecord.agent_status = "blocked";
+      if (workspaceRecord) workspaceRecord.agent_status = "blocked";
       writeJson(statePath, state);
       console.error(JSON.stringify({ error: { code: "agent_not_ready" } }));
       return 1;
@@ -359,6 +503,13 @@ function fakeHerdr(input: readonly string[]): number {
     state.prompts.push({ agent: name, prompt, args: args.slice(4) });
     state.agents[name].agent_status = "working";
     state.agents[name].state_change_seq += 1;
+    const pane = state.pane_records?.[state.agents[name].pane_id];
+    if (pane) {
+      pane.agent_status = "working";
+      pane.revision = Number(pane.revision ?? 0) + 1;
+    }
+    const workspace = state.workspace_records?.[state.agents[name].workspace_id];
+    if (workspace) workspace.agent_status = "working";
     writeJson(statePath, state);
     console.log(JSON.stringify({ result: { accepted: true } }));
     return 0;
@@ -459,7 +610,20 @@ function initialize(args: readonly string[]): void {
   foreign.metadata.execution_id = "exe_foreign";
   tasks["hch-foreign"] = foreign;
   writeJson(bdPath, { beads: tasks, metadata_updates: [] });
-  writeJson(herdrPath, { counter: 0, agents: {}, prompts: [], starts: [], worktrees: [], workspaces: [], tabs: [], tab_closes: [], pane_env: {}, tab_counters: {} });
+  writeJson(herdrPath, {
+    counter: 0,
+    agents: {},
+    prompts: [],
+    starts: [],
+    worktrees: [],
+    workspaces: [],
+    workspace_records: {},
+    pane_records: {},
+    tabs: [],
+    tab_closes: [],
+    pane_env: {},
+    tab_counters: {},
+  });
 }
 
 function jsonField(value: JsonObject, path: string): void {
@@ -655,6 +819,10 @@ function readyTrust(bdPath: string, herdrPath: string, agentName: string, failin
   }
   agent.agent_status = "idle";
   agent.state_change_seq += 1;
+  const pane = herdr.pane_records?.[agent.pane_id];
+  if (pane) pane.agent_status = "idle";
+  const workspace = herdr.workspace_records?.[agent.workspace_id];
+  if (workspace) workspace.agent_status = "idle";
   writeJson(herdrPath, herdr);
 }
 
@@ -665,6 +833,10 @@ function readyAgent(herdrPath: string, agentName: string): void {
   assert.equal(agent.agent_status, "blocked");
   agent.agent_status = "idle";
   agent.state_change_seq += 1;
+  const pane = herdr.pane_records?.[agent.pane_id];
+  if (pane) pane.agent_status = "idle";
+  const workspace = herdr.workspace_records?.[agent.workspace_id];
+  if (workspace) workspace.agent_status = "idle";
   writeJson(herdrPath, herdr);
 }
 

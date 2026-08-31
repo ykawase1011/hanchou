@@ -8,9 +8,13 @@
 3. Run `hanchou plan work`, `hanchou bootstrap work`, and `hanchou doctor work`.
 4. Run `hanchou launch work`; verify the Dashboard opens and the Orchestrator
    exists in the named Herdr session.
-5. Verify the Dashboard shows Herdr/Beads/Relay/workspace summary, changes no
+5. Run a second launch and one overlapping start; verify the same recorded
+   Orchestrator workspace/pane is reused and no duplicate is created. If legacy
+   duplicate labels exist, verify launch fails closed or keeps the one live
+   named Agent without closing any workspace automatically.
+6. Verify the Dashboard shows Herdr/Beads/Relay/workspace summary, changes no
    durable state, and refuses non-loopback or state-changing HTTP access.
-6. Ask L0 for active/blocked Beads Tasks and live Herdr execution Agents; verify
+7. Ask L0 for active/blocked Beads Tasks and live Herdr execution Agents; verify
    it checks both sources and explicitly reports zero when empty.
 
 ## A. Intake and immediate acknowledgement

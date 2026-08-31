@@ -48,6 +48,11 @@
     LaunchAgentは登録後と変更なしの再適用時に`kickstart -p`をbounded retryし、成功後だけ
     reload markerを消す。`-k`を使わず、既存のrunning processは再起動しない。kickstart前後に
     登録が消えたraceは、対象だけを一度再登録して同じbounded retryへ戻す。
+23. Orchestrator lifecycleはprofile単位で排他し、作成したworkspace／paneのopaque IDを
+    Hanchou固有runtime bindingとしてAgent開始前に保存する。失敗・blocked・`/exit`後は
+    同じpaneを再利用し、曖昧なlegacy候補があれば新規作成せずfail closedとする。
+    `launch`／`start-orchestrator`からworkspaceを自動削除しない。Orchestratorを開く標準
+    commandは対象をfocusしたfull Herdr clientとし、単一ownerのdirect attachを使わない。
 
 ## 初期default
 

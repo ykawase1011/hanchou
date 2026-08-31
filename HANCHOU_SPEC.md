@@ -218,6 +218,16 @@ profile別loopback portで提供します。状態変更API、CORS、telemetry�
 Herdr readinessはpin済みversionのPingに加えてread-onlyな`agent list`が成功することを
 必須とします。shutdown／reload中のcontrol-plane errorをAgent不存在として扱いません。
 
+Orchestratorの起動はprofile単位で直列化します。Hanchouが作成したworkspace、tab、pane、
+terminalのopaque IDをAgent開始前にatomic保存し、初回trust待ち、開始失敗、`/exit`後は
+同じpaneを再利用します。`launch`／`start-orchestrator`はworkspaceを自動削除しません。
+保存済みbindingがなく同じlabelのlegacy workspaceが残る場合も、原則として新規作成せず
+fail closedとします。例外は、live named Agentが要求kind、label、1 tab／1 pane、
+no-worktree、Hanchou Core cwd、全opaque IDに厳密一致する場合だけで、そのworkspaceを
+bindingへmigrationして維持します。それ以外は人間によるHerdr TUI上の確認・整理を
+要求します。`open orchestrator`は単一ownerの
+direct attachを使わず、対象をfocusしてmulti-client対応の通常Herdr TUIを開きます。
+
 macOS LaunchAgent更新は、各変更前にdurableなreload-pending markerを作り、全plistを
 backup付きで先に配置してからDashboard、beads-ui、Herdrの順でloadします。markerは
 対応serviceの登録と明示kickstart成功後だけ消すため、中断後の再実行でも必要なreloadを
@@ -236,6 +246,9 @@ Herdrmはoptionalです。Herdrm 0.5.xのdefault socketとHanchou named-session 
 明示した時点でdefault pathが存在せず、pin済みversionのlive named socketが同一user
 所有だと確認できる場合だけcompatibility symlinkを作成できます。既存default socketを
 上書きしたり、別のdefault Herdr sessionを起動したりしません。
+HerdrmまたはCLIのdirect pane attachは同じpaneにつき書き込みownerを1つだけ持つため、
+別のdirect clientへ移る前に`Ctrl+B`、`q`でdetachします。takeover表示だけをAgent停止とは
+判定しません。
 
 `herdr-beads`はoptional dependencyでありCoreの成立条件に含めません。source
 buildに追加toolchainが必要な場合、利用者がHerdr内Boardを必要とするときだけ

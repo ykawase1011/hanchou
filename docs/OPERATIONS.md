@@ -27,8 +27,8 @@ keeps agent startup deterministic and prevents unrelated interactive login
 hooks (such as credential prompts) from blocking lifecycle detection.
 
 The first `start-orchestrator` may pause for Codex project and hook review.
-Attach to the named Agent, review the exact sources, and trust only the intended
-Hanchou/Herdr integration. Hanchou never bypasses Codex approvals or sandboxing.
+Open the focused full Herdr view, review the exact sources, and trust only the
+intended Hanchou/Herdr integration. Hanchou never bypasses Codex approvals or sandboxing.
 That first project/hook decision is intentionally not auto-approved.
 
 New project dispatch is separately deny-by-default. A human either reviews and
@@ -56,8 +56,10 @@ for human review without executing them during readiness checks.
 
 An Agent that was already running before an `apply` does not gain new launch
 arguments. Open it with `hanchou open orchestrator <profile>`, enter `/exit`,
-then rerun `hanchou start-orchestrator <profile>`. The fresh Agent receives the
-managed environment and reloads the project-local command policy.
+detach the Herdr view with `Ctrl+B` then `q`, and rerun
+`hanchou start-orchestrator <profile>`. Hanchou reuses its recorded pane; the
+fresh Agent receives the managed environment and reloads the project-local
+command policy.
 
 Routine control commands use the checked-in project policy at
 `.codex/rules/hanchou.rules`. It automatically allows the read-only
@@ -151,13 +153,37 @@ hanchou open herdr work
 hanchou open orchestrator work
 ```
 
+`open orchestrator` first focuses the recorded Agent or single-pane workspace
+and then opens the ordinary full Herdr client. It does not use the exclusive
+direct-attach API.
+Hanchou serializes Orchestrator lifecycle operations per profile and stores the
+exact workspace/tab/pane/terminal binding under the profile control directory.
+Retries reuse that binding; they do not create a replacement workspace or
+silently close the old one.
+
+If Hanchou reports unbound legacy `00-orchestrator` workspaces, open the full
+Herdr TUI and preserve the row containing the live Agent named `orchestrator`.
+Hanchou may automatically bind that live named Agent only when its configured
+kind, label, single-pane shape, no-worktree state, Core cwd, and all opaque IDs
+match exactly; it still does not create or close a workspace in that migration.
+For each other row that you have verified is an empty shell, press `Ctrl+B`,
+then `Shift+D`, and confirm close. If none contains a live Agent, close every
+stale labeled row before rerunning `hanchou start-orchestrator work`. Closing a
+Herdr workspace removes its PTY runtime; it does not delete a Git checkout.
+
 Herdrm is optional and is not a Core readiness condition. Herdrm 0.5.x uses the
 default local socket while Hanchou uses named sessions. `hanchou open herdrm`
 therefore opens the app only when both paths resolve to the same socket. On an
 explicit Herdrm open, Hanchou may create a symlink only when the default path is
 absent and the named path is a live same-user socket; it never overwrites an
 existing default session or starts a second server. Even when compatible, use
-it only for monitoring or attaching to Hanchou-created Agents.
+it only for monitoring or attaching to Hanchou-created Agents. A direct
+`agent attach` or `terminal attach` has one writable owner. Do not attach Herdrm
+and another direct client to the same pane at once; detach the earlier direct
+view with `Ctrl+B` then `q`. The message `Another client took this pane over`
+means ownership moved to the later direct client; it does not mean the Agent
+stopped. The full client opened by `hanchou open orchestrator` is the preferred
+multi-client-safe view.
 
 ## Health checks
 
@@ -169,7 +195,7 @@ it only for monitoring or attaching to Hanchou-created Agents.
 - Beads, Codex and Claude Code binaries;
 - Herdr Codex/Claude integrations, herdr-automations and beads-ui;
 - Hanchou Skills freshness;
-- Herdr server/session and Orchestrator;
+- Herdr server/session, Orchestrator, and duplicate/binding workspace topology;
 - Beads doctor/ready access;
 - Relay directories, expired leases, pending Deliveries;
 - Automation config, daemon, misses, repeated failures;
