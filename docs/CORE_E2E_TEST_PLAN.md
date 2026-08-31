@@ -12,9 +12,31 @@
    Orchestrator workspace/pane is reused and no duplicate is created. If legacy
    duplicate labels exist, verify launch fails closed or keeps the one live
    named Agent without closing any workspace automatically.
-6. Verify the Dashboard shows Herdr/Beads/Relay/workspace summary, changes no
+6. Review `hanchou stop-orchestrator work --all`; verify it closes nothing.
+   Verify the plan prints one 64-character lowercase-hex token and the exact
+   `--all --plan <token> --yes` command. Verify each row exposes process
+   `PID:name`, additional count, and foreground cwd, and that the token binds the
+   profile digest/resolved state paths plus target identities. Verify apply
+   rejects a missing, malformed, wrong, or stale token, non-interactive input,
+   and a managed-Agent caller before closing anything. Reject an unowned legacy
+   shell with a non-Core foreground cwd or an additional process observed on the
+   same TTY or as a shell descendant. Treat `observed_additional=0` only as the
+   result of that best-effort scan, not proof that all same-session processes
+   are absent; verify Agent-occupied rows use `observed_additional=n/a` because
+   their OS shell is not scanned.
+   Apply the exact printed command and verify only fully validated dedicated
+   Orchestrator workspaces close, the bound one closes last, unrelated/worktree
+   spaces remain, and lifecycle files survive any partial failure. After
+   target-state drift or a partial close, verify the error distinguishes
+   `closed`, `remaining`, and unverifiable `uncertain` outcomes, the old token
+   fails, and a read-only replan provides the new token. Apply it, then start
+   exactly one clean Orchestrator. Record the Herdr 0.8.2 limitation that final
+   revalidation and workspace close are not one conditional operation, and
+   verify the human-facing plan describes apply as approval to terminate the
+   complete target PTY/process session.
+7. Verify the Dashboard shows Herdr/Beads/Relay/workspace summary, changes no
    durable state, and refuses non-loopback or state-changing HTTP access.
-7. Ask L0 for active/blocked Beads Tasks and live Herdr execution Agents; verify
+8. Ask L0 for active/blocked Beads Tasks and live Herdr execution Agents; verify
    it checks both sources and explicitly reports zero when empty.
 
 ## A. Intake and immediate acknowledgement

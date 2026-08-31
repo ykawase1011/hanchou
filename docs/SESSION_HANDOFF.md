@@ -63,6 +63,20 @@ Open `hanchou open herdr work`, keep the row containing the live named
 `Ctrl+B` then `Shift+D`. `hanchou open orchestrator work` now focuses the target
 and opens the full Herdr client instead of exclusive direct attach.
 
+If the human confirms that every same-label Orchestrator workspace may be
+terminated, use `hanchou stop-orchestrator work --all` to review the exact IDs,
+then copy the exact `--all --plan <64hex-token> --yes` command printed by that
+plan into the ordinary interactive terminal. The token is bound to the reviewed
+target snapshot. Any relevant state change, including a partial close, requires
+a fresh plan and token; never retry the old token. The command validates every
+target before the first close and revalidates each target, but Herdr 0.8.2 has
+no conditional close, so a short revalidate-to-close TOCTOU window remains.
+On Darwin, the legacy check's same-TTY/shell-descendant scan does not enumerate
+every same-session process. Apply is human approval to terminate the target
+PTY/process session; use manual TUI cleanup if that cannot be approved. Start
+one clean L0 with `hanchou start-orchestrator work` afterward. TTY/Agent checks
+and the token are defense-in-depth, not a complete same-user security boundary.
+
 The Core goal remains open until that live Agent answers the initial status
 query using both Beads and Herdr and explicitly reports zero for empty active,
 blocked, and delegated-task results.

@@ -29,6 +29,19 @@
   exact workspace/tab/pane/terminal binding, same-pane retry/restart, strict
   legacy migration checks, duplicate detection, and no automatic workspace
   deletion;
+- added `stop-orchestrator` with a read-only, exact-target plan and a
+  snapshot-bound 64-character lowercase-hex token required by the exact
+  ordinary-terminal `--all --plan <token> --yes` apply; target-state drift and
+  partial closure require a new plan/token, the plan exposes process identity
+  and binds the profile digest/resolved state paths, and unowned legacy shells
+  require zero additional processes observed by the best-effort same-TTY plus
+  shell-descendant scan while Agent-occupied rows report that scan as `n/a`;
+  documented that Darwin cannot fully enumerate the same
+  OS process session and that Herdr 0.8.2 has a final-revalidate-to-close TOCTOU
+  window; apply is human approval to terminate the complete workspace process
+  session, surrounding Hanchou subsystems are preserved, and lifecycle state is
+  cleared only after complete closure; the TTY/Agent/token checks are
+  defense-in-depth, not a complete same-user security boundary;
 - changed `open orchestrator` from single-owner direct attach to a focused full
   Herdr client, and documented Herdrm/direct-attach ownership and recovery.
 

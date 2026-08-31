@@ -46,6 +46,20 @@ A long-running L0 wait loop is prohibited.
   profile before Agent startup and serializes create/reuse against that record.
 - A missing Agent name never authorizes a second Orchestrator workspace when a
   recorded or legacy candidate remains; ambiguous legacy state fails closed.
+- Destructive reset is a separate, human-confirmed, plan-first command. The
+  read-only plan emits an exact apply command with a 64-character lowercase-hex
+  token bound to the reviewed target snapshot. A state change or partial close
+  requires a new plan/token. Apply closes only the fully validated dedicated
+  Orchestrator workspace set, preserves all other control-plane/project state,
+  and clears the binding only after every selected workspace is confirmed
+  absent. Legacy-shell process screening is a best-effort union of same-TTY and
+  shell-descendant records; on Darwin it cannot enumerate every process in the
+  same OS process session. Herdr 0.8.2 has no conditional workspace close, so
+  final revalidation narrows but cannot eliminate the revalidate-to-close
+  TOCTOU window. Apply is the human's approval to terminate the complete target
+  PTY/process session; otherwise the full Herdr TUI is the fallback. TTY,
+  managed-Agent, token, and command-policy checks are
+  defense-in-depth rather than a complete same-user security boundary.
 - Beads restores Task truth.
 - Relay recovers expired Inbox leases and pending Deliveries.
 - Plugin startup runs one idempotent Relay dispatch.

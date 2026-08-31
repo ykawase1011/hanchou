@@ -101,6 +101,7 @@ if (/pattern\s*=\s*\[\s*["']hanchou["']\s*,\s*["']inbox["']\s*\]/.test(source)) 
   throw new Error("Inbox rules must not allow the whole command family");
 }
 for (const expected of [
+  '[["hanchou", "./bin/hanchou", "bin/hanchou"], "stop-orchestrator"]',
   '["hanchou", "project", ["list", "show", "resolve", "doctor"]]',
   '["hanchou", "inbox", ["list", "show"]]',
   '["hanchou", "inbox", ["claim", "ack"]]',
@@ -122,6 +123,8 @@ const cases = [
   [["hanchou", "project", "doctor"], "allow"],
   [["hanchou", "project", "add", "example-app", "--path", "/workspace/example-app"], null],
   [["hanchou", "onboard", "work", "--yes"], null],
+  [["hanchou", "stop-orchestrator", "work", "--all", "--yes"], "prompt"],
+  [["./bin/hanchou", "stop-orchestrator", "work", "--all", "--plan", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "--yes"], "prompt"],
   [["hanchou", "inbox", "list", "--json"], "allow"],
   [["hanchou", "inbox", "show", "evt_example"], "allow"],
   [["hanchou", "inbox", "claim", "--to", "orchestrator", "--json"], "allow"],
@@ -179,6 +182,8 @@ grep -q 'hanchou: error: the following arguments are required: command' "$TMP/no
 hanchou_test project --help | grep -q '{list,show,resolve,doctor}'
 hanchou_test onboard --help | grep -q -- '--yes'
 hanchou_test launch --help | grep -q -- '--no-browser'
+hanchou_test stop-orchestrator --help | grep -q -- '--all'
+hanchou_test stop-orchestrator --help | grep -q -- '--plan PLAN'
 hanchou_test dashboard --help | grep -q '{serve,snapshot}'
 hanchou_test dashboard serve --help | grep -q '{personal,work}'
 hanchou_test open --help | grep -q 'dashboard,tasks,herdr,herdrm,orchestrator,automations'
@@ -187,6 +192,27 @@ if hanchou_test dashboard future >/dev/null 2>"$TMP/dashboard-command.err"; then
   exit 1
 fi
 grep -q "argument dashboard_command: invalid choice: 'future'" "$TMP/dashboard-command.err"
+if hanchou_test stop-orchestrator work >/dev/null 2>"$TMP/stop-all.err"; then
+  echo "expected stop-orchestrator to require --all" >&2
+  exit 1
+fi
+grep -q 'the following arguments are required: --all' "$TMP/stop-all.err"
+if hanchou_test stop-orchestrator work --all --yes >/dev/null 2>"$TMP/stop-plan-required.err"; then
+  echo "expected stop-orchestrator --yes to require --plan" >&2
+  exit 1
+fi
+grep -q 'the following arguments are required: --plan' "$TMP/stop-plan-required.err"
+VALID_STOP_PLAN=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+if hanchou_test stop-orchestrator work --all --plan "$VALID_STOP_PLAN" >/dev/null 2>"$TMP/stop-yes-required.err"; then
+  echo "expected stop-orchestrator --plan to require --yes" >&2
+  exit 1
+fi
+grep -q 'argument --plan: requires --yes' "$TMP/stop-yes-required.err"
+if hanchou_test stop-orchestrator work --all --plan not-a-token --yes >/dev/null 2>"$TMP/stop-plan-invalid.err"; then
+  echo "expected stop-orchestrator to reject a malformed plan token" >&2
+  exit 1
+fi
+grep -q 'argument --plan: invalid plan token' "$TMP/stop-plan-invalid.err"
 if hanchou_test project resolve >/dev/null 2>"$TMP/project-path.err"; then
   echo "expected a missing project path parser failure" >&2
   exit 1
@@ -239,6 +265,12 @@ if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test launch work --no-browser >/
 fi
 grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
   "$TMP/custom-launch-config.err"
+if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test stop-orchestrator work --all >/dev/null 2>"$TMP/custom-stop-config.err"; then
+  echo "expected stop-orchestrator custom-config rejection" >&2
+  exit 1
+fi
+grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
+  "$TMP/custom-stop-config.err"
 node - "$CUSTOM_CONFIG/profiles/work.toml" <<'JS'
 const fs = require("node:fs");
 const path = process.argv[2];

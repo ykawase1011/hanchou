@@ -39,7 +39,8 @@ component.
 - fixed-path human onboarding plus profile plan/apply/doctor/status/launch/open;
 - loopback-only read-only cross-system status Dashboard;
 - human-owned project authorization inspection and dispatch enforcement;
-- Orchestrator startup and generated Agent definitions;
+- Orchestrator startup, explicit human-confirmed plan/token/apply shutdown, and
+  generated Agent definitions;
 - provider usage snapshots and routing resolution;
 - Relay Inbox emit/claim/ack/retry/recovery;
 - Delivery create/render/deliver/fail/retry;
@@ -133,6 +134,32 @@ The registry is human-owned and deny-by-default. Agents may inspect it but no
 Hanchou command exposed to them can broaden it. A human may separately run the
 fixed-path, plan-first `hanchou onboard <profile> --yes` flow from an ordinary
 interactive terminal.
+
+Destructive Orchestrator reset uses a separate human-confirmation interlock:
+
+```text
+hanchou stop-orchestrator work --all
+hanchou stop-orchestrator work --all --plan <64hex-token> --yes
+```
+
+The first command is a read-only plan. It prints the exact second command with a
+64-character lowercase-hex token bound to the reviewed profile TOML digest,
+resolved state paths, lifecycle binding, and workspace/pane/Agent/process
+snapshot; do not construct the token or omit it. The plan shows foreground
+process `PID:name` values and cwd for each target. For a legacy shell,
+`observed_additional=0` means only that the OS process table scan observed no
+extra same-TTY or shell-descendant process. It does not prove that every process
+is absent. Agent-occupied targets are not subject to that OS shell scan and report
+`observed_additional=n/a`. Darwin cannot fully enumerate same-session processes
+outside those two relations. A target-state change or partial close requires a
+new plan and token.
+Herdr 0.8.2 has no identity-conditional workspace close, so the final
+revalidation-to-close TOCTOU window remains. Apply is human approval to
+terminate every process in the target workspace PTY/OS process session; if that
+cannot be approved, use the full Herdr TUI fallback. The apply is intentionally
+not Agent-allowlisted. Its TTY, managed-Agent, token, and command-policy checks
+are defense-in-depth, not a complete security boundary against other code
+running as the same OS user.
 
 ### Record a worker completion
 

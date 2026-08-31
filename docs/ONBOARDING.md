@@ -404,24 +404,83 @@ hanchou open orchestrator work
 要求kind、`00-orchestrator` label、1 tab／1 pane、no-worktree、Core cwd、全IDが一致する
 live named `orchestrator`だけは、過去版から安全にbindingへ移行してそのまま維持します。
 
-通常terminalから次を実行します。
+すべて止めて1つだけ作り直す標準手順は次です。まず通常terminalでplanを表示します。
 
 ```bash
-hanchou open herdr work
+hanchou stop-orchestrator work --all
 ```
 
-sidebarでAgent名`orchestrator`がいる`00-orchestrator`を1つ残します。それ以外は、
-空のshellであることを目で確認してから、そのrowを選び、`Ctrl+B`を押して指を離し、
-`Shift+D`を押してcloseを承認します。live Agentがどこにもいなければ、古い
-`00-orchestrator`をすべて閉じます。Git checkoutは削除されませんが、そのworkspaceの
-PTYは終了するため、内容が不明なrowは閉じないでください。
+これは読み取り専用です。`CLOSE`と表示された各workspace ID、terminal ID、Agent名、
+statusに加え、`processes=<PID:name>`、`observed_additional=<数値またはn/a>`、
+`cwd=<foreground cwd>`を読み、すべて終了してよいことを確認してください。`working`や
+`blocked`を含め、表示された
+workspaceのPTYと同じOS process session内で動く全processが終了します。planの末尾には、
+実際の64文字tokenを含むexact apply commandも表示されます。
 
-整理後、通常terminalへ戻って次を1回だけ実行します。
+Hanchouが対象にするのは、次の条件をすべて自動検証できたworkspaceだけです。
+
+- labelが設定済みの`00-orchestrator`である
+- cwdが実体pathとして現在のHanchou Core checkoutと一致する
+- 1 tab／1 paneで、worktreeを持たない
+- workspace／tab／pane／terminal IDと保存済みbindingに矛盾がない
+- Agentがいる場合は設定済みの名前／kind／pane identityと一致する
+- Agentがいない古いpaneは、Core cwd上の利用可能なshellだけがforegroundにいる
+- OS process tableで、その古いshellと同じTTYまたはshell descendantとして観測できる
+  追加processが0件である
+
+同じlabelでも1件を安全に検証できなければ、最初の検査では1件も閉じません。planの全対象を
+終了してよければ、出力末尾のcommandを文字を変えずにcopyし、同じ通常terminalへ貼り付けます。
+表示形式は次のとおりです。
+
+```text
+hanchou stop-orchestrator work --all --plan <64hex-token> --yes
+```
+
+`<64hex-token>`は説明用placeholderなので、その文字を入力したり自分でtokenを作ったりしません。
+直前のplanが表示した64文字のlowercase hexを含む1行をそのまま使います。このtokenはreviewした
+profile設定のdigest、全profile state path、binding、workspace／pane／Agent／process identityなどの
+対象snapshotに束縛されます。plan後にAgent statusやprocessを含む対象状態が変わると、applyは
+1件も閉じずに新しいplanを表示して拒否します。その新しいplanを読み、新しいexact commandを
+使ってください。
+
+applyはHerdr内のAgent terminalや非対話実行からは受け付けません。ただし、この確認、token、
+Agent環境判定は誤操作や通常の自動実行を減らすdefense-in-depthであり、同じOS userに対する
+完全なsecurity boundaryではありません。実行権限を与える秘密tokenでもないため、applyは
+人間がplanを確認した場合だけ実行してください。
+
+`observed_additional=0`は上のbest-effort検査で追加processを検出しなかったという意味であり、
+Agentがいるtargetの`n/a`はOS shell scanを実行していないという意味です。どちらも
+「ほかのprocessが絶対にない」という証明ではありません。Darwinでは、同じOS process sessionに
+属していても同TTYでもshell descendantでもないprocessを完全には列挙できません。さらにHerdr
+0.8.2には検証したidentityを条件にするclose APIがないため、Hanchouが各workspaceを直前に
+再検証してからcloseするまでの短い間に状態が変わる可能性も残ります。
+
+したがってapplyは、planに表示されなかったprocessを含め、close時点で対象workspaceのPTYと
+同じOS process session内にある全processを終了してよい、と人間が承認する操作です。少しでも
+不安があればapplyせず、後述のHerdr TUIでworkspaceを1件ずつ確認して手動整理してください。
+
+この操作で閉じるのは検証済みOrchestrator workspaceとそのPTYです。Herdr server／session、
+Beads、Relay、Dashboard、作業repository、Leaf用worktreeは残ります。workspaceは1件ずつ
+閉じるため、途中で失敗することがあります。その場合はerrorに表示された`closed`と
+`remaining`、結果を確認できなかった`uncertain`を確認して原因を直します。`uncertain`を
+終了済みと推測してはいけません。古いtokenを再利用せず最初の`--all`から再planし、現在の
+対象と新tokenをreviewして、新しく表示されたexact apply commandを使ってください。全対象の
+終了を確認できた時点でだけ、古いbindingと初期化markerが消去されます。
+
+完了後、通常terminalで新しいOrchestratorを1つ作り、画面を開きます。
 
 ```bash
 hanchou start-orchestrator work
 hanchou open orchestrator work
 ```
+
+自動手順がcwd、pane構成、worktree、bindingなどの不一致を理由に拒否した場合は、手動整理を
+fallbackにします。`hanchou open herdr work`でfull Herdr TUIを開き、sidebarで内容を確認します。
+live Agent named `orchestrator`を残して重複だけ整理する場合は、そのrowを1つ残します。閉じて
+よいと人間が確認できた各rowを選び、`Ctrl+B`を押して指を離し、`Shift+D`を押してcloseを
+承認します。すべて作り直す場合だけ、確認済みの`00-orchestrator`をすべて閉じます。手動closeも
+PTY内のprocessを終了するため、内容が不明なrowは閉じないでください。整理後は上と同じ
+`start-orchestrator`／`open orchestrator`を実行します。
 
 ### `HERDR_ENV=1`ではないと言われる
 

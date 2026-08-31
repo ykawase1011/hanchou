@@ -189,9 +189,57 @@ artifact本文はDashboardに表示しませんが、Task titleやpathにはsecr
 単一ownerのdirect attachではないため、複数のHerdr clientから同じsessionを表示できます。
 `launch`／`start-orchestrator`はprofile単位で直列化され、作成したworkspace／pane IDを
 保存して再利用します。過去版が残した未管理の`00-orchestrator`を検出した場合は、
-新しいworkspaceを追加せず、安全な手動整理手順を表示します。唯一の例外として、要求kind、
-single-pane形状、no-worktree、Core cwd、全IDが一致するlive named `orchestrator`は、
-過去版から安全にbindingへ移行して維持します。
+新しいworkspaceを追加せず停止します。唯一の例外として、要求kind、single-pane形状、
+no-worktree、Core cwd、全IDが一致するlive named `orchestrator`は、過去版から安全に
+bindingへ移行して維持します。
+
+複数ある`00-orchestrator`をすべて止めて1つだけ作り直す場合は、通常terminalで
+まずplanを表示します。このcommandは何も変更しません。
+
+```bash
+hanchou stop-orchestrator work --all
+```
+
+終了対象と、そのpaneで終了するAgent／processを確認します。すべて終了してよければ、plan末尾に
+表示されたexact apply commandを変更せずcopy/pasteします。表示形式は次のとおりです。
+
+```text
+hanchou stop-orchestrator work --all --plan <64hex-token> --yes
+```
+
+`<64hex-token>`は説明用placeholderであり、そのまま入力しません。planが表示した64文字の
+token入りcommandを使います。tokenはreviewしたprofile設定のdigest、全profile state path、
+binding、workspace／pane／Agent／process identityなどの対象snapshotに束縛されます。plan後に
+対象状態が変わるとapplyは何も閉じずに拒否するため、再planして新しいexact commandを
+確認してください。
+
+`--plan <token> --yes`は人間が操作する通常の対話terminalでのみ受け付けます。これは
+誤操作や通常のAgent自動実行を減らすdefense-in-depthであり、同じOS userに対する完全な
+security boundaryではありません。対象は、設定済みlabel、Hanchou Coreのcwd、1 tab／1 pane、
+no-worktree、pane ID、存在する場合のbindingとAgent identityをすべて検証できたworkspaceだけです。
+Agentがいないlegacy paneでは、Core cwd上の利用可能なshellを確認し、OS process tableで
+同じTTYまたはshell descendantとして観測できる追加processが0件であることを検証し、
+`observed_additional=0`と表示します。
+AgentがいるtargetではこのOS shell scanを行わず、`observed_additional=n/a`と表示します。
+これは全processの不存在証明ではありません。Darwinでは同じOS process sessionに属していても、
+この2条件から外れるprocessを完全には列挙できません。またHerdr 0.8.2には検証したidentityを
+条件にするclose APIがないため、各workspaceの最終revalidateからcloseまでのTOCTOUは残ります。
+applyは、対象workspaceのPTYと同じOS process session内の全processを終了してよいと人間が
+承認する操作です。不安があればapplyせず、Herdr TUIで個別に確認して手動整理してください。
+Herdr server／session、Beads、Relay、Dashboard、repository、worktreeは残ります。
+途中で失敗した場合も古いtokenは
+再利用しません。errorの`closed`／`remaining`／`uncertain`を確認して原因を直し、
+`--all`から再planして新しいtoken入りcommandを使います。
+
+stop完了後に、新しいOrchestratorを1つ作って画面を開きます。
+
+```bash
+hanchou start-orchestrator work
+hanchou open orchestrator work
+```
+
+自動検証できないworkspaceは閉じずに停止するため、手動整理のfallbackは
+[`docs/ONBOARDING.md`](docs/ONBOARDING.md#00-orchestratorが複数表示される)を参照してください。
 
 Herdrmはoptionalです。現在のHerdrm 0.5.xはdefault socketを使う一方、Hanchouは
 `work`／`personal`のnamed sessionを使うため、通常は同じsessionを表示できません。

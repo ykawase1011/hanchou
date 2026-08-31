@@ -6,6 +6,18 @@
 # inspect and resolve it. `hanchou onboard --yes` expands trust, so it is
 # intentionally not allowlisted and is restricted to a human interactive shell.
 prefix_rule(
+    pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], "stop-orchestrator"],
+    decision = "prompt",
+    justification = "Stopping the Orchestrator terminates validated workspace PTYs; this prompt is defense in depth for human review",
+    match = [
+        "hanchou stop-orchestrator work --all",
+        "hanchou stop-orchestrator work --all --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
+        "./bin/hanchou stop-orchestrator work --all",
+        "./bin/hanchou stop-orchestrator work --all --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
+    ],
+)
+
+prefix_rule(
     pattern = ["hanchou", "project", ["list", "show", "resolve", "doctor"]],
     decision = "allow",
     justification = "Read and validate the human-owned Hanchou project authorization registry",

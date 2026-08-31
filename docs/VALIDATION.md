@@ -73,6 +73,21 @@
   closed on legacy duplicates and binding identity/cwd drift, and never called
   `workspace close`; `open orchestrator` focused the Agent or recorded
   workspace and opened the multi-client full Herdr TUI without direct attach;
+  the separate human-confirmed `stop-orchestrator --all` path was plan-only,
+  emitted a 64-character lowercase-hex snapshot token and its exact
+  `--all --plan <token> --yes` apply command, rejected non-interactive/managed
+  callers, bound profile digest/resolved state paths and Agent/process identity,
+  displayed process IDs/names and foreground cwd, preflighted all same-label
+  targets, rejected an additional process observed on the legacy shell's TTY or
+  descendant tree without claiming this scan enumerates every Darwin
+  same-session process, reported `observed_additional=n/a` for Agent-occupied
+  targets where no OS shell scan ran, documented the final-revalidate-to-close
+  TOCTOU in Herdr 0.8.2 and the complete PTY/process-session termination approval,
+  closed four legacy spaces before the bound Agent space, preserved an unrelated
+  workspace, retained binding/marker on partial failure, distinguished
+  closed/remaining/uncertain outcomes, replanned before retry, rejected moved
+  terminals and cwd drift, and recreated exactly one Orchestrator on the next
+  start;
   the suite also passed all three service readiness gates, browser opt-out, no
   healthy Herdr/LaunchAgent restart, and optional Herdrm
   missing/mismatched/matched socket behavior and ownership warning;

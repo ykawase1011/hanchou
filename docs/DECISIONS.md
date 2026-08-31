@@ -53,6 +53,20 @@
     同じpaneを再利用し、曖昧なlegacy候補があれば新規作成せずfail closedとする。
     `launch`／`start-orchestrator`からworkspaceを自動削除しない。Orchestratorを開く標準
     commandは対象をfocusしたfull Herdr clientとし、単一ownerのdirect attachを使わない。
+24. Orchestratorの破棄は通常起動から分離したhuman-confirmed commandとする。
+    `stop-orchestrator --all`はread-only planで、対象snapshotに束縛した64文字のlowercase hex
+    tokenとexact apply commandを表示する。applyは`--all --plan <token> --yes`をordinary
+    interactive terminalから実行する。snapshotの状態変化は旧tokenを無効にして全close前に
+    fail closedとし、partial failure後も再planした新tokenを必須とする。configured label、Core cwd、
+    1 tab／1 pane、no-worktreeに厳密一致する全件をlegacyから先にcloseし、binding対象を最後に
+    処理する。全件消失後だけbinding／markerを消す。TTY／Agent環境拒否、token、Codex非allowlistは
+    defense-in-depthであり、同一OS userに対する完全なsecurity boundaryとは扱わない。legacy
+    process検査はOS process tableで観測できるsame-TTYとshell-descendantの和集合に限定する。
+    検査するunowned legacy targetだけ`observed_additional`を数値とし、Agent occupant targetは
+    OS shell scan対象外なので`n/a`とする。
+    Darwinでは同じOS process sessionの完全列挙にならず、Herdr 0.8.2にconditional closeもないため、
+    最終revalidate後のTOCTOUは残る。applyはworkspaceのPTY／OS process session全体の終了を
+    人間が承認する操作とし、承認できなければHerdr TUIで手動cleanupする。
 
 ## 初期default
 

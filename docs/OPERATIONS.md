@@ -161,15 +161,87 @@ exact workspace/tab/pane/terminal binding under the profile control directory.
 Retries reuse that binding; they do not create a replacement workspace or
 silently close the old one.
 
-If Hanchou reports unbound legacy `00-orchestrator` workspaces, open the full
-Herdr TUI and preserve the row containing the live Agent named `orchestrator`.
-Hanchou may automatically bind that live named Agent only when its configured
-kind, label, single-pane shape, no-worktree state, Core cwd, and all opaque IDs
-match exactly; it still does not create or close a workspace in that migration.
-For each other row that you have verified is an empty shell, press `Ctrl+B`,
-then `Shift+D`, and confirm close. If none contains a live Agent, close every
-stale labeled row before rerunning `hanchou start-orchestrator work`. Closing a
-Herdr workspace removes its PTY runtime; it does not delete a Git checkout.
+To stop every dedicated Orchestrator workspace and rebuild one clean instance,
+use the human-confirmed lifecycle flow:
+
+```bash
+# Read-only plan
+hanchou stop-orchestrator work --all
+```
+
+Review every `CLOSE` row, then copy the exact apply command printed at the end
+of that plan into the same ordinary terminal. Its format is:
+
+```text
+hanchou stop-orchestrator work --all --plan <64hex-token> --yes
+```
+
+`<64hex-token>` is documentation notation, not a literal value. The CLI prints
+the real 64-character lowercase-hex token. After a complete stop, recreate
+exactly one Orchestrator and open its full Herdr view:
+
+```bash
+hanchou start-orchestrator work
+hanchou open orchestrator work
+```
+
+The plan selects every workspace with the configured Orchestrator label, then
+requires each target to resolve to the Hanchou Core cwd, have exactly one tab
+and one pane, have no worktree, and have internally consistent opaque IDs. A
+durably bound target must match the binding. A named Orchestrator outside the
+candidate set, a moved bound terminal, or any unsafe same-label target causes
+the initial preflight to fail without closing anything. An occupied target must
+contain at most one matching configured Orchestrator Agent; an unowned legacy
+pane must have only an available foreground shell in the Core cwd. Hanchou also
+scans the OS process table and accepts that shell only when it observes no
+additional same-TTY or shell-descendant process. Each `CLOSE` row displays
+foreground process `PID:name` values, `observed_additional`, and the foreground
+cwd for human review. The field is the numeric count from that best-effort scan
+for an unowned legacy target and is `n/a` for an Agent-occupied target whose OS
+shell is not scanned. An `observed_additional=0` result is not proof that every
+other process is absent. On Darwin, processes in the same OS process session but
+outside the same-TTY/descendant union cannot be enumerated completely by this
+check.
+
+The plan token binds the reviewed profile/session, profile TOML digest, every
+resolved profile state path, Core and config roots, lifecycle state, binding,
+and validated workspace/pane/Agent/process identities. If the target snapshot
+changes before apply, the token mismatch closes nothing and requires a fresh
+plan/token. The apply form requires the exact
+`--all --plan <token> --yes` command and an ordinary interactive terminal
+controlled by the human; it rejects Herdr-managed or Hanchou-identified Agents
+and non-interactive callers. The token is a snapshot hash, not a secret or an
+authentication credential. These checks and the command policy are
+defense-in-depth against mistakes and routine automation, not a complete
+security boundary against code running as the same OS user.
+
+Applying closes every validated target regardless of Agent status and
+terminates every process in its PTY's OS process session. This includes a
+process not displayed by the plan, so apply is the human operator's approval of
+that complete termination effect. Herdr 0.8.2 has no workspace close conditional
+on the identity/revision Hanchou just checked. Per-target final revalidation
+narrows but cannot eliminate the revalidate-to-close TOCTOU window. If this
+effect cannot be approved, do not apply; use the full Herdr TUI fallback below.
+Apply does not stop the Herdr server/session or alter unrelated workspaces,
+Beads, Relay, Dashboard, repositories, or worktrees. Workspace close is
+sequential rather than transactionally atomic.
+On a mid-run failure, the error reports `closed`, `remaining`, and any
+`uncertain` workspace IDs. Never assume an uncertain close succeeded. Fix the
+condition, run the read-only `--all` plan again, review the current targets,
+and use its new exact token command. Never reuse the old token after a partial
+close. The durable binding and initialization marker are cleared only after
+every target is verified absent. Planning an already stopped profile is a no-op
+and needs no apply.
+
+The full Herdr TUI remains the manual fallback when Hanchou cannot validate the
+required candidate predicates or the operator cannot approve the complete
+termination effect. Open it with `hanchou open herdr work`. To preserve
+a live Agent while removing duplicates, keep the row containing the live Agent
+named `orchestrator`; for each other row that you have verified is an empty
+shell, press `Ctrl+B`, then `Shift+D`, and confirm close. If the intent is a
+complete reset and no row must be preserved, close every individually verified
+stale labeled row before rerunning `hanchou start-orchestrator work`. Manual
+workspace close also removes its PTY runtime; it does not delete a Git checkout.
 
 Herdrm is optional and is not a Core readiness condition. Herdrm 0.5.x uses the
 default local socket while Hanchou uses named sessions. `hanchou open herdrm`

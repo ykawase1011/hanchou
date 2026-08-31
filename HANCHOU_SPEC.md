@@ -228,6 +228,40 @@ bindingへmigrationして維持します。それ以外は人間によるHerdr T
 要求します。`open orchestrator`は単一ownerの
 direct attachを使わず、対象をfocusしてmulti-client対応の通常Herdr TUIを開きます。
 
+人間がOrchestratorを明示的に全終了するときだけ、
+`hanchou stop-orchestrator <profile> --all`でread-only planを確認します。planはprofile／
+session、profile TOML digest、全resolved profile state path、Core／config root、lifecycle state、
+binding、targetのworkspace／pane／Agent／process identityを含むsnapshotに束縛した64文字の
+lowercase hex tokenと、次のexact apply commandを表示します。
+
+```text
+hanchou stop-orchestrator <profile> --all --plan <64hex-token> --yes
+```
+
+apply時のsnapshotが一致しなければtoken mismatchとしてclose前にfail closedとします。対象の
+状態変化後、およびpartial failureで一部をcloseした後は、`--all`から再planして新tokenを使い、
+旧tokenを再利用しません。対象はconfigured label、Hanchou Core cwd、1 tab／1 pane、
+no-worktreeをすべて満たすworkspaceに限定し、同じlabelの不一致が1件でもあればclose前に
+fail closedとします。occupied targetは設定済みOrchestrator Agent identityとの一致を要求します。
+unowned legacy targetはforegroundがCore cwd上の利用可能なshellで、同じTTYまたはshell descendantの
+追加processがOS process table上で観測されない場合だけ対象にします。planの各`CLOSE` rowにある
+`observed_additional`は、unowned legacy targetではこのbest-effort観測の件数、Agent occupant
+targetではOS shell scanを実行しないため`n/a`とします。数値の0も全processの不存在証明では
+ありません。特にDarwinでは、同じOS process sessionに属していても同TTYでもshell descendantでも
+ないprocessを完全には列挙できません。Herdr 0.8.2にはidentity／revisionを条件にする
+workspace close APIが
+ないため、各targetを直前にrevalidateしてもrevalidateからcloseまでのTOCTOUは残ります。
+applyは、表示したforeground processだけでなく、close時点で対象workspaceのPTYと同じOS process
+session内にある全processの終了を人間が承認する操作とします。承認できない場合はapplyせず、
+Herdr TUIで個別確認して手動cleanupします。Herdr server/session、Beads、Relay、Dashboard、
+repository、worktreeは変更しません。全targetの消失確認後だけruntime bindingと初期化markerを
+削除します。完全なsession PID列挙には将来のHerdr API拡張が必要です。
+
+applyは通常の対話terminalでのみ受け付け、`HERDR_ENV=1`または`HANCHOU_AGENT_ID`を持つ
+callerを拒否し、Codex policyではallowlistしません。これらとplan tokenは、人間のreviewを
+促して誤操作・通常のAgent自動実行を減らすdefense-in-depthであり、同一OS userに対する
+完全なsecurity boundaryではありません。
+
 macOS LaunchAgent更新は、各変更前にdurableなreload-pending markerを作り、全plistを
 backup付きで先に配置してからDashboard、beads-ui、Herdrの順でloadします。markerは
 対応serviceの登録と明示kickstart成功後だけ消すため、中断後の再実行でも必要なreloadを

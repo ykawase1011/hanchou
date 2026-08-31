@@ -122,6 +122,23 @@ type OrchestratorRuntimeBinding = {
   updated_at: string;
 };
 
+type OrchestratorStopTarget = {
+  workspace_id: string;
+  tab_id: string;
+  pane_id: string;
+  terminal_id: string;
+  bound: boolean;
+  managed: boolean;
+  focused: boolean;
+  agents: string[];
+  status: string;
+  working_directory: string;
+  foreground_process_count: number;
+  additional_process_count: number | null;
+  processes: string[];
+  identity_fingerprint: string;
+};
+
 export class CommandError extends Error {
   constructor(message: string) {
     super(message);
@@ -1630,6 +1647,17 @@ function herdrRecords(profileName: string, noun: "agent" | "workspace" | "pane",
 
 function orchestratorRuntimePath(profile: JsonObject): string {
   return join(profilePaths(profile).control_dir, ".hanchou-orchestrator-runtime.json");
+}
+
+function trustedLifecycleArtifact(path: string, description: string): boolean {
+  if (!lexists(path)) return false;
+  const info = lstatSync(path);
+  if (!info.isFile() || info.isSymbolicLink()) throw new CommandError(`${description} must be a regular file: ${path}`);
+  if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+    throw new CommandError(`${description} must be owned by the effective OS user: ${path}`);
+  }
+  if ((info.mode & 0o077) !== 0) throw new CommandError(`${description} must have mode 0600: ${path}`);
+  return true;
 }
 
 function orchestratorRuntimeBinding(name: string, profile: JsonObject): OrchestratorRuntimeBinding | null {
@@ -4084,6 +4112,510 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
   }, 180_000);
 }
 
+function orchestratorPaneProcessInfo(name: string, paneId: string): JsonObject {
+  const value = parseJsonOutput(run(herdrArgv(name, "pane", "process-info", "--pane", paneId), { capture: true }));
+  const info = value?.result?.process_info;
+  if (!info || typeof info !== "object" || Array.isArray(info) || info.pane_id !== paneId) {
+    throw new CommandError(`unexpected Herdr process-info response for pane ${paneId}: ${pyCompact(value)}`);
+  }
+  // Herdr 0.8.2 omits this field when the vector is empty. Normalize that
+  // official wire shape before applying the stricter available-shell check.
+  const foregroundProcesses = info.foreground_processes ?? [];
+  if (!Array.isArray(foregroundProcesses)) {
+    throw new CommandError(`unexpected Herdr process-info response for pane ${paneId}: ${pyCompact(value)}`);
+  }
+  for (const processInfo of foregroundProcesses) {
+    if (!processInfo || typeof processInfo !== "object" || Array.isArray(processInfo) || !Number.isInteger(processInfo.pid) || typeof processInfo.name !== "string") {
+      throw new CommandError(`unexpected foreground process record for pane ${paneId}: ${pyCompact(processInfo)}`);
+    }
+    if (
+      (processInfo.argv0 !== undefined && typeof processInfo.argv0 !== "string")
+      || (processInfo.argv !== undefined && (!Array.isArray(processInfo.argv) || processInfo.argv.some((item: unknown) => typeof item !== "string")))
+      || (processInfo.cmdline !== undefined && typeof processInfo.cmdline !== "string")
+      || (processInfo.cwd !== undefined && typeof processInfo.cwd !== "string")
+    ) {
+      throw new CommandError(`unexpected foreground process record for pane ${paneId}: ${pyCompact(processInfo)}`);
+    }
+  }
+  return { ...info, foreground_processes: foregroundProcesses };
+}
+
+function normalizedPaneProcessName(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const leaf = value.split(/[\\/]/).at(-1) ?? value;
+  return leaf.replace(/^-/, "").replace(/\.exe$/i, "").toLowerCase();
+}
+
+function isAvailablePaneShell(processInfo: JsonObject): boolean {
+  const shellPid = processInfo.shell_pid;
+  const processes = processInfo.foreground_processes;
+  if (!Number.isInteger(shellPid) || shellPid <= 0 || processInfo.foreground_process_group_id !== shellPid || !Array.isArray(processes) || processes.length !== 1) return false;
+  const processRecord = processes[0];
+  const supported = new Set(["sh", "bash", "dash", "zsh", "fish", "ksh", "mksh", "csh", "tcsh", "elvish", "xonsh", "nu", "pwsh", "powershell", "cmd"]);
+  return processRecord.pid === shellPid && supported.has(normalizedPaneProcessName(processRecord.name));
+}
+
+function paneShellProcessTree(processInfo: JsonObject): JsonObject[] {
+  if (platform() !== "darwin" && platform() !== "linux") {
+    throw new CommandError(`cannot verify pane shell descendants on unsupported platform ${platform()}`);
+  }
+  const shellPid = processInfo.shell_pid;
+  if (!Number.isInteger(shellPid) || shellPid <= 0) throw new CommandError("pane process-info has no valid shell pid");
+  const output = run(["/bin/ps", "-axo", "pid=,ppid=,pgid=,tty=,comm="], { capture: true }).stdout;
+  const records: JsonObject[] = [];
+  const seenPids = new Set<number>();
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.+?)\s*$/);
+    if (!match) throw new CommandError(`cannot parse OS process record while checking pane shell ${shellPid}`);
+    const record = { pid: Number(match[1]), ppid: Number(match[2]), pgid: Number(match[3]), tty: match[4], name: match[5] };
+    if (seenPids.has(record.pid)) throw new CommandError(`duplicate OS process id ${record.pid} while checking pane shell ${shellPid}`);
+    seenPids.add(record.pid);
+    records.push(record);
+  }
+  const shell = records.find((record) => record.pid === shellPid);
+  if (!shell) throw new CommandError(`pane shell ${shellPid} is absent from the OS process table`);
+  if (!shell.tty || shell.tty === "?" || shell.tty === "??" || shell.tty === "-") {
+    throw new CommandError(`pane shell ${shellPid} has no verifiable terminal in the OS process table`);
+  }
+  const foregroundShell = (processInfo.foreground_processes as JsonObject[])[0];
+  if (normalizedPaneProcessName(shell.name) !== normalizedPaneProcessName(foregroundShell?.name)) {
+    throw new CommandError(`pane shell ${shellPid} changed identity from ${String(foregroundShell?.name ?? "unknown")} to ${String(shell.name)}`);
+  }
+  const related = new Map<number, JsonObject>();
+  related.set(shellPid, shell);
+  for (const record of records) {
+    if (record.tty === shell.tty) related.set(record.pid, record);
+  }
+  const ancestorPids = new Set<number>([shellPid]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const record of records) {
+      if (ancestorPids.has(record.pid) || !ancestorPids.has(record.ppid)) continue;
+      ancestorPids.add(record.pid);
+      related.set(record.pid, record);
+      added = true;
+    }
+  }
+  return [...related.values()].sort((left, right) => left.pid - right.pid);
+}
+
+function orchestratorStopTarget(
+  name: string,
+  profile: JsonObject,
+  workspace: JsonObject,
+  agents: JsonObject[],
+  binding: OrchestratorRuntimeBinding | null,
+): OrchestratorStopTarget {
+  const workspaceId = workspace.workspace_id;
+  if (typeof workspaceId !== "string" || !workspaceId) throw new CommandError("cannot stop Orchestrator: Herdr workspace has no workspace_id");
+  if (
+    workspace.label !== String(profile.orchestrator.workspace_label)
+    || workspace.pane_count !== 1
+    || workspace.tab_count !== 1
+    || (workspace.worktree !== undefined && workspace.worktree !== null)
+  ) {
+    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: expected one tab, one pane, and no worktree; no workspace was closed`);
+  }
+  const panes = herdrRecords(name, "pane", "panes", "--workspace", workspaceId);
+  if (panes.length !== 1) throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: expected exactly one pane; no workspace was closed`);
+  const pane = panes[0];
+  for (const key of ["pane_id", "terminal_id", "tab_id"] as const) {
+    if (typeof pane[key] !== "string" || !pane[key]) {
+      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane has no ${key}; no workspace was closed`);
+    }
+  }
+  if (
+    pane.workspace_id !== workspaceId
+    || workspace.active_tab_id !== pane.tab_id
+    || !sameExistingDirectory(pane.cwd, ROOT)
+  ) {
+    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane identity or cwd does not match the Hanchou Core; no workspace was closed`);
+  }
+  const occupants = agents.filter((agent) => agent.workspace_id === workspaceId);
+  if (occupants.length > 1) {
+    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: multiple Agent records occupy its only pane; no workspace was closed`);
+  }
+  for (const occupant of occupants) {
+    for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"] as const) {
+      const expected = key === "workspace_id" ? workspaceId : pane[key];
+      if (occupant[key] !== expected) {
+        throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: Agent ${key} does not match its only pane; no workspace was closed`);
+      }
+    }
+  }
+  const bound = binding?.workspace_id === workspaceId;
+  if (bound) {
+    for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"] as const) {
+      const actual = key === "workspace_id" ? workspaceId : pane[key];
+      if (binding[key] !== actual) {
+        throw new CommandError(`refusing to stop bound workspace ${workspaceId}: recorded ${key} does not match; no workspace was closed`);
+      }
+    }
+  }
+  const agentName = String(profile.orchestrator.agent_name);
+  const expectedKind = String(profile.orchestrator.kind ?? "codex").toLowerCase();
+  const occupant = occupants[0] ?? null;
+  const named = occupant?.name === agentName;
+  if (bound && occupant) {
+    const kind = typeof occupant.agent === "string" ? occupant.agent.toLowerCase() : "";
+    const pending = occupant.launch_pending === true && !kind;
+    if (occupant.name !== agentName || (kind !== expectedKind && !pending)) {
+      throw new CommandError(`refusing to stop bound workspace ${workspaceId}: its Agent is not the configured ${expectedKind} Orchestrator; no workspace was closed`);
+    }
+  } else if (!bound && occupant) {
+    const kind = typeof occupant.agent === "string" ? occupant.agent.toLowerCase() : "";
+    if (!named || kind !== expectedKind) {
+      throw new CommandError(`refusing to stop unbound workspace ${workspaceId}: its Agent is not the configured named ${expectedKind} Orchestrator; no workspace was closed`);
+    }
+  }
+  if (!occupant && (pane.agent !== undefined || pane.agent_session !== undefined)) {
+    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane reports Agent authority without a matching Agent record; no workspace was closed`);
+  }
+  const processInfo = orchestratorPaneProcessInfo(name, String(pane.pane_id));
+  const foregroundProcesses = processInfo.foreground_processes as JsonObject[];
+  let shellProcessTree: JsonObject[] = [];
+  if (!occupant && !isAvailablePaneShell(processInfo)) {
+    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: unowned legacy pane is not an available interactive shell; no workspace was closed`);
+  }
+  if (!occupant) {
+    if (!sameExistingDirectory(pane.foreground_cwd, ROOT) || !sameExistingDirectory(foregroundProcesses[0]?.cwd, ROOT)) {
+      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: available shell is not currently in the Hanchou Core cwd; no workspace was closed`);
+    }
+    try {
+      shellProcessTree = paneShellProcessTree(processInfo);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: cannot verify the available shell's observable process set: ${detail}; no workspace was closed`);
+    }
+    if (shellProcessTree.length !== 1) {
+      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: available shell has ${shellProcessTree.length - 1} background or descendant process(es); no workspace was closed`);
+    }
+  }
+  const descriptions = occupants.map((occupant) => {
+    const occupantName = typeof occupant.name === "string" && occupant.name ? occupant.name : "unnamed";
+    const kind = typeof occupant.agent === "string" && occupant.agent ? occupant.agent : occupant.launch_pending ? "launch-pending" : "unknown";
+    const status = typeof occupant.agent_status === "string" ? occupant.agent_status : "unknown";
+    return `${occupantName}/${kind}/${status}`;
+  });
+  if (!descriptions.length && typeof pane.agent === "string" && pane.agent) descriptions.push(`pane:${pane.agent}/${String(pane.agent_status ?? "unknown")}`);
+  const status = typeof workspace.agent_status === "string"
+    ? workspace.agent_status
+    : typeof pane.agent_status === "string" ? pane.agent_status : "unknown";
+  const identity = {
+    workspace_id: workspaceId,
+    tab_id: pane.tab_id,
+    pane_id: pane.pane_id,
+    terminal_id: pane.terminal_id,
+    bound,
+    workspace_agent_status: workspace.agent_status ?? null,
+    pane_agent: pane.agent ?? null,
+    pane_agent_session: pane.agent_session ?? null,
+    pane_agent_status: pane.agent_status ?? null,
+    pane_cwd: pane.cwd ?? null,
+    pane_foreground_cwd: pane.foreground_cwd ?? null,
+    pane_revision: pane.revision ?? null,
+    agents: occupants.map((item) => ({
+      name: item.name ?? null,
+      agent: item.agent ?? null,
+      launch_pending: item.launch_pending === true,
+      workspace_id: item.workspace_id,
+      tab_id: item.tab_id,
+      pane_id: item.pane_id,
+      terminal_id: item.terminal_id,
+      agent_session: item.agent_session ?? null,
+      agent_status: item.agent_status ?? null,
+      state_change_seq: item.state_change_seq ?? null,
+      revision: item.revision ?? null,
+      interactive_ready: item.interactive_ready === true,
+      cwd: item.cwd ?? null,
+    })),
+    process: {
+      shell_pid: processInfo.shell_pid ?? null,
+      foreground_process_group_id: processInfo.foreground_process_group_id ?? null,
+      foreground_processes: foregroundProcesses
+        .map((item) => ({
+          pid: item.pid,
+          name: item.name,
+          argv0: item.argv0 ?? null,
+          argv: item.argv ?? null,
+          cmdline: item.cmdline ?? null,
+          cwd: item.cwd ?? null,
+        }))
+        .sort((left, right) => left.pid - right.pid || left.name.localeCompare(right.name)),
+      shell_process_tree: shellProcessTree.map((item) => ({ pid: item.pid, ppid: item.ppid, pgid: item.pgid, tty: item.tty, name: item.name })),
+    },
+  };
+  return {
+    workspace_id: workspaceId,
+    tab_id: String(pane.tab_id),
+    pane_id: String(pane.pane_id),
+    terminal_id: String(pane.terminal_id),
+    bound,
+    managed: bound || named,
+    focused: workspace.focused === true || pane.focused === true,
+    agents: descriptions,
+    status,
+    working_directory: String(pane.foreground_cwd ?? pane.cwd ?? "unknown"),
+    foreground_process_count: foregroundProcesses.length,
+    additional_process_count: occupant ? null : Math.max(0, shellProcessTree.length - 1),
+    processes: foregroundProcesses.map((item) => `${item.pid}:${item.name}`),
+    identity_fingerprint: createHash("sha256").update(JSON.stringify(sortedJson(identity))).digest("hex"),
+  };
+}
+
+function orchestratorStopSnapshot(name: string, profile: JsonObject): {
+  targets: OrchestratorStopTarget[];
+  binding: OrchestratorRuntimeBinding | null;
+  runtimeExists: boolean;
+  markerExists: boolean;
+  planToken: string;
+  workspaceIds: Set<string>;
+} {
+  const control = profilePaths(profile).control_dir;
+  const runtimePath = orchestratorRuntimePath(profile);
+  const markerPath = join(control, ".hanchou-orchestrator-init.json");
+  const runtimeExists = trustedLifecycleArtifact(runtimePath, "Orchestrator runtime binding");
+  const markerExists = trustedLifecycleArtifact(markerPath, "Orchestrator initialization marker");
+  const binding = runtimeExists ? orchestratorRuntimeBinding(name, profile) : null;
+  const workspaces = herdrRecords(name, "workspace", "workspaces");
+  const workspaceIds = new Set(workspaces.map((workspace) => String(workspace.workspace_id)));
+  const agents = herdrRecords(name, "agent", "agents");
+  const candidates = legacyOrchestratorWorkspaces(profile, workspaces);
+  const candidateIds = new Set(candidates.map((workspace) => String(workspace.workspace_id)));
+  const agentName = String(profile.orchestrator.agent_name);
+  const namedOutside = agents.find((agent) => agent.name === agentName && !candidateIds.has(String(agent.workspace_id)));
+  if (namedOutside) {
+    throw new CommandError(`refusing to stop: named Agent \`${agentName}\` is outside the dedicated \`${profile.orchestrator.workspace_label}\` workspace set; no workspace was closed`);
+  }
+  if (binding) {
+    const boundWorkspace = workspaces.find((workspace) => workspace.workspace_id === binding.workspace_id);
+    if (boundWorkspace && !candidateIds.has(binding.workspace_id)) {
+      throw new CommandError(`refusing to stop: bound workspace ${binding.workspace_id} no longer has label \`${profile.orchestrator.workspace_label}\`; no workspace was closed`);
+    }
+    if (!boundWorkspace) {
+      const moved = herdrRecords(name, "pane", "panes").find((pane) => pane.terminal_id === binding.terminal_id);
+      if (moved) {
+        throw new CommandError(`refusing to stop: bound terminal ${binding.terminal_id} moved to workspace ${String(moved.workspace_id ?? "unknown")}; no workspace was closed`);
+      }
+    }
+  }
+  const targets = candidates.map((workspace) => orchestratorStopTarget(name, profile, workspace, agents, binding));
+  const planIdentity = {
+    schema: "hanchou.orchestrator-stop-plan.v1",
+    profile: name,
+    profile_digest: createHash("sha256").update(readFileSync(join(CONFIG_ROOT, "profiles", `${name}.toml`))).digest("hex"),
+    profile_state_paths: sortedJson(profilePaths(profile)),
+    session: validatedHerdrSession(name, profile),
+    config_root: realpathSync(CONFIG_ROOT),
+    core_cwd: realpathSync(ROOT),
+    workspace_label: String(profile.orchestrator.workspace_label),
+    agent_name: agentName,
+    agent_kind: String(profile.orchestrator.kind ?? "codex").toLowerCase(),
+    runtime_exists: runtimeExists,
+    marker_exists: markerExists,
+    binding: binding ? {
+      workspace_id: binding.workspace_id,
+      tab_id: binding.tab_id,
+      pane_id: binding.pane_id,
+      terminal_id: binding.terminal_id,
+    } : null,
+    targets: [...targets]
+      .sort((left, right) => left.workspace_id.localeCompare(right.workspace_id))
+      .map((target) => ({
+        workspace_id: target.workspace_id,
+        tab_id: target.tab_id,
+        pane_id: target.pane_id,
+        terminal_id: target.terminal_id,
+        bound: target.bound,
+        managed: target.managed,
+        identity_fingerprint: target.identity_fingerprint,
+      })),
+  };
+  const planToken = createHash("sha256").update(JSON.stringify(sortedJson(planIdentity))).digest("hex");
+  return { targets, binding, runtimeExists, markerExists, planToken, workspaceIds };
+}
+
+function printOrchestratorStopPlan(name: string, profile: JsonObject, snapshot: ReturnType<typeof orchestratorStopSnapshot>): void {
+  console.log(`Hanchou Orchestrator stop plan: ${name}`);
+  console.log(`  Herdr session: ${validatedHerdrSession(name, profile)}`);
+  console.log(`  scope: every validated \`${profile.orchestrator.workspace_label}\` workspace in the Hanchou Core cwd`);
+  for (const target of snapshot.targets) {
+    const ownership = target.bound ? "bound" : target.managed ? "named" : "legacy";
+    console.log(`  CLOSE ${target.workspace_id} / ${target.terminal_id} / ${ownership} / agent=${target.agents.join(",") || "-"} / status=${target.status} / processes=${target.processes.join(",") || "-"} / observed_additional=${target.additional_process_count ?? "n/a"} / cwd=${target.working_directory} / focused=${target.focused ? "yes" : "no"}`);
+  }
+  console.log(`  effect: close ${snapshot.targets.length} Herdr workspace(s); Herdr terminates every process in each pane OS session, including processes not shown above`);
+  if (snapshot.targets.some((target) => target.additional_process_count !== null)) {
+    console.log("  legacy scan: best-effort same-TTY plus shell descendants; it cannot atomically enumerate the whole OS session");
+  }
+  console.log("  preserved: Herdr server/session, Beads, Relay, Dashboard, repositories, and worktrees");
+  if (snapshot.runtimeExists || snapshot.markerExists) console.log("  local lifecycle state: clear only after every target is verified closed");
+  console.log(`  plan token: ${snapshot.planToken}`);
+}
+
+function stopPartialError(
+  name: string,
+  message: string,
+  closed: string[],
+  remaining: string[],
+  uncertain: string[] = [],
+): CommandError {
+  return new CommandError(`${message}; closed=[${closed.join(", ")}], remaining=[${remaining.join(", ")}], uncertain=[${uncertain.join(", ")}]. Run \`hanchou stop-orchestrator ${name} --all\` again, review the new plan, and use its exact apply command`);
+}
+
+function partialStopDetail(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return detail.replaceAll("; no workspace was closed", "");
+}
+
+function ensureOrchestratorLifecycleLockDirectory(control: string): void {
+  if (!lexists(control)) {
+    mkdirSync(control, { recursive: true, mode: 0o700 });
+    chmodSync(control, 0o700);
+    return;
+  }
+  const info = lstatSync(control);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new CommandError(`Orchestrator control directory must be a real directory: ${control}`);
+  if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+    throw new CommandError(`Orchestrator control directory must be owned by the effective OS user: ${control}`);
+  }
+  if ((info.mode & 0o022) !== 0) throw new CommandError(`Orchestrator control directory must not be group/world writable: ${control}`);
+}
+
+function stopOrchestrator(
+  name: string,
+  profile: JsonObject,
+  yes: boolean,
+  reviewedPlan: string | null,
+): void {
+  if (yes) {
+    if (process.env.HERDR_ENV === "1" || process.env.HANCHOU_AGENT_ID) {
+      throw new CommandError("stop-orchestrator --yes must be run from an ordinary terminal outside a Herdr-managed Agent");
+    }
+    if (!process.stdin.isTTY) throw new CommandError("stop-orchestrator --yes requires an interactive terminal controlled by the human operator");
+  }
+  if (!yes) {
+    const snapshot = orchestratorStopSnapshot(name, profile);
+    printOrchestratorStopPlan(name, profile, snapshot);
+    if (!snapshot.targets.length && !snapshot.runtimeExists && !snapshot.markerExists) {
+      console.log(`orchestrator already stopped: ${name}`);
+      return;
+    }
+    console.log(`\nNo changes made. Review every CLOSE row, then run this exact command from your ordinary terminal:\n  hanchou stop-orchestrator ${name} --all --plan ${snapshot.planToken} --yes`);
+    return;
+  }
+
+  const control = profilePaths(profile).control_dir;
+  const reviewed = orchestratorStopSnapshot(name, profile);
+  printOrchestratorStopPlan(name, profile, reviewed);
+  if (reviewedPlan !== reviewed.planToken) {
+    throw new CommandError(`reviewed stop plan does not match the current Herdr state; no workspace was closed. Review the rows above, then use the exact command containing plan token ${reviewed.planToken}`);
+  }
+  if (!reviewed.targets.length && !reviewed.runtimeExists && !reviewed.markerExists) {
+    console.log(`orchestrator already stopped: ${name}`);
+    return;
+  }
+  ensureOrchestratorLifecycleLockDirectory(control);
+  withLock(join(control, ".hanchou-orchestrator-lifecycle.lock"), () => {
+    const initial = orchestratorStopSnapshot(name, profile);
+    if (reviewedPlan !== initial.planToken) {
+      throw new CommandError("Herdr state changed while the lifecycle lock was acquired; no workspace was closed. Run the read-only stop plan again and review its new exact apply command");
+    }
+    const originalIds = new Set(initial.targets.map((target) => target.workspace_id));
+    const ordered = [...initial.targets].sort((left, right) => {
+      const leftRank = left.bound ? 2 : left.managed ? 1 : 0;
+      const rightRank = right.bound ? 2 : right.managed ? 1 : 0;
+      return leftRank - rightRank || left.workspace_id.localeCompare(right.workspace_id);
+    });
+    const closed: string[] = [];
+    for (const target of ordered) {
+      const remaining = ordered.filter((candidate) => !closed.includes(candidate.workspace_id)).map((candidate) => candidate.workspace_id);
+      let current: ReturnType<typeof orchestratorStopSnapshot>;
+      try {
+        current = orchestratorStopSnapshot(name, profile);
+      } catch (error) {
+        const detail = partialStopDetail(error);
+        throw stopPartialError(name, `cannot revalidate before closing workspace ${target.workspace_id}: ${detail}`, closed, remaining);
+      }
+      const unexpected = current.targets.find((candidate) => !originalIds.has(candidate.workspace_id));
+      if (unexpected) {
+        throw stopPartialError(name, `a new same-label workspace ${unexpected.workspace_id} appeared during stop`, closed, [...remaining, unexpected.workspace_id]);
+      }
+      const live = current.targets.find((candidate) => candidate.workspace_id === target.workspace_id);
+      if (!live) {
+        if (current.workspaceIds.has(target.workspace_id)) {
+          throw stopPartialError(name, `workspace ${target.workspace_id} still exists but moved outside the reviewed stop scope`, closed, remaining);
+        }
+        closed.push(target.workspace_id);
+        continue;
+      }
+      for (const key of ["tab_id", "pane_id", "terminal_id"] as const) {
+        if (live[key] !== target[key]) {
+          throw stopPartialError(name, `workspace ${target.workspace_id} changed ${key} during stop`, closed, remaining);
+        }
+      }
+      if (live.identity_fingerprint !== target.identity_fingerprint) {
+        throw stopPartialError(name, `workspace ${target.workspace_id} changed Agent or process identity during stop`, closed, remaining);
+      }
+      let result: RunResult;
+      try {
+        result = run(herdrArgv(name, "workspace", "close", target.workspace_id), { check: false, capture: true });
+      } catch (error) {
+        const detail = partialStopDetail(error);
+        throw stopPartialError(name, `cannot determine whether workspace ${target.workspace_id} received the close request: ${detail}`, closed, remaining, [target.workspace_id]);
+      }
+      let after: JsonObject[];
+      try {
+        after = herdrRecords(name, "workspace", "workspaces");
+      } catch (error) {
+        const detail = partialStopDetail(error);
+        throw stopPartialError(name, `cannot verify workspace ${target.workspace_id} after its close request: ${detail}`, closed, remaining, [target.workspace_id]);
+      }
+      const absent = !after.some((workspace) => workspace.workspace_id === target.workspace_id);
+      if (result.returncode !== 0 && !absent) {
+        const detail = (result.stderr || result.stdout).trim().slice(0, 500) || "Herdr rejected workspace close";
+        throw stopPartialError(name, `cannot close workspace ${target.workspace_id}: ${detail}`, closed, remaining);
+      }
+      if (!absent) throw stopPartialError(name, `Herdr returned success but workspace ${target.workspace_id} is still present`, closed, remaining);
+      closed.push(target.workspace_id);
+      console.log(`closed Orchestrator workspace ${target.workspace_id}`);
+    }
+
+    let finalSnapshot: ReturnType<typeof orchestratorStopSnapshot>;
+    try {
+      finalSnapshot = orchestratorStopSnapshot(name, profile);
+    } catch (error) {
+      const detail = partialStopDetail(error);
+      throw stopPartialError(name, `cannot verify the final Orchestrator state: ${detail}`, closed, [], ["final-state"]);
+    }
+    if (finalSnapshot.targets.length) {
+      throw stopPartialError(name, "one or more Orchestrator workspaces remain after close", closed, finalSnapshot.targets.map((target) => target.workspace_id));
+    }
+    const markerPath = join(control, ".hanchou-orchestrator-init.json");
+    const runtimePath = orchestratorRuntimePath(profile);
+    let removedState = false;
+    try {
+      if (finalSnapshot.markerExists) {
+        trustedLifecycleArtifact(markerPath, "Orchestrator initialization marker");
+        unlinkSync(markerPath);
+        removedState = true;
+      }
+      if (finalSnapshot.runtimeExists) {
+        trustedLifecycleArtifact(runtimePath, "Orchestrator runtime binding");
+        unlinkSync(runtimePath);
+        removedState = true;
+      }
+      if (removedState) fsyncDirectory(control);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw stopPartialError(name, `workspaces are closed but local lifecycle state cleanup failed: ${detail}`, closed, [], ["local-lifecycle-state"]);
+    }
+    console.log(`stopped Orchestrator: ${name} (closed ${closed.length} workspace(s))`);
+    console.log(`restart with: hanchou start-orchestrator ${name}`);
+  }, 180_000);
+}
+
 async function openTarget(name: string, profile: JsonObject, target: string): Promise<never | void> {
   if (target === "dashboard") {
     openUrl(dashboardUrl(profile));
@@ -4585,12 +5117,12 @@ function choice(value: any, values: Set<string>, label: string): void {
 
 function printHelp(): void {
   console.log(`usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
+               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
 
 Herdr-first Hanchou control utility
 
 positional arguments:
-  {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
+  {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
 
 options:
   -h, --help            show this help message and exit
@@ -4634,6 +5166,19 @@ options:
   bootstrap: profileHelp("bootstrap"),
   doctor: profileHelp("doctor"),
   "start-orchestrator": profileHelp("start-orchestrator"),
+  "stop-orchestrator": `usage: hanchou stop-orchestrator [-h] --all [--plan PLAN] [--yes] [{personal,work}]
+
+Plan or close every validated dedicated Orchestrator workspace in the selected profile.
+Applying terminates every process in those panes and must run in the human operator's ordinary terminal.
+
+positional arguments:
+  {personal,work}
+
+options:
+  -h, --help       show this help message and exit
+  --all            explicitly select every validated dedicated Orchestrator workspace
+  --plan PLAN      exact plan token printed by the immediately preceding review
+  --yes            apply the reviewed stop plan`,
   apply: `usage: hanchou apply [-h] [--yes] [--install-upstream] [{personal,work}]
 
 positional arguments:
@@ -5043,6 +5588,15 @@ function parseCliUnchecked(argv: string[]): JsonObject {
     return { ...result, ...parsed };
   };
   if (result.command === "plan" || result.command === "bootstrap" || result.command === "doctor" || result.command === "start-orchestrator") return profileCommand();
+  if (result.command === "stop-orchestrator") {
+    const parsed = profileCommand([["all", "boolean"], ["plan", "string"], ["yes", "boolean"]]);
+    if (!parsed.all) throw new CommandError("the following arguments are required: --all");
+    parsed.plan ??= null;
+    if (parsed.yes && !parsed.plan) throw new CommandError("the following arguments are required: --plan");
+    if (parsed.plan && !parsed.yes) throw new CommandError("argument --plan: requires --yes");
+    if (parsed.plan && !/^[a-f0-9]{64}$/.test(String(parsed.plan))) throw new CommandError(`argument --plan: invalid plan token: '${parsed.plan}'`);
+    return parsed;
+  }
   if (result.command === "onboard") return profileCommand([["yes", "boolean"]]);
   if (result.command === "launch") return profileCommand([["no-browser", "boolean"], ["herdrm", "boolean"]]);
   if (result.command === "apply") return profileCommand([["yes", "boolean"], ["install-upstream", "boolean"]]);
@@ -5154,8 +5708,9 @@ const SUBCOMMAND_CHOICES: Record<string, string[]> = {
   relay: ["emit", "recover", "dispatch", "daemon"], inbox: ["list", "claim", "show", "ack", "retry", "dead-letter"],
   delivery: ["create", "list", "show", "mark-rendered", "mark-delivered", "fail", "retry"],
 };
-const TOP_LEVEL_COMMANDS = ["onboard", "plan", "bootstrap", "apply", "launch", "status", "doctor", "start-orchestrator", "dashboard", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
+const TOP_LEVEL_COMMANDS = ["onboard", "plan", "bootstrap", "apply", "launch", "status", "doctor", "start-orchestrator", "stop-orchestrator", "dashboard", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
 const REQUIRED_FLAGS: Record<string, string[]> = {
+  "stop-orchestrator": ["all"],
   "project resolve": ["path"], "usage set": ["weekly-remaining"], "usage recommend": ["role"], "route resolve": ["role"],
   "relay emit": ["type", "from-agent", "from-role", "to-agent", "to-role", "summary"],
   "inbox dead-letter": ["reason"],
@@ -5191,7 +5746,7 @@ function argumentContext(argv: string[]): string {
 
 function argumentUsage(context: string): string {
   if (!context) return `usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
+               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
   return (HELP_SURFACES[context] ?? HELP_SURFACES[context.split(" ")[0]]).split("\n\n")[0];
 }
 
@@ -5231,7 +5786,7 @@ async function main(): Promise<void> {
     const args = parseCli(process.argv.slice(2));
     if (args.command === "__help__") return;
     CONFIG_ROOT = args.config_root ? expand(args.config_root) : process.env.HANCHOU_CONFIG_ROOT ? expand(process.env.HANCHOU_CONFIG_ROOT) : DEFAULT_CONFIG_ROOT;
-    const managedRuntime = args.command === "start-orchestrator" || args.command === "launch" || args.command === "execution";
+    const managedRuntime = args.command === "start-orchestrator" || args.command === "stop-orchestrator" || args.command === "launch" || args.command === "execution";
     if (managedRuntime) {
       let selectedConfig: string;
       let defaultConfig: string;
@@ -5264,6 +5819,15 @@ async function main(): Promise<void> {
           throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
         }
         startOrchestrator(name, profile);
+        break;
+      }
+      case "stop-orchestrator": {
+        const ready = await waitForHerdrReady(name, 8_000);
+        if (!ready.ready) {
+          const detail = ready.error ? `: ${ready.error}` : "";
+          throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+        }
+        stopOrchestrator(name, profile, Boolean(args.yes), args.plan ? String(args.plan) : null);
         break;
       }
       case "dashboard": await dashboardCommand(args, name, profile); break;

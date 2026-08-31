@@ -14,6 +14,7 @@ upstream tool. Before running a command, identify the source of truth.
 | Agent, pane, workspace, worktree, liveness | `herdr` |
 | Ordinary `new-agent` recurring job and history | `herdr-automations` |
 | Human-owned workspace authorization | `hanchou onboard` |
+| Human-confirmed Orchestrator shutdown | `hanchou stop-orchestrator` |
 | Profile setup, service launch, health, status UI | `hanchou` |
 | Human-owned project authorization inspection | `hanchou project` |
 | Usage snapshot and provider routing | `hanchou usage` / `hanchou route` |
@@ -46,7 +47,7 @@ command, or broaden its target.
 
 ```text
 onboard / plan / bootstrap / apply / launch / status / doctor
-start-orchestrator / dashboard serve / dashboard snapshot / open
+start-orchestrator / stop-orchestrator / dashboard serve / dashboard snapshot / open
 render-agents / handoff
 project list / project show / project resolve / project doctor
 usage set / usage show
@@ -78,6 +79,69 @@ control-plane probe both succeed. Herdr 0.8.2 continues answering Ping while it
 is shutting down. Never interpret a transient `server_unavailable` or shutdown
 response as an absent Agent, and do not create a replacement workspace in that
 state. Wait for bootstrap/reload to settle and retry the bounded Hanchou command.
+
+Orchestrator startup is serialized per profile. Hanchou records the exact
+workspace/tab/pane/terminal binding before Agent startup and reuses it after a
+blocked start, failure, or `/exit`. Never delete Orchestrator workspaces from
+`launch` or `start-orchestrator`. If unbound legacy `00-orchestrator` spaces are
+reported, fail closed unless a live named Agent exactly matches the configured
+kind, label, single-pane/no-worktree shape, Core cwd, and all opaque IDs. Only
+that exact migration may be bound and kept. Open the full Herdr TUI, preserve
+the live named `orchestrator`, and let the human close only verified empty rows
+with `Ctrl+B` then `Shift+D`.
+
+When the human explicitly wants every dedicated Orchestrator workspace
+terminated, use `hanchou stop-orchestrator <profile> --all` only to print the
+read-only plan. Review every `CLOSE` row and use only the exact apply command
+printed by that plan:
+
+```text
+hanchou stop-orchestrator <profile> --all --plan <64hex-token> --yes
+```
+
+Do not construct, omit, or reuse the token. It is a 64-character lowercase-hex
+hash bound to the reviewed profile/session, profile TOML digest, every resolved
+profile state path, Core and config roots, lifecycle state, binding, and
+workspace/pane/Agent/process identities. It is not a secret or authentication
+credential. If the target snapshot changes, run the read-only plan again and
+review its new exact command. After any partial close, inspect the reported
+`closed`, `remaining`, and `uncertain` sets without assuming an uncertain
+outcome succeeded, fix the condition, and replan. The old token is invalid for
+the current set.
+
+Only the human operator may apply the command, from an ordinary interactive
+terminal outside Herdr. Managed Agents must never apply it. TTY/Agent checks,
+the snapshot token, and command policy are defense-in-depth against mistakes
+and routine automation, not a complete same-user security boundary. The
+command preflights the complete configured-label set, requires the Core cwd,
+one tab, one pane, no worktree, consistent configured-Agent identity for an
+occupied target, and an available foreground shell in the Core cwd for an
+unowned legacy target. For that legacy shell, the OS process table scan must
+observe no additional process sharing its TTY or descending from the shell.
+Treat `observed_additional=0` only as zero detected by this best-effort union,
+not proof that all other processes are absent. An Agent-occupied target is not
+subject to the OS shell scan and reports `observed_additional=n/a`. On Darwin,
+the scan cannot fully enumerate processes in the same OS process session
+outside those two relations. Review `PID:name`, `observed_additional`, and
+foreground cwd on every `CLOSE` row.
+
+Herdr 0.8.2 has no workspace close conditional on the identity/revision just
+revalidated, so a process can change in the final revalidate-to-close TOCTOU
+window. Apply is the human operator's approval to terminate every process in
+the target workspace PTY/OS process session, including a process not displayed
+by the plan. If that cannot be approved, do not apply; use the full Herdr TUI
+to inspect and manually close individual workspaces. The command closes legacy
+spaces before the bound space and preserves the Herdr server/session, Beads,
+Relay, Dashboard, repositories, and worktrees. Lifecycle state is cleared only
+after every target is verified absent.
+
+`hanchou open orchestrator` focuses the Agent or its recorded single-pane
+workspace and opens the ordinary full Herdr client; it must not use exclusive
+`agent attach`. Full Herdr clients can coexist. A direct CLI attach (`agent
+attach` or `terminal attach`) and a Herdrm attach to the same pane share one
+writable owner, so detach the earlier direct
+view with `Ctrl+B` then `q`. `Another client took this pane over` means direct
+ownership moved; it does not prove that the Agent stopped.
 
 `execution dispatch` accepts only a ready Leaf Bead with no existing execution
 owner. It first revalidates the Bead's project identity and canonical repository
