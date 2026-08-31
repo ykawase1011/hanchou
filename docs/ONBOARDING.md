@@ -386,8 +386,28 @@ hanchou open orchestrator work
 依頼は、`hanchou open orchestrator work`で開いたHerdr管理Agentへ送ってください。
 一方、`hanchou onboard work --yes`は通常terminalで実行するのが正解です。
 
+### `server is shutting down`または`server shut down`
+
+Herdrの更新処理が完了する前に`start-orchestrator`や`open orchestrator`を実行した状態です。
+これらのcommandはHerdr service自体をinstallしません。通常terminalで、現在のCore checkoutを
+更新してから`bootstrap`を再実行します。
+
+```bash
+cd /path/to/hanchou
+git pull --ff-only
+./bin/hanchou bootstrap work
+sleep 5
+./bin/hanchou doctor work
+./bin/hanchou launch work
+```
+
+`doctor`がすべて`ok`になった後に`./bin/hanchou open orchestrator work`を実行します。
+現行版はshutdown中でも成功するversion Pingだけではreadyと判定しません。
+
 ### Dashboardまたはbeads-uiが開かない
 
+Hanchou Coreを更新した後は、新しいLaunchAgentが追加・変更されている場合があるため、
+`launch`の前にもう一度`bootstrap`します。`launch`は設定を勝手にinstallしません。
 まず再構築とhealth checkを行います。
 
 ```bash
@@ -397,6 +417,23 @@ hanchou bootstrap work
 sleep 5
 hanchou doctor work
 ```
+
+現行版の`doctor`には少なくとも次の3項目も表示されます。表示されない場合は、別の
+checkoutまたは更新前の出力を見ていないか、`pwd -P`と`git rev-parse --short HEAD`を
+確認してください。
+
+```text
+project registry
+Hanchou dashboard endpoint
+Herdrm optional
+```
+
+Herdrのreload直後はversion確認だけ成功してもcontrol planeがshutdown中の場合があります。
+現行版はこの状態をreadyにせず、旧serviceとsocketを最大10秒待って新serviceを起動します。
+socket pathnameが残る場合も警告後にpin済みHerdr自身のlive／stale判定へ進みます。
+`bootstrap`が途中で止まっても、次の実行はreload-pending markerから未完了分を再開します。
+同じprofileの`bootstrap`を同時に実行した場合、後から来た実行は安全に停止するので、先の
+実行が終わってから再実行してください。終了したprocessが残したlockは自動回収されます。
 
 Dashboardのlogは次にあります。
 

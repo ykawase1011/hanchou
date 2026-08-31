@@ -129,6 +129,10 @@ sleep 5
 ./bin/hanchou launch work
 ```
 
+Coreを`git pull`した後も、LaunchAgentやintegrationの追加・変更を反映するため
+`bootstrap`をもう一度実行します。`launch`は不足するserviceを勝手にinstallせず、
+未installのLaunchAgent名やHerdr reload中のcontrol-plane状態を理由付きで表示します。
+
 `onboard`は最初にplanだけを表示し、`--yes`を付けた2回目だけ次を作成します。
 
 ```text

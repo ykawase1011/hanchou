@@ -20,12 +20,24 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
       exit 0
       ;;
     "agent get")
+      if [[ "${HANCHOU_TEST_AGENT_GET_ERROR:-0}" == "1" ]]; then
+        printf '%s\n' '{"error":{"code":"server_unavailable","message":"server is shutting down"}}' >&2
+        exit 1
+      fi
       if [[ ! -f "${FAKE_HERDR_AGENT_STATE:?}" ]]; then
         printf '%s\n' '{"error":{"code":"agent_not_found"}}' >&2
         exit 1
       fi
       AGENT_STATUS="$(tr -d '\r\n' < "$FAKE_HERDR_AGENT_STATE")"
       printf '{"result":{"agent":{"name":"orchestrator","agent_status":"%s","workspace_id":"w1","tab_id":"w1:t1","pane_id":"w1:t1:p1","terminal_id":"term-orchestrator"}}}\n' "$AGENT_STATUS"
+      exit 0
+      ;;
+    "agent list")
+      if [[ "${HANCHOU_TEST_HERDR_CONTROL_READY:-1}" != "1" ]]; then
+        printf '%s\n' '{"error":{"code":"server_unavailable","message":"server is shutting down"}}' >&2
+        exit 1
+      fi
+      printf '%s\n' '{"result":{"agents":[]}}'
       exit 0
       ;;
     "workspace create")
@@ -158,6 +170,8 @@ reset_fixture() {
   : > "$FAKE_HERDR_LOG"
   : > "$FAKE_HTTP_LOG"
   unset FAKE_ORCHESTRATOR_MODE
+  unset HANCHOU_TEST_AGENT_GET_ERROR
+  export HANCHOU_TEST_HERDR_CONTROL_READY=1
 }
 
 orchestrator_action_count() {
@@ -239,6 +253,31 @@ expect_readiness_failure beads-ui 1 1 0
 export HANCHOU_TEST_HERDR_READY=1
 export HANCHOU_TEST_DASHBOARD_READY=1
 export HANCHOU_TEST_TASKS_READY=1
+
+# A shutdown server still answers Herdr's version Ping. Launch must also require
+# a successful read-only control-plane request and must not mutate the Agent.
+reset_fixture
+export HANCHOU_TEST_HERDR_CONTROL_READY=0
+if hanchou_test launch work --no-browser > "$TMP/herdr-control.out" 2> "$TMP/herdr-control.err"; then
+  echo "expected launch to reject a Ping-only shutting-down Herdr server" >&2
+  exit 1
+fi
+grep -q 'Hanchou services are not ready (Herdr)' "$TMP/herdr-control.err"
+grep -q 'rejected a control-plane probe' "$TMP/herdr-control.err"
+assert_no_orchestrator_action
+export HANCHOU_TEST_HERDR_CONTROL_READY=1
+
+# A transient control-plane failure must not be mistaken for an absent
+# Orchestrator and must not create a replacement workspace.
+reset_fixture
+export HANCHOU_TEST_AGENT_GET_ERROR=1
+if hanchou_test start-orchestrator work > "$TMP/herdr-get.out" 2> "$TMP/herdr-get.err"; then
+  echo "expected start-orchestrator to preserve a transient Herdr control error" >&2
+  exit 1
+fi
+grep -q 'server is shutting down' "$TMP/herdr-get.err"
+assert_no_orchestrator_action
+unset HANCHOU_TEST_AGENT_GET_ERROR
 
 # An existing working Agent remains pending and is not duplicated or prompted.
 reset_fixture

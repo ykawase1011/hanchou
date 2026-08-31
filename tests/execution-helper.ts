@@ -201,6 +201,14 @@ function fakeHerdr(input: readonly string[]): number {
   if (args.length >= 2 && args[0] === "--session") {
     args = args.slice(2);
   }
+  if (args[0] === "status" && args[1] === "server" && args[2] === "--json" && args.length === 3) {
+    console.log(JSON.stringify({ status: "running", version: "0.8.2" }));
+    return 0;
+  }
+  if (args[0] === "agent" && args[1] === "list" && args.length === 2) {
+    console.log(JSON.stringify({ result: { agents: Object.values(state.agents ?? {}) } }));
+    return 0;
+  }
   if (args[0] === "workspace" && args[1] === "create") {
     assertKnownOptions(args, 2, ["--cwd", "--label", "--env"], ["--no-focus", "--focus"]);
     state.counter += 1;

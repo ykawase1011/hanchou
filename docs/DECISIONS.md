@@ -38,6 +38,12 @@
     Herdrmはnamed-session socket互換性を確認できる場合のoptional monitorとする。
     明示起動時に限り、空のdefault pathから検証済みlive named socketへのsymlinkを
     作成できるが、既存pathの置換や別Herdr serverの起動は行わない。
+21. Herdr 0.8.2のversion Pingはshutdown中も成功するため、Core readinessは
+    pin済みversionのPingとread-onlyな非Ping APIの両方で判定する。LaunchAgent更新は
+    profile単位で排他し、durable reload markerを残して全plistを先に配置する。UI serviceを
+    先にloadしてから旧Herdr API／client socket消滅と再登録をbounded waitする。pathnameが
+    残る場合のlive／stale判定はpin済みHerdrへ委ね、中断後はmarkerから未完了reloadを
+    再開する。
 
 ## 初期default
 

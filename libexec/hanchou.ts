@@ -3498,6 +3498,28 @@ function herdrStatusSnapshot(name: string, timeout = 15_000): JsonObject {
   }
 }
 
+function herdrOperationalSnapshot(name: string, timeout = 15_000): JsonObject {
+  const probeTimeout = Math.max(250, Math.floor(timeout / 2));
+  const status = herdrStatusSnapshot(name, probeTimeout);
+  if (!status.running) return { ...status, operational: false };
+  try {
+    const proc = run(herdrArgv(name, "agent", "list"), { check: false, capture: true, timeout: probeTimeout });
+    if (proc.returncode !== 0) {
+      return { ...status, operational: false, error: `Herdr control plane rejected a read-only probe (${proc.returncode}); the server may be shutting down` };
+    }
+    let value: unknown;
+    try { value = JSON.parse(proc.stdout); }
+    catch { return { ...status, operational: false, error: "Herdr control plane returned invalid JSON" }; }
+    const result = value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject).result : null;
+    if (!result || typeof result !== "object" || Array.isArray(result) || !Array.isArray((result as JsonObject).agents)) {
+      return { ...status, operational: false, error: "Herdr control plane returned an invalid agent list response" };
+    }
+    return { ...status, operational: true, error: null };
+  } catch (error) {
+    return { ...status, operational: false, error: error instanceof Error ? error.message : "Herdr control plane probe failed" };
+  }
+}
+
 export function herdrmCompatibility(name: string, profile: JsonObject): JsonObject {
   const home = operatorHome();
   const applications = [
@@ -3586,7 +3608,7 @@ async function dashboardSnapshot(name: string, profile: JsonObject): Promise<Jso
     generated_at: utcnow(),
     profile: name,
     system: {
-      herdr_running: Boolean(herdr.running), herdr_version: herdr.version,
+      herdr_running: Boolean(herdr.running && agentResult.available), herdr_version: herdr.version,
       orchestrator_status: orchestratorStatus ?? "not-running",
       task_ui_running: taskUiRunning,
       dashboard_url: dashboardUrl(profile), task_ui_url: taskUrl,
@@ -3657,9 +3679,9 @@ function openHerdrm(name: string, profile: JsonObject): void {
   const initial = herdrmCompatibility(name, profile);
   if (!initial.installed) throw new CommandError("Herdrm is optional and not installed; install it manually with `brew install owo-network/brew/herdrm`");
   const session = validatedHerdrSession(name, profile);
-  const server = herdrStatusSnapshot(session, 2_000);
+  const server = herdrOperationalSnapshot(session, 2_000);
   const expectedVersion = miseTools().herdr;
-  if (!server.running || server.version !== expectedVersion) {
+  if (!server.running || !server.operational || server.version !== expectedVersion) {
     throw new CommandError(`cannot verify the pinned live Herdr ${expectedVersion} session before opening Herdrm`);
   }
   const state = ensureHerdrmCompatibility(name, profile);
@@ -3678,7 +3700,19 @@ async function launchProfile(args: JsonObject, name: string, profile: JsonObject
   ]);
   if (!herdr.ready || !dashboardReady || !tasksReady) {
     const missing = [!herdr.ready ? "Herdr" : null, !dashboardReady ? "dashboard" : null, !tasksReady ? "beads-ui" : null].filter(Boolean).join(", ");
-    throw new CommandError(`Hanchou services are not ready (${missing}); run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+    const launchAgentNames = [
+      !herdr.ready ? "herdr" : null,
+      !dashboardReady ? "dashboard" : null,
+      !tasksReady ? "beads-ui" : null,
+    ].filter((value): value is string => Boolean(value));
+    const absent = launchAgentNames.filter((service) => !existsSync(join(operatorHome(), "Library", "LaunchAgents", `dev.hanchou.${name}.${service}.plist`)));
+    const controlPlane = !herdr.ready && herdr.running && !herdr.operational
+      ? ` Herdr answered the version Ping but rejected a control-plane probe (${herdr.error ?? "shutdown/reload in progress"}).`
+      : "";
+    const upgrade = absent.length
+      ? ` Missing LaunchAgents: ${absent.join(", ")}; Hanchou may have been updated after the last bootstrap.`
+      : "";
+    throw new CommandError(`Hanchou services are not ready (${missing}).${controlPlane}${upgrade} Run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
   }
   const orchestrator = startOrchestrator(name, profile);
   if (!args.no_browser) openUrl(dashboardUrl(profile));
@@ -3716,7 +3750,7 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
     console.log(`initialized orchestrator \`${agentName}\``);
     return "ready";
   };
-  const existing = getAgentInfo(name, agentName);
+  const existing = getAgentInfo(name, agentName, true);
   if (existing) return initialize(existing);
   const managedAgentId = validateAgentId(agentName, "managed Agent ID");
   const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
@@ -3744,17 +3778,17 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
   }
   const started = run(argv, { check: false, capture: true });
   if (started.returncode !== 0) {
-    if (getAgentStatus(name, agentName) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`hanchou open orchestrator ${name}\``); return "pending"; }
+    if (getAgentStatus(name, agentName, true) === "blocked") { console.log(`orchestrator \`${agentName}\` is awaiting first-run trust/hook review; attach with \`hanchou open orchestrator ${name}\``); return "pending"; }
     throw new CommandError(`cannot start orchestrator: ${(started.stderr || started.stdout).trim()}`);
   }
-  const record = getAgentInfo(name, agentName);
+  const record = getAgentInfo(name, agentName, true);
   if (!record) throw new CommandError(`orchestrator started but Herdr did not register \`${agentName}\``);
   const state = initialize(record);
   console.log(`started ${kind} orchestrator \`${agentName}\` in pane ${paneId}`);
   return state;
 }
 
-function openTarget(name: string, profile: JsonObject, target: string): never | void {
+async function openTarget(name: string, profile: JsonObject, target: string): Promise<never | void> {
   if (target === "dashboard") {
     openUrl(dashboardUrl(profile));
     return;
@@ -3764,7 +3798,17 @@ function openTarget(name: string, profile: JsonObject, target: string): never | 
     return;
   }
   if (target === "herdrm") { openHerdrm(name, profile); return; }
+  if (target === "herdr" || target === "orchestrator" || target === "automations") {
+    const ready = await waitForHerdrReady(name, 8_000);
+    if (!ready.ready) {
+      const detail = ready.running && !ready.operational ? `: ${ready.error ?? "control plane unavailable"}` : "";
+      throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+    }
+  }
   if (target === "herdr" || target === "orchestrator") {
+    if (target === "orchestrator" && !getAgentInfo(name, String(profile.orchestrator.agent_name), true)) {
+      throw new CommandError(`agent target ${profile.orchestrator.agent_name} not found; run \`hanchou launch ${name}\` first`);
+    }
     const argv = target === "herdr" ? herdrArgv(name) : herdrArgv(name, "agent", "attach", profile.orchestrator.agent_name);
     const result = run(argv, { check: false }); process.exit(result.returncode);
   }
@@ -4011,8 +4055,8 @@ async function waitForHerdrReady(name: string, timeout: number): Promise<JsonObj
   let snapshot: JsonObject = { running: false, version: null, error: "not checked" };
   do {
     const remaining = deadline - Date.now();
-    snapshot = herdrStatusSnapshot(name, Math.max(250, Math.min(2_000, remaining)));
-    if (snapshot.running && snapshot.version === expectedVersion) return { ...snapshot, ready: true };
+    snapshot = herdrOperationalSnapshot(name, Math.max(500, Math.min(2_000, remaining)));
+    if (snapshot.running && snapshot.operational && snapshot.version === expectedVersion) return { ...snapshot, ready: true };
     const afterProbe = deadline - Date.now();
     if (afterProbe <= 0) break;
     await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, Math.min(250, afterProbe)));
@@ -4049,11 +4093,9 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
     const actual = (nodeProc.stdout || nodeProc.stderr).trim().replace(/^v/, ""); const expected = requiredTools.node ?? ""; const ok = actual === expected || actual.startsWith(`${expected}.`);
     console.log(`${ok ? "ok  " : "FAIL"} Node.js version: expected ${expected}, got ${actual}`); if (!ok) failures += 1;
   }
-  try {
-    const proc = run(herdrArgv(name, "status"), { env, cwd: ROOT, check: false, capture: true, timeout: 15_000 });
-    const output = `${proc.stdout}\n${proc.stderr}`; const ok = proc.returncode === 0 && output.includes("status: running") && output.includes(`version: ${requiredTools.herdr}`);
-    console.log(`${ok ? "ok  " : "FAIL"} Herdr server/session`); if (!ok) failures += 1;
-  } catch (error) { console.log(`FAIL Herdr server/session: ${error instanceof Error ? error.message : error}`); failures += 1; }
+  const server = herdrOperationalSnapshot(name, 15_000);
+  const serverOk = server.running && server.operational && server.version === requiredTools.herdr;
+  console.log(`${serverOk ? "ok  " : "FAIL"} Herdr server/session${serverOk ? "" : `: ${server.error ?? "control plane unavailable"}`}`); if (!serverOk) failures += 1;
   try {
     const proc = run([commandPath("bd"), "ready", "--json"], { env, cwd: profilePaths(profile).control_dir, check: false, capture: true, timeout: 15_000 });
     const ok = proc.returncode === 0; console.log(`${ok ? "ok  " : "FAIL"} Beads ready access`); if (!ok) failures += 1;
@@ -4869,9 +4911,17 @@ async function main(): Promise<void> {
       case "launch": await launchProfile(args, name, profile); break;
       case "status": statusCommand(name, profile, Boolean(args.json)); break;
       case "doctor": process.exitCode = await doctor(name, profile); break;
-      case "start-orchestrator": startOrchestrator(name, profile); break;
+      case "start-orchestrator": {
+        const ready = await waitForHerdrReady(name, 8_000);
+        if (!ready.ready) {
+          const detail = ready.error ? `: ${ready.error}` : "";
+          throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+        }
+        startOrchestrator(name, profile);
+        break;
+      }
       case "dashboard": await dashboardCommand(args, name, profile); break;
-      case "open": openTarget(name, profile, args.target); break;
+      case "open": await openTarget(name, profile, args.target); break;
       case "project": if (args.project_command === "list") projectList(args, name); else if (args.project_command === "show") projectShow(args, name); else if (args.project_command === "resolve") projectResolve(args, name); else projectDoctor(args, name); break;
       case "usage": if (args.usage_command === "set") usageSet(args, name, profile); else if (args.usage_command === "show") usageShow(args, name, profile); else usageRecommend(args, name, profile); break;
       case "route": usageRecommend(args, name, profile); break;

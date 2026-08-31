@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   accessSync,
   chmodSync,
@@ -10,6 +10,8 @@ import {
   copyFileSync,
   existsSync,
   fsyncSync,
+  lstatSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -20,6 +22,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import { homedir, platform } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -131,6 +134,12 @@ function resolvePath(value: string): string {
   return join(realpathSync(existing), ...suffix);
 }
 
+function fsyncDirectory(path: string): void {
+  const descriptor = openSync(path, "r");
+  try { fsyncSync(descriptor); }
+  finally { closeSync(descriptor); }
+}
+
 function atomicWrite(path: string, text: string): void {
   mkdirSync(dirname(path), { recursive: true });
   let temporary: string | undefined;
@@ -155,6 +164,7 @@ function atomicWrite(path: string, text: string): void {
     descriptor = undefined;
     renameSync(temporary, path);
     temporary = undefined;
+    fsyncDirectory(dirname(path));
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
     if (temporary !== undefined) {
@@ -182,6 +192,134 @@ function backup(path: string): void {
   console.log(`backup: ${destination}`);
 }
 
+function reloadMarkerExists(path: string): boolean {
+  let metadata;
+  try { metadata = lstatSync(path); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+  if (metadata.isSymbolicLink() || !metadata.isFile()) throw new LaunchdError(`reload marker must be a regular non-symlink file: ${path}`);
+  if (process.getuid !== undefined && metadata.uid !== process.getuid()) throw new LaunchdError(`reload marker must be owned by the effective user: ${path}`);
+  if ((metadata.mode & 0o022) !== 0) throw new LaunchdError(`reload marker must not be group/world writable: ${path}`);
+  return true;
+}
+
+function ensureReloadMarker(path: string, label: string, destination: string): void {
+  if (reloadMarkerExists(path)) return;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    writeFileSync(descriptor, `${JSON.stringify({ schema: "hanchou.launchd-reload.v1", label, destination })}\n`, "utf8");
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    fsyncDirectory(dirname(path));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST" && reloadMarkerExists(path)) return;
+    throw error;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function clearReloadMarker(path: string): void {
+  if (!reloadMarkerExists(path)) return;
+  unlinkSync(path);
+  fsyncDirectory(dirname(path));
+}
+
+interface InstallLockOwner {
+  schema: "hanchou.launchd-install-lock.v1";
+  profile: string;
+  pid: number;
+  token: string;
+}
+
+function installLockOwner(path: string, profile: string): { owner: InstallLockOwner; metadata: Stats } {
+  const metadata = lstatSync(path);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) throw new LaunchdError(`LaunchAgent install lock must be a regular non-symlink file: ${path}`);
+  if (process.getuid !== undefined && metadata.uid !== process.getuid()) throw new LaunchdError(`LaunchAgent install lock must be owned by the effective user: ${path}`);
+  if ((metadata.mode & 0o022) !== 0) throw new LaunchdError(`LaunchAgent install lock must not be group/world writable: ${path}`);
+  if (metadata.size > 4096) throw new LaunchdError(`LaunchAgent install lock is unexpectedly large: ${path}`);
+  let value: unknown;
+  try { value = JSON.parse(readText(path)); }
+  catch { throw new LaunchdError(`LaunchAgent install lock has invalid JSON: ${path}`); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new LaunchdError(`LaunchAgent install lock has invalid contents: ${path}`);
+  const record = value as Record<string, unknown>;
+  if (record.schema !== "hanchou.launchd-install-lock.v1"
+    || record.profile !== profile
+    || !Number.isSafeInteger(record.pid) || Number(record.pid) <= 0
+    || typeof record.token !== "string" || !/^[0-9a-f]{32}$/.test(record.token)) {
+    throw new LaunchdError(`LaunchAgent install lock has invalid contents: ${path}`);
+  }
+  return { owner: record as unknown as InstallLockOwner, metadata };
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+function sameFile(left: Stats, right: Stats): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function removeOwnedPath(path: string, expected: Stats): void {
+  let current;
+  try { current = lstatSync(path); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  if (!sameFile(current, expected)) return;
+  unlinkSync(path);
+  fsyncDirectory(dirname(path));
+}
+
+function withProfileInstallLock<T>(generated: string, profile: string, operation: () => T): T {
+  const lockPath = join(generated, ".launchd-install.lock");
+  const token = randomBytes(16).toString("hex");
+  const owner: InstallLockOwner = { schema: "hanchou.launchd-install-lock.v1", profile, pid: process.pid, token };
+  const ownerPath = join(generated, `.launchd-install.owner.${process.pid}.${token}`);
+  atomicWrite(ownerPath, `${JSON.stringify(owner)}\n`);
+  let acquired: Stats | undefined;
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        linkSync(ownerPath, lockPath);
+        fsyncDirectory(generated);
+        acquired = lstatSync(lockPath);
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        const existing = installLockOwner(lockPath, profile);
+        if (processExists(existing.owner.pid)) {
+          throw new LaunchdError(`another LaunchAgent install is already running for profile ${profile} (pid ${existing.owner.pid}); wait for it to finish, then retry`);
+        }
+        removeOwnedPath(lockPath, existing.metadata);
+        const staleOwnerPath = join(generated, `.launchd-install.owner.${existing.owner.pid}.${existing.owner.token}`);
+        try { removeOwnedPath(staleOwnerPath, existing.metadata); }
+        catch { /* stale owner cleanup is best-effort after the canonical lock is gone */ }
+      }
+    }
+    if (acquired === undefined) throw new LaunchdError(`cannot acquire LaunchAgent install lock for profile ${profile}`);
+    try { return operation(); }
+    finally { removeOwnedPath(lockPath, acquired); }
+  } finally {
+    let ownerMetadata;
+    try { ownerMetadata = lstatSync(ownerPath); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (ownerMetadata !== undefined) removeOwnedPath(ownerPath, ownerMetadata);
+  }
+}
+
 function runStatus(commandName: string, args: string[], capture: boolean): ReturnType<typeof spawnSync> {
   return spawnSync(commandName, args, capture ? { encoding: "utf8" } : { stdio: "inherit" });
 }
@@ -190,7 +328,7 @@ function sleep(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverCurrent = false): void {
+function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverCurrent = false, settlePaths: string[] = []): void {
   const launchctl = which("launchctl");
   if (platform() !== "darwin" || launchctl === undefined) {
     console.log(`launchctl unavailable; not loaded: ${label}`);
@@ -212,27 +350,39 @@ function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverC
     return;
   }
   if (loaded) {
-    const result = runStatus(launchctl, ["bootout", service], false);
+    const result = runStatus(launchctl, ["bootout", service], true);
     if (result.error) throw result.error;
-    if (result.status !== 0) throw new LaunchdError(`launchctl bootout failed: ${service}`);
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      if (runStatus(launchctl, ["print", service], true).status !== 0) break;
+    if (result.status !== 0 && runStatus(launchctl, ["print", service], true).status === 0) {
+      const detail = String(result.stderr || result.stdout || "").trim();
+      throw new LaunchdError(`launchctl bootout failed: ${service}${detail ? `: ${detail}` : ""}`);
+    }
+    let unloaded = false;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (runStatus(launchctl, ["print", service], true).status !== 0) {
+        unloaded = true;
+        break;
+      }
       sleep(100);
+    }
+    if (!unloaded) throw new LaunchdError(`launchctl service did not finish unloading within 10 seconds: ${service}`);
+    for (let attempt = 0; attempt < 100 && settlePaths.some((path) => existsSync(path)); attempt += 1) sleep(100);
+    for (const path of settlePaths) {
+      if (existsSync(path)) console.log(`WARN old service endpoint remains after 10 seconds; deferring live/stale socket handling to the pinned service: ${path}`);
     }
   }
   let lastError = "";
   let loadedSuccessfully = false;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     const result = runStatus(launchctl, ["bootstrap", domain, plist], true);
     if (result.error) throw result.error;
-    if (result.status === 0) {
+    if (result.status === 0 || runStatus(launchctl, ["print", service], true).status === 0) {
       loadedSuccessfully = true;
       break;
     }
-    lastError = String(result.stderr || result.stdout || "").trim();
-    sleep(100);
+    lastError = String(result.stderr || result.stdout || `exit status ${result.status}`).trim();
+    sleep(250);
   }
-  if (!loadedSuccessfully) throw new LaunchdError(`cannot load ${service}: ${lastError}`);
+  if (!loadedSuccessfully) throw new LaunchdError(`cannot load ${service} after retrying for 15 seconds: ${lastError}`);
   console.log(`loaded ${service}`);
 }
 
@@ -277,21 +427,14 @@ function parseArguments(): Arguments | number {
   return { profile: positional[0], install: installCount === 1 };
 }
 
-function main(): number {
-  const args = parseArguments();
-  if (typeof args === "number") return args;
-  const profile = readToml(join(CONFIG_ROOT, "profiles", `${args.profile}.toml`));
-  const state = valueAsTable(profile.state, "state");
-  const paths = Object.fromEntries(
-    Object.entries(state).map(([key, value]) => [key, resolvePath(valueAsString(value, `state.${key}`))]),
-  );
-  const generated = join(homedir(), ".config", "hanchou", args.profile, "generated");
-  const root = paths.root;
-  const controlDirectory = paths.control_dir;
-  if (root === undefined || controlDirectory === undefined) throw new TypeError("profile state paths are incomplete");
-  const logs = join(root, "logs");
-  for (const path of [generated, controlDirectory, logs]) mkdirSync(path, { recursive: true });
-
+function renderLaunchAgents(
+  args: Arguments,
+  profile: TomlTable,
+  paths: Record<string, string>,
+  generated: string,
+  root: string,
+  controlDirectory: string,
+): number {
   const defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
   const pathValue = process.env.PATH ?? defaultPath;
   const common: Record<string, string> = {
@@ -305,6 +448,11 @@ function main(): number {
     PATH: pathValue,
   };
   const herdr = valueAsTable(profile.herdr, "herdr");
+  const herdrSession = valueAsString(herdr.session, "herdr.session");
+  const herdrSocket = herdrSession === "default"
+    ? join(homedir(), ".config", "herdr", "herdr.sock")
+    : join(homedir(), ".config", "herdr", "sessions", herdrSession, "herdr.sock");
+  const herdrClientSocket = join(dirname(herdrSocket), "herdr-client.sock");
   const ui = valueAsTable(profile.ui, "ui");
   const beadsUiHost = valueAsString(ui.beads_ui_host, "ui.beads_ui_host");
   const beadsUiPort = String(valueAsNumber(ui.beads_ui_port, "ui.beads_ui_port"));
@@ -330,7 +478,7 @@ function main(): number {
       {
         ...common,
         HERDR_BIN: herdrBin,
-        HERDR_SESSION: valueAsString(herdr.session, "herdr.session"),
+        HERDR_SESSION: herdrSession,
       },
     ],
     [
@@ -359,6 +507,7 @@ function main(): number {
     ],
   ];
 
+  const prepared: Array<{ label: string; destination: string; reload: boolean; recoverCurrent: boolean; settlePaths: string[]; marker: string }> = [];
   for (const [source, target, values] of specs) {
     const rendered = replacePlaceholders(readText(source), values);
     const generatedChanged = !existsSync(target) || readText(target) !== rendered;
@@ -369,15 +518,52 @@ function main(): number {
       const destination = join(homedir(), "Library", "LaunchAgents", basename(target));
       mkdirSync(dirname(destination), { recursive: true });
       const destinationChanged = !existsSync(destination) || readText(destination) !== rendered;
+      const label = target.slice(0, -".plist".length).split("/").at(-1) as string;
+      const marker = join(generated, `.${label}.reload-pending`);
+      if (destinationChanged) ensureReloadMarker(marker, label, destination);
       if (existsSync(destination) && destinationChanged) backup(destination);
       if (destinationChanged) atomicWrite(destination, rendered);
       console.log(`${destinationChanged ? "installed" : "current"} ${destination}`);
-      const label = target.slice(0, -".plist".length).split("/").at(-1) as string;
-      loadLaunchAgent(label, destination, destinationChanged, label.endsWith(".beads-ui"));
+      prepared.push({
+        label,
+        destination,
+        reload: destinationChanged || reloadMarkerExists(marker),
+        recoverCurrent: label.endsWith(".beads-ui"),
+        settlePaths: label.endsWith(".herdr") ? [herdrSocket, herdrClientSocket] : [],
+        marker,
+      });
     }
   }
-  if (args.install) console.log("LaunchAgents installed and loaded in the current GUI domain.");
+  if (args.install) {
+    // Render and install every plist before touching a running service. Load the
+    // non-destructive UI services first so a delayed Herdr shutdown cannot leave
+    // a newly introduced dashboard absent after a partial upgrade.
+    const priority = (label: string): number => label.endsWith(".dashboard") ? 0 : label.endsWith(".beads-ui") ? 1 : 2;
+    for (const item of prepared.sort((left, right) => priority(left.label) - priority(right.label))) {
+      loadLaunchAgent(item.label, item.destination, item.reload, item.recoverCurrent, item.settlePaths);
+      clearReloadMarker(item.marker);
+    }
+    console.log("LaunchAgents installed and loaded in the current GUI domain.");
+  }
   return 0;
+}
+
+function main(): number {
+  const args = parseArguments();
+  if (typeof args === "number") return args;
+  const profile = readToml(join(CONFIG_ROOT, "profiles", `${args.profile}.toml`));
+  const state = valueAsTable(profile.state, "state");
+  const paths = Object.fromEntries(
+    Object.entries(state).map(([key, value]) => [key, resolvePath(valueAsString(value, `state.${key}`))]),
+  );
+  const generated = join(homedir(), ".config", "hanchou", args.profile, "generated");
+  const root = paths.root;
+  const controlDirectory = paths.control_dir;
+  if (root === undefined || controlDirectory === undefined) throw new TypeError("profile state paths are incomplete");
+  const logs = join(root, "logs");
+  for (const path of [generated, controlDirectory, logs]) mkdirSync(path, { recursive: true });
+  const render = (): number => renderLaunchAgents(args, profile, paths, generated, root, controlDirectory);
+  return args.install ? withProfileInstallLock(generated, args.profile, render) : render();
 }
 
 try {

@@ -57,6 +57,21 @@ delivery create / list / show / mark-rendered / mark-delivered / fail / retry
 execution dispatch / inspect / reconcile
 ```
 
+## Service lifecycle
+
+Run `hanchou bootstrap <profile>` after the first clone and again after updating
+Hanchou when managed integrations or LaunchAgents may have changed. `launch`
+does not install missing services; it verifies the existing Herdr, beads-ui, and
+Dashboard services, initializes the Orchestrator, and opens the Dashboard.
+Direct `start-orchestrator`, `open herdr`, and `open orchestrator` commands also
+require an operational pinned Herdr session before they act.
+
+Treat Herdr as ready only when Hanchou's pinned-version Ping and read-only
+control-plane probe both succeed. Herdr 0.8.2 continues answering Ping while it
+is shutting down. Never interpret a transient `server_unavailable` or shutdown
+response as an absent Agent, and do not create a replacement workspace in that
+state. Wait for bootstrap/reload to settle and retry the bounded Hanchou command.
+
 `execution dispatch` accepts only a ready Leaf Bead with no existing execution
 owner. It first revalidates the Bead's project identity and canonical repository
 against the human-owned machine-local deny-by-default registry. Managed Agents

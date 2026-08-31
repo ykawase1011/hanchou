@@ -100,6 +100,17 @@ approval review; the dangerous approval/sandbox bypass flag is never used.
 On macOS, GUI-domain LaunchAgents start Herdr, beads-ui, and the loopback-only
 read-only Hanchou Dashboard. Reapplying an unchanged plist leaves the running
 service in place; a changed managed plist is backed up, replaced, and reloaded.
+All plist files are installed before any service is touched. Dashboard and
+beads-ui are loaded before a disruptive Herdr reload. A durable pending marker
+is created before each changed destination and removed only after that service
+loads, so an interrupted apply resumes the missing reload on its next run. A
+profile-scoped hard-link lock rejects concurrent installers and recovers a lock
+owned by a dead process. A Herdr reload gives the API and client socket paths one
+shared deadline of up to ten seconds; if either pathname remains, Hanchou warns
+and delegates the final live/stale check to pinned Herdr. Transient `launchctl
+bootstrap` failures are retried for up to fifteen seconds. This prevents one
+delayed shutdown from leaving a newly introduced UI plist absent after an
+upgrade.
 Because beads-ui intentionally daemonizes, an unchanged reapply idempotently
 kickstarts only its short-lived launcher; a healthy Herdr or Dashboard is not
 restarted. Each profile uses a separate beads-ui runtime/PID directory.
@@ -116,6 +127,11 @@ hanchou launch work
 It verifies that the three LaunchAgent-owned services are ready, starts or
 initializes the Orchestrator, and opens the Dashboard. It does not reinstall
 missing services; run `hanchou bootstrap work` when readiness fails.
+Herdr readiness requires both the pinned-version Ping and a successful
+read-only `agent list`; Ping alone remains available during Herdr 0.8.2 shutdown
+and is not sufficient. `start-orchestrator`, `open herdr`, `open orchestrator`,
+and `doctor` use the same strong check, and transient control-plane failures are
+never interpreted as an absent Orchestrator.
 
 ## UI
 

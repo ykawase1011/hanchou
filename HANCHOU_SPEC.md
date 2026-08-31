@@ -214,7 +214,18 @@ Hanchou DashboardはTask／Agentの新しい正本や操作GUIではありませ
 Beads、Relay、workspace登録のread-only summaryと、各upstream UI／TUIへの入口だけを
 profile別loopback portで提供します。状態変更API、CORS、telemetryは持ちません。
 `launch`はbootstrap済みserviceのreadinessを確認してOrchestratorを開始・初期化し、
-このDashboardを開きます。
+このDashboardを開きます。Herdr 0.8.2はshutdown開始後もversion Pingへ応答するため、
+Herdr readinessはpin済みversionのPingに加えてread-onlyな`agent list`が成功することを
+必須とします。shutdown／reload中のcontrol-plane errorをAgent不存在として扱いません。
+
+macOS LaunchAgent更新は、各変更前にdurableなreload-pending markerを作り、全plistを
+backup付きで先に配置してからDashboard、beads-ui、Herdrの順でloadします。markerは
+対応serviceのload成功後だけ消すため、中断後の再実行でも必要なreloadを失いません。
+profile単位のinstall lockで並行実行によるmarker消失を防ぎます。Herdrをreloadする場合は
+旧service登録とAPI／client両socketの消滅を共通deadlineでbounded waitし、pathnameが
+残る場合は警告してlive／stale判定をpin済みHerdrへ委ねます。`launchctl bootstrap`の
+一時的な競合もbounded retryします。1 serviceのreload遅延によって新しいDashboard
+plistそのものが未配置になるpartial upgradeを避けます。
 
 Herdrmはoptionalです。Herdrm 0.5.xのdefault socketとHanchou named-session socketが
 同じ実体だと確認できる場合だけmonitor／attach用途で開きます。人間がHerdrm起動を

@@ -54,7 +54,11 @@ mode-0600 registry, backs up changes, and is idempotent.
 `launch` does not install or silently replace services. After `bootstrap` has
 registered the macOS LaunchAgents, it verifies Herdr, beads-ui, and the
 read-only Hanchou Dashboard, starts or initializes the Orchestrator, and opens
-the Dashboard. `--herdrm` also attempts the optional native app, but inability
+the Dashboard. Herdr is ready only after both its pinned-version Ping and a
+read-only control-plane probe succeed; shutdown/reload is reported instead of
+being mistaken for ready. Missing LaunchAgent plist names are included in the
+error so an upgrade that needs another `bootstrap` is explicit. `--herdrm` also
+attempts the optional native app, but inability
 to prove that Herdrm's default socket matches the Hanchou named-session socket
 is reported as a warning and never starts a second Herdr session. If the default
 path is absent, an explicit Herdrm open may link it to the verified pinned,

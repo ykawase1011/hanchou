@@ -63,10 +63,13 @@
   production snapshots run in one deduplicated subprocess with a four-second
   deadline, one-MiB output limit, process-group termination, redacted failure
   details, and a health endpoint that remains responsive while a probe hangs;
-- launch fake E2E passed strict Herdr 0.8.2 server-status JSON, all three service
-  readiness gates, ready and initialization-pending Orchestrators, browser
-  opt-out, no healthy Herdr/LaunchAgent restart, and optional Herdrm
-  missing/mismatched/matched socket behavior;
+- launch fake E2E passed strict Herdr 0.8.2 server-status JSON plus a non-Ping
+  read-only control-plane probe, rejected the real shutdown shape where Ping
+  succeeds but `agent list` returns `server_unavailable`, preserved transient
+  Agent lookup errors without creating a replacement workspace, passed all
+  three service readiness gates, ready and initialization-pending
+  Orchestrators, browser opt-out, no healthy Herdr/LaunchAgent restart, and
+  optional Herdrm missing/mismatched/matched socket behavior;
 - Herdrm compatibility tests rejected missing, regular-file, and different live
   sockets, created a compatibility symlink only for an absent default path and
   a live same-user named socket, never replaced an existing path, and accepted
@@ -74,9 +77,14 @@
 - LaunchAgent rendering produced pinned Herdr, beads-ui, and Dashboard plists,
   embedded the exact validated mise Herdr/Node paths even when Herdr was absent
   from `PATH`, left a second unchanged render current without backups, reloaded
-  only the service whose fingerprint changed, recovered an unchanged beads-ui
-  daemon idempotently without restarting Herdr, and validated all Dashboard
-  placeholders;
+  every plist before the first service load, loaded UI services before Herdr,
+  recovered interrupted multi-service reloads from durable pending markers,
+  rejected a concurrent profile installer and recovered a dead owner's lock,
+  waited for both old Herdr endpoints under one deadline, continued with a
+  warning when the client pathname persisted for pinned Herdr to classify,
+  retried transient bootstrap races, reloaded only the service whose fingerprint
+  changed, recovered an unchanged beads-ui daemon idempotently without
+  restarting Herdr, and validated all Dashboard placeholders;
 - `hanchou-kingdom` passed secret-free repository checks;
 - old `hanchou-mailbox` files and command names were absent;
 - `make manifest` regenerates each release manifest from the Git index only;
