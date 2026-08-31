@@ -220,7 +220,11 @@ Herdr readinessはpin済みversionのPingに加えてread-onlyな`agent list`が
 
 macOS LaunchAgent更新は、各変更前にdurableなreload-pending markerを作り、全plistを
 backup付きで先に配置してからDashboard、beads-ui、Herdrの順でloadします。markerは
-対応serviceのload成功後だけ消すため、中断後の再実行でも必要なreloadを失いません。
+対応serviceの登録と明示kickstart成功後だけ消すため、中断後の再実行でも必要なreloadを
+失いません。`launchctl bootstrap`による登録だけをprocess起動成功とは扱わず、変更の有無に
+かかわらず`kickstart -p`をbounded retryします。`-k`は使わないため、既に動いているprocessを
+再起動しません。登録がkickstart直前に消えたraceは、対象serviceだけを一度再登録してから
+bounded retryを継続します。
 profile単位のinstall lockで並行実行によるmarker消失を防ぎます。Herdrをreloadする場合は
 旧service登録とAPI／client両socketの消滅を共通deadlineでbounded waitし、pathnameが
 残る場合は警告してlive／stale判定をpin済みHerdrへ委ねます。`launchctl bootstrap`の

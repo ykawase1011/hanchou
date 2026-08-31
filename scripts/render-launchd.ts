@@ -328,7 +328,44 @@ function sleep(milliseconds: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverCurrent = false, settlePaths: string[] = []): void {
+function bootstrapLaunchAgent(launchctl: string, domain: string, service: string, plist: string): void {
+  let lastError = "";
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const result = runStatus(launchctl, ["bootstrap", domain, plist], true);
+    if (result.error) throw result.error;
+    if (result.status === 0 || runStatus(launchctl, ["print", service], true).status === 0) return;
+    lastError = String(result.stderr || result.stdout || `exit status ${result.status}`).trim();
+    sleep(250);
+  }
+  throw new LaunchdError(`cannot register ${service} after retrying for 15 seconds: ${lastError}`);
+}
+
+function kickstartLaunchAgent(launchctl: string, domain: string, service: string, plist: string): void {
+  let lastError = "";
+  let recoveredRegistration = false;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const result = runStatus(launchctl, ["kickstart", "-p", service], true);
+    if (result.error) throw result.error;
+    if (result.status === 0) {
+      const pid = String(result.stdout ?? "").trim();
+      console.log(`kickstarted ${service}${/^\d+$/.test(pid) ? ` (pid ${pid})` : ""}`);
+      return;
+    }
+    lastError = String(result.stderr || result.stdout || `exit status ${result.status}`).trim();
+    // A service may disappear after the initial `print` or immediately after a
+    // successful bootstrap. Recover that registration race once, then resume
+    // the same bounded, non-destructive kickstart loop.
+    if (!recoveredRegistration && runStatus(launchctl, ["print", service], true).status !== 0) {
+      bootstrapLaunchAgent(launchctl, domain, service, plist);
+      recoveredRegistration = true;
+      continue;
+    }
+    sleep(250);
+  }
+  throw new LaunchdError(`cannot kickstart ${service} after retrying for 15 seconds: ${lastError}`);
+}
+
+function loadLaunchAgent(label: string, plist: string, reload: boolean, settlePaths: string[] = []): void {
   const launchctl = which("launchctl");
   if (platform() !== "darwin" || launchctl === undefined) {
     console.log(`launchctl unavailable; not loaded: ${label}`);
@@ -339,13 +376,10 @@ function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverC
   const service = `${domain}/${label}`;
   const loaded = runStatus(launchctl, ["print", service], true).status === 0;
   if (loaded && !reload) {
-    if (recoverCurrent) {
-      const result = runStatus(launchctl, ["kickstart", service], true);
-      if (result.error) throw result.error;
-      if (result.status !== 0) throw new LaunchdError(`launchctl kickstart failed: ${service}`);
-      console.log(`kickstarted ${service} (idempotent recovery)`);
-      return;
-    }
+    // `bootstrap` may register a RunAtLoad job without scheduling its first
+    // process immediately. A non-destructive kickstart (without `-k`) starts a
+    // dormant job and leaves an already-running instance in place.
+    kickstartLaunchAgent(launchctl, domain, service, plist);
     console.log(`loaded ${service} (current)`);
     return;
   }
@@ -370,19 +404,8 @@ function loadLaunchAgent(label: string, plist: string, reload: boolean, recoverC
       if (existsSync(path)) console.log(`WARN old service endpoint remains after 10 seconds; deferring live/stale socket handling to the pinned service: ${path}`);
     }
   }
-  let lastError = "";
-  let loadedSuccessfully = false;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const result = runStatus(launchctl, ["bootstrap", domain, plist], true);
-    if (result.error) throw result.error;
-    if (result.status === 0 || runStatus(launchctl, ["print", service], true).status === 0) {
-      loadedSuccessfully = true;
-      break;
-    }
-    lastError = String(result.stderr || result.stdout || `exit status ${result.status}`).trim();
-    sleep(250);
-  }
-  if (!loadedSuccessfully) throw new LaunchdError(`cannot load ${service} after retrying for 15 seconds: ${lastError}`);
+  bootstrapLaunchAgent(launchctl, domain, service, plist);
+  kickstartLaunchAgent(launchctl, domain, service, plist);
   console.log(`loaded ${service}`);
 }
 
@@ -507,7 +530,7 @@ function renderLaunchAgents(
     ],
   ];
 
-  const prepared: Array<{ label: string; destination: string; reload: boolean; recoverCurrent: boolean; settlePaths: string[]; marker: string }> = [];
+  const prepared: Array<{ label: string; destination: string; reload: boolean; settlePaths: string[]; marker: string }> = [];
   for (const [source, target, values] of specs) {
     const rendered = replacePlaceholders(readText(source), values);
     const generatedChanged = !existsSync(target) || readText(target) !== rendered;
@@ -528,7 +551,6 @@ function renderLaunchAgents(
         label,
         destination,
         reload: destinationChanged || reloadMarkerExists(marker),
-        recoverCurrent: label.endsWith(".beads-ui"),
         settlePaths: label.endsWith(".herdr") ? [herdrSocket, herdrClientSocket] : [],
         marker,
       });
@@ -540,7 +562,7 @@ function renderLaunchAgents(
     // a newly introduced dashboard absent after a partial upgrade.
     const priority = (label: string): number => label.endsWith(".dashboard") ? 0 : label.endsWith(".beads-ui") ? 1 : 2;
     for (const item of prepared.sort((left, right) => priority(left.label) - priority(right.label))) {
-      loadLaunchAgent(item.label, item.destination, item.reload, item.recoverCurrent, item.settlePaths);
+      loadLaunchAgent(item.label, item.destination, item.reload, item.settlePaths);
       clearReloadMarker(item.marker);
     }
     console.log("LaunchAgents installed and loaded in the current GUI domain.");

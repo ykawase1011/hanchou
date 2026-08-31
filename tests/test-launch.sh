@@ -212,6 +212,8 @@ grep -q '^status server --json$' "$FAKE_HERDR_LOG"
 grep -q '^workspace create ' "$FAKE_HERDR_LOG"
 grep -q '^agent start orchestrator ' "$FAKE_HERDR_LOG"
 grep -q '^agent prompt orchestrator ' "$FAKE_HERDR_LOG"
+grep -Fq 'list any in-progress or blocked Beads tasks' "$FAKE_HERDR_LOG"
+grep -Fq 'state the number of currently running delegated tasks; explicitly report zero for each empty result' "$FAKE_HERDR_LOG"
 grep -q '^http://127\.0\.0\.1:3747/health$' "$FAKE_HTTP_LOG"
 grep -q '^http://127\.0\.0\.1:3737/$' "$FAKE_HTTP_LOG"
 [[ ! -e "$FAKE_OPEN_LOG" ]]

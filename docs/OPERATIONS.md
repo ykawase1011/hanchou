@@ -108,12 +108,15 @@ profile-scoped hard-link lock rejects concurrent installers and recovers a lock
 owned by a dead process. A Herdr reload gives the API and client socket paths one
 shared deadline of up to ten seconds; if either pathname remains, Hanchou warns
 and delegates the final live/stale check to pinned Herdr. Transient `launchctl
-bootstrap` failures are retried for up to fifteen seconds. This prevents one
-delayed shutdown from leaving a newly introduced UI plist absent after an
-upgrade.
-Because beads-ui intentionally daemonizes, an unchanged reapply idempotently
-kickstarts only its short-lived launcher; a healthy Herdr or Dashboard is not
-restarted. Each profile uses a separate beads-ui runtime/PID directory.
+bootstrap` and `kickstart -p` failures are retried for up to fifteen seconds.
+Registration alone is not treated as process startup, and a pending marker is
+cleared only after the explicit kickstart succeeds. The kickstart does not use
+`-k`, so it starts a dormant job without restarting a healthy Herdr or Dashboard.
+If registration disappears immediately before kickstart, Hanchou re-registers
+that service once and resumes the bounded start request.
+Because beads-ui intentionally daemonizes, the same operation also reactivates
+its short-lived launcher. Each profile uses a separate beads-ui runtime/PID
+directory.
 Herdr plugin startup launches herdr-automations and runs one Relay
 recovery/dispatch pass. If scheduler crash supervision proves insufficient,
 promote its daemon to a separate LaunchAgent rather than running two schedulers.

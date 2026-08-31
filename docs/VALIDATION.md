@@ -82,9 +82,12 @@
   rejected a concurrent profile installer and recovered a dead owner's lock,
   waited for both old Herdr endpoints under one deadline, continued with a
   warning when the client pathname persisted for pinned Herdr to classify,
-  retried transient bootstrap races, reloaded only the service whose fingerprint
-  changed, recovered an unchanged beads-ui daemon idempotently without
-  restarting Herdr, and validated all Dashboard placeholders;
+  retried transient bootstrap and kickstart races, explicitly kickstarted newly
+  registered and unchanged dormant jobs, reloaded only the service whose
+  fingerprint changed, preserved healthy processes by omitting `kickstart -k`,
+  recovered a registration-disappearance race, retained the durable marker
+  across a persistent kickstart failure, recovered an unchanged beads-ui daemon
+  idempotently, and validated all Dashboard placeholders;
 - `hanchou-kingdom` passed secret-free repository checks;
 - old `hanchou-mailbox` files and command names were absent;
 - `make manifest` regenerates each release manifest from the Git index only;

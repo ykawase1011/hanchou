@@ -17,8 +17,11 @@ TEST_HOME="$TMP/home"
 TEST_CONFIG="$TMP/config"
 FAKE_BIN="$TMP/bin"
 LAUNCHCTL_STATE="$TMP/launchctl.state"
+LAUNCHCTL_STARTED_STATE="$TMP/launchctl-started.state"
 LAUNCHCTL_LOG="$TMP/launchctl.log"
 LAUNCHCTL_RETRY_STATE="$TMP/launchctl-retry.state"
+LAUNCHCTL_KICKSTART_RETRY_STATE="$TMP/launchctl-kickstart-retry.state"
+LAUNCHCTL_DROP_REGISTRATION_STATE="$TMP/launchctl-drop-registration.state"
 mkdir -p "$TEST_HOME" "$FAKE_BIN"
 TEST_HOME_REAL="$(cd "$TEST_HOME" && pwd -P)"
 cp -R "$ROOT/config" "$TEST_CONFIG"
@@ -40,6 +43,7 @@ cat > "$FAKE_BIN/launchctl" <<'SH'
 #!/bin/sh
 set -eu
 : "${FAKE_LAUNCHCTL_STATE:?}"
+: "${FAKE_LAUNCHCTL_STARTED_STATE:?}"
 : "${FAKE_LAUNCHCTL_LOG:?}"
 printf '%s\n' "$*" >> "$FAKE_LAUNCHCTL_LOG"
 case "$1" in
@@ -87,11 +91,14 @@ case "$1" in
         exit 5
       fi
     fi
-    printf '%s/%s\n' "$2" "$label" >> "$FAKE_LAUNCHCTL_STATE"
+    target="$2/$label"
+    grep -Fqx "$target" "$FAKE_LAUNCHCTL_STATE" 2>/dev/null || printf '%s\n' "$target" >> "$FAKE_LAUNCHCTL_STATE"
     ;;
   bootout)
     grep -Fvx "$2" "$FAKE_LAUNCHCTL_STATE" > "$FAKE_LAUNCHCTL_STATE.next" 2>/dev/null || true
     mv "$FAKE_LAUNCHCTL_STATE.next" "$FAKE_LAUNCHCTL_STATE"
+    grep -Fvx "$2" "$FAKE_LAUNCHCTL_STARTED_STATE" > "$FAKE_LAUNCHCTL_STARTED_STATE.next" 2>/dev/null || true
+    mv "$FAKE_LAUNCHCTL_STARTED_STATE.next" "$FAKE_LAUNCHCTL_STARTED_STATE"
     case "$2" in
       *.herdr)
         for settle_path in "${FAKE_HERDR_SETTLE_PATH:-}" "${FAKE_HERDR_CLIENT_SETTLE_PATH:-}"; do
@@ -101,13 +108,41 @@ case "$1" in
     esac
     ;;
   kickstart)
-    grep -Fqx "$2" "$FAKE_LAUNCHCTL_STATE"
+    if [ "${2:-}" = "-p" ]; then target="$3"; else target="$2"; fi
+    grep -Fqx "$target" "$FAKE_LAUNCHCTL_STATE"
+    if [ "${FAKE_LAUNCHCTL_DROP_REGISTRATION_ONCE:-0}" = "1" ]; then
+      : "${FAKE_LAUNCHCTL_DROP_REGISTRATION_STATE:?}"
+      if [ ! -e "$FAKE_LAUNCHCTL_DROP_REGISTRATION_STATE" ]; then
+        : > "$FAKE_LAUNCHCTL_DROP_REGISTRATION_STATE"
+        grep -Fvx "$target" "$FAKE_LAUNCHCTL_STATE" > "$FAKE_LAUNCHCTL_STATE.next" 2>/dev/null || true
+        mv "$FAKE_LAUNCHCTL_STATE.next" "$FAKE_LAUNCHCTL_STATE"
+        grep -Fvx "$target" "$FAKE_LAUNCHCTL_STARTED_STATE" > "$FAKE_LAUNCHCTL_STARTED_STATE.next" 2>/dev/null || true
+        mv "$FAKE_LAUNCHCTL_STARTED_STATE.next" "$FAKE_LAUNCHCTL_STARTED_STATE"
+        echo "simulated launchctl registration disappearance" >&2
+        exit 7
+      fi
+    fi
+    if [ "${FAKE_LAUNCHCTL_KICKSTART_FAILURES:-0}" -gt 0 ]; then
+      : "${FAKE_LAUNCHCTL_KICKSTART_RETRY_STATE:?}"
+      attempts=0
+      [ ! -f "$FAKE_LAUNCHCTL_KICKSTART_RETRY_STATE" ] || attempts="$(cat "$FAKE_LAUNCHCTL_KICKSTART_RETRY_STATE")"
+      if [ "$attempts" -lt "$FAKE_LAUNCHCTL_KICKSTART_FAILURES" ]; then
+        printf '%s\n' "$((attempts + 1))" > "$FAKE_LAUNCHCTL_KICKSTART_RETRY_STATE"
+        echo "simulated launchctl kickstart race" >&2
+        exit 6
+      fi
+    fi
+    grep -Fqx "$target" "$FAKE_LAUNCHCTL_STARTED_STATE" 2>/dev/null || printf '%s\n' "$target" >> "$FAKE_LAUNCHCTL_STARTED_STATE"
+    [ "${2:-}" != "-p" ] || printf '%s\n' "${FAKE_LAUNCHCTL_PID:-4242}"
     ;;
   *) exit 2 ;;
 esac
 SH
 chmod 755 "$FAKE_BIN/launchctl"
 TEST_PATH="$FAKE_BIN:$(dirname "$(command -v node)"):/usr/bin:/bin"
+export FAKE_LAUNCHCTL_STATE="$LAUNCHCTL_STATE"
+export FAKE_LAUNCHCTL_STARTED_STATE="$LAUNCHCTL_STARTED_STATE"
+export FAKE_LAUNCHCTL_LOG="$LAUNCHCTL_LOG"
 
 HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
   node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" work \
@@ -172,12 +207,17 @@ fi
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   : > "$LAUNCHCTL_STATE"
+  : > "$LAUNCHCTL_STARTED_STATE"
   : > "$LAUNCHCTL_LOG"
   HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
     FAKE_LAUNCHCTL_STATE="$LAUNCHCTL_STATE" FAKE_LAUNCHCTL_LOG="$LAUNCHCTL_LOG" \
     node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
     > "$TMP/install-first.out"
   [[ "$(grep -c '^bootstrap ' "$LAUNCHCTL_LOG")" == "3" ]]
+  [[ "$(grep -c '^kickstart -p ' "$LAUNCHCTL_LOG")" == "3" ]]
+  [[ "$(grep -c '^kickstarted gui/[0-9][0-9]*/dev\.hanchou\.work\..* (pid 4242)$' "$TMP/install-first.out")" == "3" ]]
+  [[ "$(sort -u "$LAUNCHCTL_STATE" | wc -l | tr -d ' ')" == "3" ]]
+  cmp <(sort "$LAUNCHCTL_STATE") <(sort "$LAUNCHCTL_STARTED_STATE")
   if find "$GENERATED" -name '*.reload-pending' | grep -q .; then
     echo "successful initial install left a reload marker" >&2
     exit 1
@@ -187,14 +227,33 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     exit 1
   fi
 
+  # Registration is not process startup: reproduce the reported macOS state
+  # where all jobs are registered but none has ever run.
+  : > "$LAUNCHCTL_STARTED_STATE"
   : > "$LAUNCHCTL_LOG"
   HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
     FAKE_LAUNCHCTL_STATE="$LAUNCHCTL_STATE" FAKE_LAUNCHCTL_LOG="$LAUNCHCTL_LOG" \
     node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
     > "$TMP/install-current.out"
-  grep -q '^kickstart gui/[0-9][0-9]*/dev\.hanchou\.work\.beads-ui$' "$LAUNCHCTL_LOG"
-  if grep -q '^kickstart .*\(herdr\|dashboard\)$\|^bootout ' "$LAUNCHCTL_LOG"; then
-    echo "current service recovery restarted an unrelated healthy service" >&2
+  [[ "$(grep -c '^kickstart -p ' "$LAUNCHCTL_LOG")" == "3" ]]
+  cmp <(sort "$LAUNCHCTL_STATE") <(sort "$LAUNCHCTL_STARTED_STATE")
+  if grep -q '^bootout \|^bootstrap ' "$LAUNCHCTL_LOG"; then
+    echo "current service recovery reloaded a registered service" >&2
+    exit 1
+  fi
+
+  # Plain kickstart is also safe for already-running services: it must not
+  # duplicate state, regenerate plists, or use the destructive `-k` option.
+  cp "$LAUNCHCTL_STARTED_STATE" "$TMP/started-before-current"
+  : > "$LAUNCHCTL_LOG"
+  HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
+    node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
+    > "$TMP/install-running-current.out"
+  [[ "$(grep -c '^kickstart -p ' "$LAUNCHCTL_LOG")" == "3" ]]
+  [[ "$(grep -c '^current ' "$TMP/install-running-current.out")" == "3" ]]
+  cmp "$TMP/started-before-current" "$LAUNCHCTL_STARTED_STATE"
+  if grep -q '^kickstart -k\|^bootout \|^bootstrap ' "$LAUNCHCTL_LOG"; then
+    echo "current running service was destructively changed" >&2
     exit 1
   fi
 
@@ -307,19 +366,79 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   [[ -e "$HERDR_CLIENT_SETTLE_PATH" ]]
   rm -f "$HERDR_CLIENT_SETTLE_PATH"
 
+  # Registration can disappear between the initial print/bootstrap and the
+  # kickstart. Recover that race once by re-registering the affected service.
+  rm -f "$LAUNCHCTL_DROP_REGISTRATION_STATE"
+  : > "$LAUNCHCTL_LOG"
+  HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
+    FAKE_LAUNCHCTL_DROP_REGISTRATION_ONCE=1 \
+    FAKE_LAUNCHCTL_DROP_REGISTRATION_STATE="$LAUNCHCTL_DROP_REGISTRATION_STATE" \
+    node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
+    > "$TMP/install-registration-race.out"
+  [[ -e "$LAUNCHCTL_DROP_REGISTRATION_STATE" ]]
+  [[ "$(grep -c '^bootstrap ' "$LAUNCHCTL_LOG")" == "1" ]]
+  [[ "$(grep -c '^kickstart -p ' "$LAUNCHCTL_LOG")" == "4" ]]
+  grep -q '^bootstrap gui/[0-9][0-9]* .*/dev\.hanchou\.work\.dashboard\.plist$' "$LAUNCHCTL_LOG"
+  cmp <(sort "$LAUNCHCTL_STATE") <(sort "$LAUNCHCTL_STARTED_STATE")
+  if grep -q '^kickstart -k\|^bootout ' "$LAUNCHCTL_LOG"; then
+    echo "registration race recovery used a destructive operation" >&2
+    exit 1
+  fi
+
+  # A failed start request must leave its durable marker in place so the next
+  # invocation reloads and retries instead of accepting registration as ready.
+  printf '\n' >> "$DASHBOARD_INSTALLED"
+  : > "$LAUNCHCTL_LOG"
+  rm -f "$LAUNCHCTL_KICKSTART_RETRY_STATE"
+  if HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
+    FAKE_LAUNCHCTL_KICKSTART_RETRY_STATE="$LAUNCHCTL_KICKSTART_RETRY_STATE" \
+    FAKE_LAUNCHCTL_KICKSTART_FAILURES=999 \
+    node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
+    > "$TMP/install-kickstart-failure.out" 2> "$TMP/install-kickstart-failure.err"; then
+    echo "persistent kickstart failure unexpectedly succeeded" >&2
+    exit 1
+  fi
+  [[ "$(cat "$LAUNCHCTL_KICKSTART_RETRY_STATE")" == "60" ]]
+  [[ -e "$DASHBOARD_MARKER" ]]
+  grep -q 'cannot kickstart gui/[0-9][0-9]*/dev\.hanchou\.work\.dashboard after retrying for 15 seconds: simulated launchctl kickstart race' "$TMP/install-kickstart-failure.err"
+  if grep -q '^kickstart -k' "$LAUNCHCTL_LOG"; then
+    echo "persistent kickstart recovery used -k" >&2
+    exit 1
+  fi
+
+  : > "$LAUNCHCTL_LOG"
+  rm -f "$LAUNCHCTL_KICKSTART_RETRY_STATE"
+  HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
+    node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
+    > "$TMP/install-kickstart-recovery.out"
+  [[ ! -e "$DASHBOARD_MARKER" ]]
+  cmp <(sort "$LAUNCHCTL_STATE") <(sort "$LAUNCHCTL_STARTED_STATE")
+  grep -q '^loaded gui/[0-9][0-9]*/dev\.hanchou\.work\.dashboard$' "$TMP/install-kickstart-recovery.out"
+
   : > "$LAUNCHCTL_STATE"
+  : > "$LAUNCHCTL_STARTED_STATE"
   : > "$LAUNCHCTL_LOG"
   rm -f "$LAUNCHCTL_RETRY_STATE"
+  rm -f "$LAUNCHCTL_KICKSTART_RETRY_STATE"
   HOME="$TEST_HOME" PATH="$TEST_PATH" HANCHOU_CONFIG_ROOT="$TEST_CONFIG" \
     FAKE_LAUNCHCTL_STATE="$LAUNCHCTL_STATE" FAKE_LAUNCHCTL_LOG="$LAUNCHCTL_LOG" \
     FAKE_LAUNCHCTL_RETRY_STATE="$LAUNCHCTL_RETRY_STATE" \
-    FAKE_LAUNCHCTL_BOOTSTRAP_FAILURES=3 FAKE_REQUIRE_ALL_PLISTS=1 \
+    FAKE_LAUNCHCTL_KICKSTART_RETRY_STATE="$LAUNCHCTL_KICKSTART_RETRY_STATE" \
+    FAKE_LAUNCHCTL_BOOTSTRAP_FAILURES=3 FAKE_LAUNCHCTL_KICKSTART_FAILURES=3 \
+    FAKE_REQUIRE_ALL_PLISTS=1 \
     node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
     > "$TMP/install-retry.out"
   [[ "$(cat "$LAUNCHCTL_RETRY_STATE")" == "3" ]]
+  [[ "$(cat "$LAUNCHCTL_KICKSTART_RETRY_STATE")" == "3" ]]
   [[ "$(grep -c '^bootstrap ' "$LAUNCHCTL_LOG")" == "6" ]]
+  [[ "$(grep -c '^kickstart -p ' "$LAUNCHCTL_LOG")" == "6" ]]
+  cmp <(sort "$LAUNCHCTL_STATE") <(sort "$LAUNCHCTL_STARTED_STATE")
   grep -q '^loaded gui/[0-9][0-9]*/dev\.hanchou\.work\.dashboard$' "$TMP/install-retry.out"
   grep -q '^loaded gui/[0-9][0-9]*/dev\.hanchou\.work\.herdr$' "$TMP/install-retry.out"
+  if grep -q '^kickstart -k' "$LAUNCHCTL_LOG"; then
+    echo "retry path used -k" >&2
+    exit 1
+  fi
 fi
 
 echo "LaunchAgent rendering lifecycle ok"

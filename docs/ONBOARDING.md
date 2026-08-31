@@ -251,7 +251,8 @@ Dashboardは全体の状態確認、beads-uiはTask確認、HerdrはAgentのterm
 hanchou open orchestrator work
 ```
 
-まずcontrol planeの接続確認として、次の質問をその画面へ送ります。
+初回初期化時は、Orchestratorがcontrol planeの接続確認として次の内容を自動確認します。
+既に初期化済みのOrchestratorを使っている場合だけ、同じ質問をその画面へ送ります。
 
 ```text
 現在、進行中またはブロック中のBeadsタスクを確認してください。
@@ -385,6 +386,8 @@ hanchou open orchestrator work
 通常のCodex／Claude sessionへ質問を送っています。Hanchouのlive Agent状態を扱う
 依頼は、`hanchou open orchestrator work`で開いたHerdr管理Agentへ送ってください。
 一方、`hanchou onboard work --yes`は通常terminalで実行するのが正解です。
+tmuxを使っても現在のAgentがHerdr管理Agentへ変わるわけではありません。
+`HERDR_ENV=1`を手動で設定せず、実Herdr操作は必ずHerdr内で起動したAgentへ依頼します。
 
 ### `server is shutting down`または`server shut down`
 
@@ -434,6 +437,8 @@ socket pathnameが残る場合も警告後にpin済みHerdr自身のlive／stale
 `bootstrap`が途中で止まっても、次の実行はreload-pending markerから未完了分を再開します。
 同じprofileの`bootstrap`を同時に実行した場合、後から来た実行は安全に停止するので、先の
 実行が終わってから再実行してください。終了したprocessが残したlockは自動回収されます。
+LaunchAgentの登録だけ成功してprocessがまだ一度も起動していない場合も、`bootstrap`は
+変更なしの再実行で各serviceを明示的にkickstartします。既に動作中なら再起動しません。
 
 Dashboardのlogは次にあります。
 

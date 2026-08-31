@@ -66,6 +66,13 @@ Dashboard services, initializes the Orchestrator, and opens the Dashboard.
 Direct `start-orchestrator`, `open herdr`, and `open orchestrator` commands also
 require an operational pinned Herdr session before they act.
 
+On macOS, LaunchAgent registration is not proof that a service process started.
+Bootstrap explicitly performs a bounded, non-destructive `kickstart -p` for
+each managed service after registration and on an unchanged reapply. It never
+uses `-k`, so a healthy running process is not restarted. If registration
+disappears immediately before kickstart, recover that service registration once
+and resume the same bounded start request.
+
 Treat Herdr as ready only when Hanchou's pinned-version Ping and read-only
 control-plane probe both succeed. Herdr 0.8.2 continues answering Ping while it
 is shutting down. Never interpret a transient `server_unavailable` or shutdown

@@ -44,6 +44,10 @@
     先にloadしてから旧Herdr API／client socket消滅と再登録をbounded waitする。pathnameが
     残る場合のlive／stale判定はpin済みHerdrへ委ね、中断後はmarkerから未完了reloadを
     再開する。
+22. `launchctl bootstrap`のservice登録成功とprocess起動成功を分ける。各managed
+    LaunchAgentは登録後と変更なしの再適用時に`kickstart -p`をbounded retryし、成功後だけ
+    reload markerを消す。`-k`を使わず、既存のrunning processは再起動しない。kickstart前後に
+    登録が消えたraceは、対象だけを一度再登録して同じbounded retryへ戻す。
 
 ## 初期default
 
