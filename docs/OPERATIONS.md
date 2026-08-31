@@ -195,25 +195,65 @@ contain at most one matching configured Orchestrator Agent; an unowned legacy
 pane must have only an available foreground shell in the Core cwd. Hanchou also
 scans the OS process table and accepts that shell only when it observes no
 additional same-TTY or shell-descendant process. Each `CLOSE` row displays
-foreground process `PID:name` values, `observed_additional`, and the foreground
-cwd for human review. The field is the numeric count from that best-effort scan
+foreground process `PID:name` values, pane-reported `cwd`, all foreground
+process `process_cwds=PID:name@cwd` evidence, and `observed_additional` for human
+review. The field is the numeric count from that best-effort scan
 for an unowned legacy target and is `n/a` for an Agent-occupied target whose OS
 shell is not scanned. An `observed_additional=0` result is not proof that every
 other process is absent. On Darwin, processes in the same OS process session but
 outside the same-TTY/descendant union cannot be enumerated completely by this
 check.
 
+The default plan fails closed when an unbound, no-Agent-record legacy pane is
+not proven idle. `--include-unmanaged` is a human-selected activity override
+for exactly that case, not a general force option:
+
+```bash
+# Read-only activity-override plan
+hanchou stop-orchestrator work --all --include-unmanaged
+```
+
+It may override only these activity reasons on that unbound legacy pane:
+`foreground_busy`, `current_cwd_outside_core`,
+`background_processes_observed`, `process_scan_unavailable`, and
+`stale_pane_authority`. It continues to require the exact configured label,
+Core-matching pane base cwd, one tab/one pane, no worktree, consistent opaque
+IDs and binding state, no Agent-list/direct-lookup disagreement, and exact
+identity for every real Agent record. A bound target, foreign/wrong-kind Agent,
+moved binding, Core-external base cwd, multi-pane target, or worktree remains a
+hard refusal. Herdr `pane process-info` must be schema-valid, including its
+result type, foreground PID/PGID/TTY, and process records.
+`process_scan_unavailable` applies only to the later OS process-table scan;
+malformed Herdr process information remains a hard refusal.
+
+An overridden row is labeled `UNMANAGED-ACTIVE`. Review its foreground
+`PID:name`, pane-reported `cwd`, all foreground process
+`process_cwds=PID:name@cwd` evidence, `observed_additional`, `base_cwd`, and
+sorted `reasons`. `current_cwd_outside_core` considers every process cwd.
+`observed_additional=n/a` can mean the foreground was busy or the OS scan was
+unavailable; it never means zero. The plan warns that `unmanaged` means no
+authoritative Agent record, not idle or safe, and that apply terminates the
+entire pane OS session including unobserved processes. If the operator cannot
+approve that effect for every row, use the full Herdr TUI instead.
+
 The plan token binds the reviewed profile/session, profile TOML digest, every
 resolved profile state path, Core and config roots, lifecycle state, binding,
-and validated workspace/pane/Agent/process identities. If the target snapshot
-changes before apply, the token mismatch closes nothing and requires a fresh
-plan/token. The apply form requires the exact
-`--all --plan <token> --yes` command and an ordinary interactive terminal
-controlled by the human; it rejects Herdr-managed or Hanchou-identified Agents
-and non-interactive callers. The token is a snapshot hash, not a secret or an
-authentication credential. These checks and the command policy are
-defense-in-depth against mistakes and routine automation, not a complete
-security boundary against code running as the same OS user.
+validated workspace/pane/Agent/process identities and the selected
+`include_unmanaged` mode. If the target snapshot changes before apply, the
+token mismatch closes nothing and requires a fresh plan/token. The include-mode
+plan prints this exact form:
+
+```text
+hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
+```
+
+The apply must run in an ordinary interactive terminal controlled by the human;
+it rejects Herdr-managed or Hanchou-identified Agents and non-interactive
+callers. Default and include-mode tokens are not interchangeable. The token is
+a snapshot hash, not a secret or an authentication credential. These checks
+and the command policy are defense-in-depth against mistakes and routine
+automation, not a complete security boundary against code running as the same
+OS user.
 
 Applying closes every validated target regardless of Agent status and
 terminates every process in its PTY's OS process session. This includes a
@@ -227,11 +267,13 @@ Beads, Relay, Dashboard, repositories, or worktrees. Workspace close is
 sequential rather than transactionally atomic.
 On a mid-run failure, the error reports `closed`, `remaining`, and any
 `uncertain` workspace IDs. Never assume an uncertain close succeeded. Fix the
-condition, run the read-only `--all` plan again, review the current targets,
-and use its new exact token command. Never reuse the old token after a partial
-close. The durable binding and initialization marker are cleared only after
-every target is verified absent. Planning an already stopped profile is a no-op
-and needs no apply.
+condition, run the read-only plan named by the error again, review the current
+targets, and use its new exact token command. An unmanaged retry retains
+`--include-unmanaged`; never drop the flag or reuse the old token after a
+partial close. Unmanaged targets close first and the bound target closes last.
+The durable binding and initialization marker are cleared only after every
+target is verified absent. Planning an already stopped profile is a no-op and
+needs no apply.
 
 The full Herdr TUI remains the manual fallback when Hanchou cannot validate the
 required candidate predicates or the operator cannot approve the complete

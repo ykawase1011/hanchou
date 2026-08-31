@@ -411,8 +411,9 @@ hanchou stop-orchestrator work --all
 ```
 
 これは読み取り専用です。`CLOSE`と表示された各workspace ID、terminal ID、Agent名、
-statusに加え、`processes=<PID:name>`、`observed_additional=<数値またはn/a>`、
-`cwd=<foreground cwd>`を読み、すべて終了してよいことを確認してください。`working`や
+statusに加え、`processes=<PID:name>`、pane-reported `cwd`、全foreground processの
+`process_cwds=<PID:name@cwd>`、`observed_additional=<数値またはn/a>`を読み、すべて終了して
+よいことを確認してください。`working`や
 `blocked`を含め、表示された
 workspaceのPTYと同じOS process session内で動く全processが終了します。planの末尾には、
 実際の64文字tokenを含むexact apply commandも表示されます。
@@ -420,13 +421,13 @@ workspaceのPTYと同じOS process session内で動く全processが終了しま�
 Hanchouが対象にするのは、次の条件をすべて自動検証できたworkspaceだけです。
 
 - labelが設定済みの`00-orchestrator`である
-- cwdが実体pathとして現在のHanchou Core checkoutと一致する
+- paneのbase cwdが実体pathとして現在のHanchou Core checkoutと一致する
 - 1 tab／1 paneで、worktreeを持たない
 - workspace／tab／pane／terminal IDと保存済みbindingに矛盾がない
 - Agentがいる場合は設定済みの名前／kind／pane identityと一致する
-- Agentがいない古いpaneは、Core cwd上の利用可能なshellだけがforegroundにいる
-- OS process tableで、その古いshellと同じTTYまたはshell descendantとして観測できる
-  追加processが0件である
+- Herdr `pane process-info`のresult type、foreground PID／PGID／TTY、process recordが妥当である
+- 既定modeでは、Agentがいない古いpaneはCore cwd上の利用可能なshellだけがforegroundにいて、
+  OS process tableで同じTTYまたはshell descendantとして観測できる追加processが0件である
 
 同じlabelでも1件を安全に検証できなければ、最初の検査では1件も閉じません。planの全対象を
 終了してよければ、出力末尾のcommandを文字を変えずにcopyし、同じ通常terminalへ貼り付けます。
@@ -441,7 +442,47 @@ hanchou stop-orchestrator work --all --plan <64hex-token> --yes
 profile設定のdigest、全profile state path、binding、workspace／pane／Agent／process identityなどの
 対象snapshotに束縛されます。plan後にAgent statusやprocessを含む対象状態が変わると、applyは
 1件も閉じずに新しいplanを表示して拒否します。その新しいplanを読み、新しいexact commandを
-使ってください。
+使ってください。cleanup modeもtokenに束縛されるため、後述の`--include-unmanaged`を付けた
+tokenと既定modeのtokenは交換できません。
+
+#### 既定planがbusyな未管理paneを拒否した場合
+
+まず`hanchou open herdr work`で対象を確認します。既定planの拒否理由を解消できるなら、processを
+終了してCore cwdへ戻した後、最初の`--all`を再実行するのが標準です。解消できず、かつ人間が
+そのpaneの全processを終了してよいと明示した場合だけ、通常terminalで次のread-only planを
+使います。
+
+```bash
+hanchou stop-orchestrator work --all --include-unmanaged
+```
+
+このmodeがactivity判定を緩和できるのは、unboundかつAgent recordがないlegacy paneだけです。
+`UNMANAGED-ACTIVE` rowの`processes`、pane-reported `cwd`、全foreground processの
+`process_cwds`、`observed_additional`、`base_cwd`、`reasons`を1件ずつ読みます。
+`current_cwd_outside_core`は全process cwdの判定です。reasonは`foreground_busy`、
+`current_cwd_outside_core`、
+`background_processes_observed`、`process_scan_unavailable`、`stale_pane_authority`の組合せです。
+`observed_additional=n/a`は0件ではなく、busyなどでOS scan結果を確定できなかった意味です。
+
+> **警告:** `unmanaged`は「空」や「安全」ではありません。有効なAgent recordがないという
+> 意味だけです。applyは表示されていないprocessを含むpaneのOS process session全体を終了します。
+> 不明なrowが1件でもあれば実行せず、Herdr TUIで手動整理してください。
+
+このmodeでもexact label、Coreのbase cwd、1 tab／1 pane、no-worktree、opaque ID、binding、
+実在Agent、Herdr process-info schemaの整合は必須です。`process_scan_unavailable`は後段のOS
+process table scanだけを指し、malformedなHerdr responseを許す理由ではありません。別label、
+Core外のbase cwd、worktree、foreign Agentなどを閉じるforce optionでもありません。全rowを
+承認できる場合だけ、plan末尾に表示された次の形式のexact commandをそのまま貼り付けます。
+
+```text
+hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
+```
+
+状態変化やpartial failure後は、flagを外さず次から再planし、新しいexact commandを使います。
+
+```bash
+hanchou stop-orchestrator work --all --include-unmanaged
+```
 
 applyはHerdr内のAgent terminalや非対話実行からは受け付けません。ただし、この確認、token、
 Agent環境判定は誤操作や通常の自動実行を減らすdefense-in-depthであり、同じOS userに対する
@@ -463,8 +504,9 @@ Agentがいるtargetの`n/a`はOS shell scanを実行していないという意
 Beads、Relay、Dashboard、作業repository、Leaf用worktreeは残ります。workspaceは1件ずつ
 閉じるため、途中で失敗することがあります。その場合はerrorに表示された`closed`と
 `remaining`、結果を確認できなかった`uncertain`を確認して原因を直します。`uncertain`を
-終了済みと推測してはいけません。古いtokenを再利用せず最初の`--all`から再planし、現在の
-対象と新tokenをreviewして、新しく表示されたexact apply commandを使ってください。全対象の
+終了済みと推測してはいけません。古いtokenを再利用せず、errorが示す同じmodeのread-only
+planから再planし、現在の対象と新tokenをreviewして、新しく表示されたexact apply commandを
+使ってください。include modeで失敗した場合は`--include-unmanaged`を残します。全対象の
 終了を確認できた時点でだけ、古いbindingと初期化markerが消去されます。
 
 完了後、通常terminalで新しいOrchestratorを1つ作り、画面を開きます。

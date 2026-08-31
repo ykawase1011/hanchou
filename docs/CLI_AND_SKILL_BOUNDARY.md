@@ -140,19 +140,37 @@ Destructive Orchestrator reset uses a separate human-confirmation interlock:
 ```text
 hanchou stop-orchestrator work --all
 hanchou stop-orchestrator work --all --plan <64hex-token> --yes
+hanchou stop-orchestrator work --all --include-unmanaged
+hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
 ```
 
 The first command is a read-only plan. It prints the exact second command with a
 64-character lowercase-hex token bound to the reviewed profile TOML digest,
 resolved state paths, lifecycle binding, and workspace/pane/Agent/process
 snapshot; do not construct the token or omit it. The plan shows foreground
-process `PID:name` values and cwd for each target. For a legacy shell,
+process `PID:name`, pane-reported `cwd`, and all foreground process
+`process_cwds=PID:name@cwd` evidence for each target. For a legacy shell,
 `observed_additional=0` means only that the OS process table scan observed no
 extra same-TTY or shell-descendant process. It does not prove that every process
 is absent. Agent-occupied targets are not subject to that OS shell scan and report
 `observed_additional=n/a`. Darwin cannot fully enumerate same-session processes
 outside those two relations. A target-state change or partial close requires a
 new plan and token.
+
+`--include-unmanaged` is a human-owned activity override and must never be added
+automatically after a default refusal. It overrides only activity checks for an
+unbound legacy pane with no authoritative Agent record; label, Core base cwd,
+single-pane/no-worktree shape, IDs, binding, and real-Agent consistency remain
+hard containment, so the configured target scope does not expand. The plan
+marks overrides `UNMANAGED-ACTIVE`, prints their
+process/cwd/reason evidence, treats `observed_additional=n/a` as unknown rather
+than zero, and warns that close terminates the whole pane OS session. The
+selected mode is token-bound, so its exact apply and retry commands must retain
+the flag. `current_cwd_outside_core` checks every foreground process cwd.
+Malformed Herdr `pane process-info` is a hard refusal; the overridable
+`process_scan_unavailable` reason covers only the later OS process-table scan.
+Managed Agents may explain this path but must not apply it.
+
 Herdr 0.8.2 has no identity-conditional workspace close, so the final
 revalidation-to-close TOCTOU window remains. Apply is human approval to
 terminate every process in the target workspace PTY/OS process session; if that

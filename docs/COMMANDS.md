@@ -30,6 +30,8 @@ hanchou launch work [--no-browser] [--herdrm]
 hanchou start-orchestrator work
 hanchou stop-orchestrator work --all
 hanchou stop-orchestrator work --all --plan <64hex-token> --yes
+hanchou stop-orchestrator work --all --include-unmanaged
+hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
 hanchou open dashboard work
 hanchou open tasks work
 hanchou open herdr work
@@ -81,7 +83,8 @@ selector is required; there is no implicit current-workspace form. Hanchou first
 checks every same-label candidate and prints the plan only when all candidates
 pass the dedicated-Orchestrator checks. The plan shows the bound/named/legacy
 classification, Agent status, focus state, terminal ID, foreground process
-`PID:name` values, `observed_additional`, and foreground cwd for every target.
+`PID:name` values, pane-reported `cwd`, all foreground process
+`process_cwds=PID:name@cwd` evidence, and `observed_additional` for every target.
 `observed_additional` is numeric only for an unowned legacy target whose shell
 was scanned; it is `n/a` for an Agent-occupied target. A target must have
 exactly one tab and one pane, no worktree, a pane cwd
@@ -98,16 +101,54 @@ not proof that the workspace has no other process. In particular, Darwin cannot
 fully enumerate processes in the same OS process session when they are outside
 both relations.
 
+`--include-unmanaged` is a separate, human-selected plan mode for the narrow
+case where the default plan rejects an unbound legacy pane that has no
+authoritative Agent record because its activity is not proven idle:
+
+```text
+hanchou stop-orchestrator <profile> --all --include-unmanaged
+hanchou stop-orchestrator <profile> --all --include-unmanaged --plan <64hex-token> --yes
+```
+
+Do not add this flag merely to make the default plan succeed. The operator must
+first inspect the pane and explicitly approve termination of its entire OS
+process session. It does not expand the configured target set; it may override
+only `foreground_busy`, `current_cwd_outside_core`,
+`background_processes_observed`,
+`process_scan_unavailable`, and `stale_pane_authority` on an unbound target with
+no Agent record. It still requires the exact configured label, a Core-matching
+pane base cwd, one tab and one pane, no worktree, internally consistent opaque
+IDs, consistent binding/moved-terminal state, and consistent real Agent records
+and direct pane lookup. It never admits a foreign, wrong-kind, unnamed, or
+multiply recorded Agent, or activity override on a bound target. Herdr
+`pane process-info` must also be schema-valid, including its result type,
+foreground PID/PGID/TTY, and process records. `process_scan_unavailable` refers
+only to the later OS process-table scan; malformed Herdr data is never included.
+
+The plan classifies an overridden row as `UNMANAGED-ACTIVE` and prints its
+foreground `PID:name`, pane-reported `cwd`, all foreground process
+`process_cwds=PID:name@cwd` evidence, `observed_additional`, `base_cwd`, and
+sorted `reasons`. `current_cwd_outside_core` considers every process cwd. A busy
+foreground or unavailable OS scan can produce
+`observed_additional=n/a`; that means not established, not zero. `unmanaged`
+means Hanchou lacks an authoritative Agent record, not that the pane is empty or
+safe. The plan warns that Herdr closes the entire pane OS session, including
+unobserved processes, and that Herdr 0.8.2 leaves a final
+revalidation-to-close TOCTOU window. If any row is uncertain, use the full
+Herdr TUI instead.
+
 When targets or lifecycle state remain, the plan also prints a 64-character
-lowercase-hex token and the exact
-`stop-orchestrator <profile> --all --plan <token> --yes` apply command. Copy
-that command without constructing or editing its token. The token is a hash
+lowercase-hex token and an exact apply command. The default form is
+`stop-orchestrator <profile> --all --plan <64hex-token> --yes`; the include-mode form
+retains `--include-unmanaged` as shown above. Copy the printed command without
+constructing or editing its token. The token is a hash
 bound to the reviewed profile/session, profile TOML digest, every resolved
 profile state path, Core and config roots, lifecycle state, binding, and
-validated workspace/pane/Agent/process identities. It is not a secret or an
-authentication credential. If that target snapshot changes before apply, the
-token mismatch fails closed before any workspace is closed; rerun the plan and
-review its new token.
+validated workspace/pane/Agent/process identities, including the selected
+`include_unmanaged` mode. It is not a secret or an authentication credential.
+If that target snapshot changes before apply, the token mismatch fails closed
+before any workspace is closed; rerun the same plan mode and review its new
+exact command. Default and include-mode tokens are not interchangeable.
 
 The apply command is accepted only from an ordinary interactive terminal
 controlled by the human operator. It is rejected inside a Herdr-managed or
@@ -131,12 +172,14 @@ before requesting close, but a process can still change in that TOCTOU window.
 If a close fails or topology changes mid-run, the error reports `closed`,
 `remaining`, and any `uncertain` workspace IDs. Do not
 infer the outcome of an uncertain close. Fix the reported condition, rerun
-`stop-orchestrator <profile> --all`, review the current target set, and apply
-its new exact token command. The old token must not be reused after any partial
-close. After a complete stop, `start-orchestrator <profile>` creates one new
-dedicated workspace. Planning an already stopped profile is a no-op and needs
-no apply. The full Herdr TUI cleanup flow remains the fallback when Hanchou
-cannot validate a candidate safely.
+the read-only command reported by the error, review the current target set, and
+apply its new exact token command. An include-mode retry keeps
+`--include-unmanaged`; never drop the flag or reuse the old token after a
+partial close. Unmanaged rows close before the bound workspace. After a
+complete stop, `start-orchestrator <profile>` creates one new dedicated
+workspace. Planning an already stopped profile is a no-op and needs no apply.
+The full Herdr TUI cleanup flow remains the fallback when Hanchou cannot
+validate hard containment or the operator cannot approve the termination.
 
 `open orchestrator` focuses the bound Orchestrator and opens the ordinary full
 Herdr client. It does not use the single-owner `agent attach` surface. Full

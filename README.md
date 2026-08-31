@@ -213,10 +213,12 @@ binding、workspace／pane／Agent／process identityなどの対象snapshotに�
 対象状態が変わるとapplyは何も閉じずに拒否するため、再planして新しいexact commandを
 確認してください。
 
-`--plan <token> --yes`は人間が操作する通常の対話terminalでのみ受け付けます。これは
+`--plan <64hex-token> --yes`は人間が操作する通常の対話terminalでのみ受け付けます。これは
 誤操作や通常のAgent自動実行を減らすdefense-in-depthであり、同じOS userに対する完全な
-security boundaryではありません。対象は、設定済みlabel、Hanchou Coreのcwd、1 tab／1 pane、
-no-worktree、pane ID、存在する場合のbindingとAgent identityをすべて検証できたworkspaceだけです。
+security boundaryではありません。対象は、設定済みlabel、Hanchou Coreと一致するpane base cwd、
+1 tab／1 pane、no-worktree、pane ID、存在する場合のbindingとAgent identityをすべて検証できた
+workspaceだけです。Herdr `pane process-info`のresult type、foreground PID／PGID／TTY、process
+recordが妥当であることも必須で、malformed responseはinclude modeでも拒否します。
 Agentがいないlegacy paneでは、Core cwd上の利用可能なshellを確認し、OS process tableで
 同じTTYまたはshell descendantとして観測できる追加processが0件であることを検証し、
 `observed_additional=0`と表示します。
@@ -226,10 +228,38 @@ AgentがいるtargetではこのOS shell scanを行わず、`observed_additional
 条件にするclose APIがないため、各workspaceの最終revalidateからcloseまでのTOCTOUは残ります。
 applyは、対象workspaceのPTYと同じOS process session内の全processを終了してよいと人間が
 承認する操作です。不安があればapplyせず、Herdr TUIで個別に確認して手動整理してください。
+
+既定planが、unboundかつAgent recordのないlegacy paneについて、busyなforeground、Core外の
+current cwd、観測したbackground process、OS process scan不能、またはstaleなpane authorityを
+理由に拒否することがあります。この場合もflagを自動追加しません。人間がHerdr TUIで確認し、
+そのpaneの全processを終了してよいと明示した場合だけ、通常terminalで次の危険な
+activity override planを表示します。このcommand自体は何も閉じません。
+
+```bash
+hanchou stop-orchestrator work --all --include-unmanaged
+```
+
+`UNMANAGED-ACTIVE` rowの`processes`、pane-reported `cwd`、全foreground processの
+`process_cwds=PID:name@cwd`、`observed_additional`、`base_cwd`、`reasons`をすべて確認します。
+`current_cwd_outside_core`は全process cwdの判定です。このmodeの`observed_additional=n/a`は
+0件ではなく、scan結果を確定できないという意味です。planが表示した次の形式のexact command
+だけを使います。
+
+```text
+hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
+```
+
+ここで`unmanaged`は「空」や「安全」ではなく、有効なAgent recordでownerを確認できないという
+意味です。このmodeでもexact label、Coreのbase cwd、1 tab／1 pane、no-worktree、opaque ID、
+binding、実在Agent、Herdr process-info schemaの整合条件は緩和しません。
+`process_scan_unavailable`は後段のOS process table scanだけを指します。mode自体もtokenに
+束縛されるため、状態変化やpartial failure後は`--include-unmanaged`を付けたplanからやり直し、
+flagを外したり旧tokenを再利用したりしません。
+
 Herdr server／session、Beads、Relay、Dashboard、repository、worktreeは残ります。
 途中で失敗した場合も古いtokenは
 再利用しません。errorの`closed`／`remaining`／`uncertain`を確認して原因を直し、
-`--all`から再planして新しいtoken入りcommandを使います。
+errorが示す同じmodeのread-only planからやり直して、新しいtoken入りcommandを使います。
 
 stop完了後に、新しいOrchestratorを1つ作って画面を開きます。
 

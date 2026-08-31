@@ -55,7 +55,7 @@
     commandは対象をfocusしたfull Herdr clientとし、単一ownerのdirect attachを使わない。
 24. Orchestratorの破棄は通常起動から分離したhuman-confirmed commandとする。
     `stop-orchestrator --all`はread-only planで、対象snapshotに束縛した64文字のlowercase hex
-    tokenとexact apply commandを表示する。applyは`--all --plan <token> --yes`をordinary
+    tokenとexact apply commandを表示する。applyは`--all --plan <64hex-token> --yes`をordinary
     interactive terminalから実行する。snapshotの状態変化は旧tokenを無効にして全close前に
     fail closedとし、partial failure後も再planした新tokenを必須とする。configured label、Core cwd、
     1 tab／1 pane、no-worktreeに厳密一致する全件をlegacyから先にcloseし、binding対象を最後に
@@ -67,6 +67,16 @@
     Darwinでは同じOS process sessionの完全列挙にならず、Herdr 0.8.2にconditional closeもないため、
     最終revalidate後のTOCTOUは残る。applyはworkspaceのPTY／OS process session全体の終了を
     人間が承認する操作とし、承認できなければHerdr TUIで手動cleanupする。
+25. `--include-unmanaged`は広いforce surfaceにしない。人間が明示したときだけ、unboundかつ
+    authoritative Agent recordのないlegacy paneのactivity判定をoverrideする。busy foreground、
+    current cwd差異、observed background、OS scan不能、stale pane authorityは
+    `UNMANAGED-ACTIVE`としてreview対象にできるが、exact label、Core base cwd、1 tab／1 pane、
+    no-worktree、ID／binding／実Agent整合とHerdr `pane process-info` schemaは常に維持する。
+    `process_scan_unavailable`は後段のOS scanだけを指し、malformed Herdr responseは拒否する。
+    `current_cwd_outside_core`は全foreground process cwdを判定する。modeをtokenに束縛し、
+    apply／retryにも
+    flagを残す。これは「unmanagedだから安全」という推定を避けながら、過去版のbusy legacy
+    PTYを人間のwhole-session終了承認で整理するための限定escape hatchである。
 
 ## 初期default
 

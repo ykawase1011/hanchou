@@ -31,7 +31,7 @@
   deletion;
 - added `stop-orchestrator` with a read-only, exact-target plan and a
   snapshot-bound 64-character lowercase-hex token required by the exact
-  ordinary-terminal `--all --plan <token> --yes` apply; target-state drift and
+  ordinary-terminal `--all --plan <64hex-token> --yes` apply; target-state drift and
   partial closure require a new plan/token, the plan exposes process identity
   and binds the profile digest/resolved state paths, and unowned legacy shells
   require zero additional processes observed by the best-effort same-TTY plus
@@ -42,6 +42,14 @@
   session, surrounding Hanchou subsystems are preserved, and lifecycle state is
   cleared only after complete closure; the TTY/Agent/token checks are
   defense-in-depth, not a complete same-user security boundary;
+- added the explicit `--include-unmanaged` plan mode for a human-approved
+  cleanup of unbound, no-Agent-record legacy panes whose activity is not proven
+  idle; the mode reports `UNMANAGED-ACTIVE` reasons and whole-session effects,
+  remains constrained by label/Core-base-cwd/topology/worktree/ID/binding/Agent
+  containment, rejects malformed Herdr `pane process-info` even when the later
+  OS process-table scan is unavailable, reports every foreground process cwd,
+  is bound into the exact plan token and retry command, and never becomes an
+  automatic `launch`/`start-orchestrator` fallback;
 - changed `open orchestrator` from single-owner direct attach to a focused full
   Herdr client, and documented Herdrm/direct-attach ownership and recovery.
 

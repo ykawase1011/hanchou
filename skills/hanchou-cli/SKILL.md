@@ -123,7 +123,40 @@ not proof that all other processes are absent. An Agent-occupied target is not
 subject to the OS shell scan and reports `observed_additional=n/a`. On Darwin,
 the scan cannot fully enumerate processes in the same OS process session
 outside those two relations. Review `PID:name`, `observed_additional`, and
-foreground cwd on every `CLOSE` row.
+pane-reported `cwd`, plus every foreground process
+`process_cwds=PID:name@cwd`, on every `CLOSE` row.
+
+Never add `--include-unmanaged` merely because the default plan refuses a
+target. It is a human-selected activity override, allowed only after the human
+explicitly confirms that every process in an unbound, no-Agent-record legacy
+pane may be terminated. It does not expand the configured target set. Its plan
+and apply forms are:
+
+```text
+hanchou stop-orchestrator <profile> --all --include-unmanaged
+hanchou stop-orchestrator <profile> --all --include-unmanaged --plan <64hex-token> --yes
+```
+
+The mode may override only `foreground_busy`, `current_cwd_outside_core`,
+`background_processes_observed`, `process_scan_unavailable`, and
+`stale_pane_authority` for that narrow target. It must preserve the exact
+configured label, Core base cwd, one-tab/one-pane and no-worktree shape, opaque
+IDs, binding/moved-terminal checks, Agent-list/direct-pane agreement, and every
+real Agent's configured identity. It must never include a bound activity
+override or foreign, wrong-kind, unnamed, or multiply recorded Agent. Herdr
+`pane process-info` must be schema-valid, including its result type, foreground
+PID/PGID/TTY, and process records. `process_scan_unavailable` refers only to the
+later OS process-table scan and never permits malformed Herdr data.
+
+Review every `UNMANAGED-ACTIVE` row's foreground processes, pane-reported
+`cwd`, every foreground process `process_cwds`, `observed_additional`, base cwd,
+and reasons. `current_cwd_outside_core` considers every process cwd. A value of
+`n/a` does not mean zero. `unmanaged` means no authoritative Agent record, not idle
+or safe. The plan token binds `include_unmanaged`; default and include-mode
+tokens are not interchangeable. After drift or partial failure, keep
+`--include-unmanaged`, replan, and use the new exact command. Managed Agents
+must not apply this mode. If the human cannot approve whole-session termination,
+use the full Herdr TUI instead.
 
 Herdr 0.8.2 has no workspace close conditional on the identity/revision just
 revalidated, so a process can change in the final revalidate-to-close TOCTOU

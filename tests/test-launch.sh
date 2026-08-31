@@ -76,6 +76,10 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
         pane_agent="$(fake_agent_name)"
       fi
     fi
+    if [[ "${HANCHOU_TEST_STALE_PANE_AGENT_ID:-}" == "$workspace_id" ]]; then
+      pane_status=unknown
+      pane_agent=stale
+    fi
     local foreground_cwd="$workspace_cwd"
     if [[ "${HANCHOU_TEST_FOREGROUND_CWD_ID:-}" == "$workspace_id" ]]; then
       foreground_cwd="${HANCHOU_TEST_FOREGROUND_CWD_VALUE:-}"
@@ -138,7 +142,7 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
         exit 1
       fi
       printf '{"result":{"type":"agent_list","agents":['
-      if [[ -f "${FAKE_HERDR_AGENT_STATE:?}" ]]; then
+      if [[ -f "${FAKE_HERDR_AGENT_STATE:?}" && "${HANCHOU_TEST_AGENT_LIST_OMIT:-0}" != "1" ]]; then
         fake_print_agent
         if [[ "${HANCHOU_TEST_DUPLICATE_AGENT:-0}" == "1" ]]; then printf ','; fake_print_agent; fi
       fi
@@ -267,22 +271,33 @@ if [[ "$TOOL_NAME" == "herdr" ]]; then
       if [[ "${HANCHOU_TEST_FOREGROUND_CWD_ID:-}" == "$PROCESS_WORKSPACE" ]]; then
         PROCESS_CWD="${HANCHOU_TEST_FOREGROUND_CWD_VALUE:-}"
       fi
+      PROCESS_RECORD_CWD="$PROCESS_CWD"
+      if [[ "${HANCHOU_TEST_PROCESS_CWD_ID:-}" == "$PROCESS_WORKSPACE" ]]; then
+        PROCESS_RECORD_CWD="${HANCHOU_TEST_PROCESS_CWD_VALUE:-}"
+      fi
       if [[ "${HANCHOU_TEST_PROCESS_INFO_OMIT_ID:-}" == "$PROCESS_PANE" ]]; then
         printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":1000,"foreground_process_group_id":1000}}}\n' "$PROCESS_PANE"
         exit 0
       fi
-      PROCESS_ROWS='{"pid":1000,"name":"zsh","argv0":"-zsh","argv":["-zsh"],"cwd":"'"$PROCESS_CWD"'"}'
+      if [[ "${HANCHOU_TEST_PROCESS_INFO_MALFORMED_ID:-}" == "$PROCESS_PANE" ]]; then
+        printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":"1000","foreground_process_group_id":1000,"tty":null,"foreground_processes":[]}}}\n' "$PROCESS_PANE"
+        exit 0
+      fi
+      PROCESS_ROWS='{"pid":1000,"name":"zsh","argv0":"-zsh","argv":["-zsh"],"cwd":"'"$PROCESS_RECORD_CWD"'"}'
       PROCESS_GROUP=1000
       if [[ -f "${FAKE_HERDR_AGENT_STATE:?}" ]]; then
         IFS='|' read -r AGENT_WORKSPACE _ AGENT_PANE _ <<< "$(fake_agent_location)"
         if [[ "$AGENT_WORKSPACE" == "$PROCESS_WORKSPACE" && "$AGENT_PANE" == "$PROCESS_PANE" ]]; then
-          PROCESS_ROWS='{"pid":2000,"name":"agent","argv0":"agent","argv":["agent"],"cwd":"'"$PROCESS_CWD"'"}'
+          PROCESS_ROWS='{"pid":2000,"name":"agent","argv0":"agent","argv":["agent"],"cwd":"'"$PROCESS_RECORD_CWD"'"}'
           PROCESS_GROUP=2000
         fi
       fi
       if [[ -s "${FAKE_HERDR_FOREGROUND_PANE_FILE:?}" && "$(tr -d '\r\n' < "$FAKE_HERDR_FOREGROUND_PANE_FILE")" == "$PROCESS_PANE" ]]; then
-        PROCESS_ROWS='{"pid":3000,"name":"foreground-command","argv0":"foreground-command","argv":["foreground-command"],"cwd":"'"$PROCESS_CWD"'"}'
+        PROCESS_ROWS='{"pid":3000,"name":"'"${HANCHOU_TEST_FOREGROUND_PROCESS_JSON_NAME:-foreground-command}"'","argv0":"foreground-command","argv":["foreground-command"],"cwd":"'"$PROCESS_RECORD_CWD"'"}'
         PROCESS_GROUP=3000
+      fi
+      if [[ "${HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_ID:-}" == "$PROCESS_WORKSPACE" ]]; then
+        PROCESS_ROWS="$PROCESS_ROWS"',{"pid":3001,"name":"extra-process","argv0":"extra-process","argv":["extra-process"],"cwd":"'"${HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_CWD:-$PROCESS_RECORD_CWD}"'"}'
       fi
       printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":1000,"foreground_process_group_id":%s,"foreground_processes":[%s]}}}\n' \
         "$PROCESS_PANE" "$PROCESS_GROUP" "$PROCESS_ROWS"
@@ -510,6 +525,17 @@ stop_orchestrator_apply() {
     "$ROOT/libexec/hanchou.ts" stop-orchestrator work --all --plan "$token" --yes
 }
 
+stop_orchestrator_unmanaged_apply() {
+  local token="${1:-}"
+  if [[ -z "$token" ]]; then
+    hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-unmanaged-helper-plan.out"
+    token="$(sed -n 's/^  plan token: //p' "$TMP/stop-unmanaged-helper-plan.out")"
+  fi
+  [[ "${#token}" == "64" && "$token" != *[!a-f0-9]* ]] || { echo "missing fake unmanaged stop plan token" >&2; return 99; }
+  HANCHOU_TEST_FORCE_TTY=1 NODE_OPTIONS="--require=$PRELOAD" "$NODE_BIN" --experimental-strip-types \
+    "$ROOT/libexec/hanchou.ts" stop-orchestrator work --all --include-unmanaged --plan "$token" --yes
+}
+
 reset_fixture() {
   rm -f "$FAKE_HERDR_AGENT_STATE" "$FAKE_HERDR_AGENT_NAME" \
     "$FAKE_HERDR_AGENT_LOCATION" "$FAKE_HERDR_WORKSPACES" \
@@ -526,15 +552,23 @@ reset_fixture() {
   unset HANCHOU_TEST_AGENT_LAUNCH_PENDING
   unset HANCHOU_TEST_AGENT_GET_ERROR
   unset HANCHOU_TEST_AGENT_KIND
+  unset HANCHOU_TEST_AGENT_LIST_OMIT
+  unset HANCHOU_TEST_STALE_PANE_AGENT_ID
   unset HANCHOU_TEST_DUPLICATE_AGENT
   unset HANCHOU_TEST_WORKSPACE_CLOSE_FAIL_IDS
   unset HANCHOU_TEST_WORKSPACE_BAD_SHAPE_ID
   unset HANCHOU_TEST_WORKSPACE_WORKTREE_ID
   unset HANCHOU_TEST_PROCESS_INFO_OMIT_ID
+  unset HANCHOU_TEST_PROCESS_INFO_MALFORMED_ID
   unset HANCHOU_TEST_FOREGROUND_AFTER_CLOSE_ID
   unset HANCHOU_TEST_FOREGROUND_TARGET_PANE
+  unset HANCHOU_TEST_FOREGROUND_PROCESS_JSON_NAME
   unset HANCHOU_TEST_FOREGROUND_CWD_ID
   unset HANCHOU_TEST_FOREGROUND_CWD_VALUE
+  unset HANCHOU_TEST_PROCESS_CWD_ID
+  unset HANCHOU_TEST_PROCESS_CWD_VALUE
+  unset HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_ID
+  unset HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_CWD
   unset HANCHOU_TEST_AGENT_LIST_FAIL_AFTER_CLOSE_ID
   unset HANCHOU_TEST_WORKSPACE_LIST_FAIL_AFTER_CLOSE_ID
   unset HANCHOU_TEST_KEEP_AGENT_AFTER_CLOSE_ID
@@ -1006,8 +1040,8 @@ STOP_PLAN_TOKEN="$(sed -n 's/^  plan token: //p' "$TMP/stop-plan.out")"
 for workspace_id in w1 w2 w3 w4 w5; do grep -q "CLOSE ${workspace_id} /" "$TMP/stop-plan.out"; done
 grep -q 'effect: close 5 Herdr workspace(s)' "$TMP/stop-plan.out"
 grep -q 'legacy scan: best-effort same-TTY plus shell descendants' "$TMP/stop-plan.out"
-grep -Eq 'CLOSE w1 .*processes=2000:agent / observed_additional=n/a / cwd=' "$TMP/stop-plan.out"
-grep -Eq 'CLOSE w2 .*processes=1000:zsh / observed_additional=0 / cwd=' "$TMP/stop-plan.out"
+grep -Eq 'CLOSE w1 .*processes=2000:agent / process_cwds=2000:agent@.* / observed_additional=n/a / cwd=' "$TMP/stop-plan.out"
+grep -Eq 'CLOSE w2 .*processes=1000:zsh / process_cwds=1000:zsh@.* / observed_additional=0 / cwd=' "$TMP/stop-plan.out"
 grep -q "hanchou stop-orchestrator work --all --plan ${STOP_PLAN_TOKEN} --yes" "$TMP/stop-plan.out"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 [[ -e "$ORCHESTRATOR_RUNTIME" && -e "$ORCHESTRATOR_MARKER" && -e "$FAKE_HERDR_AGENT_STATE" ]]
@@ -1086,6 +1120,29 @@ stop_orchestrator_apply "$EMPTY_STOP_PLAN_TOKEN" > "$TMP/stop-empty-apply.out"
 grep -q 'orchestrator already stopped: work' "$TMP/stop-empty-apply.out"
 [[ ! -e "$STATE_ROOT" && ! -e "$PROFILE_CONFIG_DIR" ]]
 
+# The selected cleanup mode is part of the reviewed snapshot. Even when the
+# target rows are otherwise identical, default and include-unmanaged tokens
+# cannot be exchanged.
+reset_fixture
+append_workspace w1
+hanchou_test stop-orchestrator work --all > "$TMP/stop-mode-default-plan.out"
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-mode-unmanaged-plan.out"
+STOP_MODE_DEFAULT_TOKEN="$(sed -n 's/^  plan token: //p' "$TMP/stop-mode-default-plan.out")"
+STOP_MODE_UNMANAGED_TOKEN="$(sed -n 's/^  plan token: //p' "$TMP/stop-mode-unmanaged-plan.out")"
+[[ "${#STOP_MODE_DEFAULT_TOKEN}" == "64" && "${#STOP_MODE_UNMANAGED_TOKEN}" == "64" ]]
+[[ "$STOP_MODE_DEFAULT_TOKEN" != "$STOP_MODE_UNMANAGED_TOKEN" ]]
+if stop_orchestrator_unmanaged_apply "$STOP_MODE_DEFAULT_TOKEN" > "$TMP/stop-mode-default-as-unmanaged.out" 2> "$TMP/stop-mode-default-as-unmanaged.err"; then
+  echo "expected the default stop token to be invalid in unmanaged mode" >&2
+  exit 1
+fi
+grep -q 'reviewed stop plan does not match the current Herdr state' "$TMP/stop-mode-default-as-unmanaged.err"
+if stop_orchestrator_apply "$STOP_MODE_UNMANAGED_TOKEN" > "$TMP/stop-mode-unmanaged-as-default.out" 2> "$TMP/stop-mode-unmanaged-as-default.err"; then
+  echo "expected the unmanaged stop token to be invalid in default mode" >&2
+  exit 1
+fi
+grep -q 'reviewed stop plan does not match the current Herdr state' "$TMP/stop-mode-unmanaged-as-default.err"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
 # An unbound legacy workspace is eligible only when its shell is in the Core
 # cwd and the foreground/process-table checks find no other work.
 reset_fixture
@@ -1096,7 +1153,63 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-busy-plan.out" 2> "$TM
   exit 1
 fi
 grep -q 'unowned legacy pane is not an available interactive shell' "$TMP/stop-busy-plan.err"
+grep -q 'hanchou stop-orchestrator work --all --include-unmanaged' "$TMP/stop-busy-plan.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
+# The explicit mode turns that same busy, unbound, no-Agent legacy pane into a
+# review row without closing it. Its flag, reason, process identity, and exact
+# apply command are all visible and token-bound.
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-busy-unmanaged-plan.out"
+BUSY_UNMANAGED_TOKEN="$(sed -n 's/^  plan token: //p' "$TMP/stop-busy-unmanaged-plan.out")"
+[[ "${#BUSY_UNMANAGED_TOKEN}" == "64" && "$BUSY_UNMANAGED_TOKEN" != *[!a-f0-9]* ]]
+grep -q 'unmanaged legacy panes: included after hard containment checks' "$TMP/stop-busy-unmanaged-plan.out"
+grep -Eq 'CLOSE w1 .* / UNMANAGED-ACTIVE / .*processes=3000:foreground-command .*observed_additional=n/a .*reasons=foreground_busy' "$TMP/stop-busy-unmanaged-plan.out"
+grep -q 'base_cwd=' "$TMP/stop-busy-unmanaged-plan.out"
+grep -q 'WARNING: UNMANAGED rows are not proven idle' "$TMP/stop-busy-unmanaged-plan.out"
+grep -q "hanchou stop-orchestrator work --all --include-unmanaged --plan ${BUSY_UNMANAGED_TOKEN} --yes" "$TMP/stop-busy-unmanaged-plan.out"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
+# Activity changes invalidate the reviewed token before the first close.
+rm -f "$FAKE_HERDR_FOREGROUND_PANE_FILE"
+if stop_orchestrator_unmanaged_apply "$BUSY_UNMANAGED_TOKEN" > "$TMP/stop-unmanaged-drift.out" 2> "$TMP/stop-unmanaged-drift.err"; then
+  echo "expected unmanaged activity drift to invalidate the stop token" >&2
+  exit 1
+fi
+grep -q 'reviewed stop plan does not match the current Herdr state' "$TMP/stop-unmanaged-drift.err"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
+# In a mixed reviewed set, unmanaged activity is closed first, the exact bound
+# Orchestrator last, and unrelated labels remain. Lifecycle state survives
+# until both selected workspaces are verified absent.
+reset_fixture
+seed_bound_agent working
+write_ready_marker
+append_workspace w2
+append_workspace w8 other-workspace
+printf '%s\n' 'w2:t1:p1' > "$FAKE_HERDR_FOREGROUND_PANE_FILE"
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-unmanaged-mixed-plan.out"
+MIXED_UNMANAGED_TOKEN="$(sed -n 's/^  plan token: //p' "$TMP/stop-unmanaged-mixed-plan.out")"
+stop_orchestrator_unmanaged_apply "$MIXED_UNMANAGED_TOKEN" > "$TMP/stop-unmanaged-mixed-apply.out"
+MIXED_STOP_ORDER="$(grep '^workspace close ' "$FAKE_HERDR_LOG" | awk '{print $3}' | paste -sd ' ' -)"
+[[ "$MIXED_STOP_ORDER" == "w2 w1" ]]
+grep -Fxq 'w2|runtime=1|marker=1' "$FAKE_HERDR_CLOSE_STATE_LOG"
+grep -Fxq 'w1|runtime=1|marker=1' "$FAKE_HERDR_CLOSE_STATE_LOG"
+[[ "$(grep -c '^w8|other-workspace|' "$FAKE_HERDR_WORKSPACES" || true)" == "1" ]]
+[[ ! -e "$FAKE_HERDR_AGENT_STATE" && ! -e "$ORCHESTRATOR_RUNTIME" && ! -e "$ORCHESTRATOR_MARKER" ]]
+grep -q 'stopped Orchestrator: work (closed 2 workspace(s))' "$TMP/stop-unmanaged-mixed-apply.out"
+
+# Untrusted process text is escaped onto one review line. argv/cmdline stay out
+# of the human-facing plan even though they remain in the fingerprint.
+reset_fixture
+append_workspace w1
+printf '%s\n' 'w1:t1:p1' > "$FAKE_HERDR_FOREGROUND_PANE_FILE"
+export HANCHOU_TEST_FOREGROUND_PROCESS_JSON_NAME='evil\u001b[31m\nnext\u2028line\u202e'
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-unmanaged-escaped-plan.out"
+grep -Fq 'processes=3000:evil\u001b[31m\nnext\u2028line\u202e' "$TMP/stop-unmanaged-escaped-plan.out"
+if grep -Eq 'argv0=|cmdline=' "$TMP/stop-unmanaged-escaped-plan.out"; then
+  echo "unmanaged stop plan exposed process argv or cmdline" >&2
+  exit 1
+fi
 
 reset_fixture
 append_workspace w1
@@ -1106,6 +1219,57 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-background-plan.out" 2
   exit 1
 fi
 grep -q 'available shell has 1 background or descendant process' "$TMP/stop-background-plan.err"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-background-unmanaged-plan.out"
+grep -q 'reasons=background_processes_observed' "$TMP/stop-background-unmanaged-plan.out"
+grep -q 'observed_additional=1' "$TMP/stop-background-unmanaged-plan.out"
+
+reset_fixture
+append_workspace w1
+export HANCHOU_TEST_PS_FAIL=1
+if hanchou_test stop-orchestrator work --all > "$TMP/stop-scan-plan.out" 2> "$TMP/stop-scan-plan.err"; then
+  echo "expected an unavailable OS process scan to fail closed by default" >&2
+  exit 1
+fi
+grep -q "cannot verify the available shell's observable process set" "$TMP/stop-scan-plan.err"
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-scan-unmanaged-plan.out"
+grep -q 'reasons=process_scan_unavailable' "$TMP/stop-scan-unmanaged-plan.out"
+grep -q 'observed_additional=n/a' "$TMP/stop-scan-unmanaged-plan.out"
+
+reset_fixture
+append_workspace w1
+export HANCHOU_TEST_STALE_PANE_AGENT_ID=w1
+if hanchou_test stop-orchestrator work --all > "$TMP/stop-stale-authority-plan.out" 2> "$TMP/stop-stale-authority-plan.err"; then
+  echo "expected stale pane Agent authority to fail closed by default" >&2
+  exit 1
+fi
+grep -q 'pane reports Agent authority without a matching Agent record' "$TMP/stop-stale-authority-plan.err"
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-stale-authority-unmanaged-plan.out"
+grep -q 'reasons=stale_pane_authority' "$TMP/stop-stale-authority-unmanaged-plan.out"
+
+# A successful global list that omits a record is not enough to claim
+# no-Agent authority: the direct pane lookup must also return agent_not_found.
+reset_fixture
+append_workspace w1
+printf '%s\n' reviewer > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+export HANCHOU_TEST_AGENT_LIST_OMIT=1
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-agent-list-disagreement.out" 2> "$TMP/stop-agent-list-disagreement.err"; then
+  echo "expected Agent list/pane lookup disagreement to fail closed" >&2
+  exit 1
+fi
+grep -q 'pane Agent lookup disagrees with the successful Agent list' "$TMP/stop-agent-list-disagreement.err"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
+reset_fixture
+append_workspace w1
+export HANCHOU_TEST_AGENT_GET_ERROR=1
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-agent-probe-failure.out" 2> "$TMP/stop-agent-probe-failure.err"; then
+  echo "expected direct pane Agent probe failure to fail closed" >&2
+  exit 1
+fi
+grep -q 'direct pane Agent lookup failed with server_unavailable' "$TMP/stop-agent-probe-failure.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 
 reset_fixture
@@ -1121,6 +1285,18 @@ if grep -q 'unexpected Herdr process-info response' "$TMP/stop-omitted-process-p
   exit 1
 fi
 
+# Malformed Herdr process-info is a control-plane failure, not legacy activity;
+# include-unmanaged must never convert it into a reviewable override.
+reset_fixture
+append_workspace w1
+export HANCHOU_TEST_PROCESS_INFO_MALFORMED_ID=w1:t1:p1
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-malformed-process-plan.out" 2> "$TMP/stop-malformed-process-plan.err"; then
+  echo "expected malformed process-info to remain a hard refusal" >&2
+  exit 1
+fi
+grep -q 'unexpected Herdr process-info response for pane w1:t1:p1' "$TMP/stop-malformed-process-plan.err"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
 reset_fixture
 append_workspace w1
 MOVED_SHELL_CWD="$TMP/moved-shell-cwd"
@@ -1133,6 +1309,40 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-current-cwd-plan.out" 
 fi
 grep -q 'available shell is not currently in the Hanchou Core cwd' "$TMP/stop-current-cwd-plan.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-current-cwd-unmanaged-plan.out"
+grep -q 'reasons=current_cwd_outside_core' "$TMP/stop-current-cwd-unmanaged-plan.out"
+grep -Fq "cwd=$MOVED_SHELL_CWD" "$TMP/stop-current-cwd-unmanaged-plan.out"
+
+# Pane-reported cwd and actual process cwd are distinct review evidence. A
+# process-only mismatch must show the outside path even when pane cwd is Core.
+reset_fixture
+append_workspace w1
+PROCESS_ONLY_CWD="$TMP/process-only-cwd"
+mkdir -p "$PROCESS_ONLY_CWD"
+export HANCHOU_TEST_PROCESS_CWD_ID=w1
+export HANCHOU_TEST_PROCESS_CWD_VALUE="$PROCESS_ONLY_CWD"
+if hanchou_test stop-orchestrator work --all > "$TMP/stop-process-cwd-plan.out" 2> "$TMP/stop-process-cwd-plan.err"; then
+  echo "expected a legacy shell process in another cwd to fail closed" >&2
+  exit 1
+fi
+grep -q 'available shell is not currently in the Hanchou Core cwd' "$TMP/stop-process-cwd-plan.err"
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-process-cwd-unmanaged-plan.out"
+grep -q 'reasons=current_cwd_outside_core' "$TMP/stop-process-cwd-unmanaged-plan.out"
+grep -Fq "process_cwds=1000:zsh@$PROCESS_ONLY_CWD" "$TMP/stop-process-cwd-unmanaged-plan.out"
+grep -Fq "cwd=$ROOT / base_cwd=$ROOT" "$TMP/stop-process-cwd-unmanaged-plan.out"
+
+# Every foreground process cwd participates in the override reason and appears
+# in the escaped inventory, not just the first process.
+reset_fixture
+append_workspace w1
+EXTRA_PROCESS_CWD="$TMP/extra-process-cwd"
+mkdir -p "$EXTRA_PROCESS_CWD"
+export HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_ID=w1
+export HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_CWD="$EXTRA_PROCESS_CWD"
+hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
+grep -q 'foreground_busy' "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
+grep -q 'current_cwd_outside_core' "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
+grep -Fq "3001:extra-process@$EXTRA_PROCESS_CWD" "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
 
 # Same-label panes with an Agent must carry the exact configured name and kind;
 # a stale binding alone never authorizes an unrelated or unnamed Agent.
@@ -1146,6 +1356,11 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-wrong-name-plan.out" 2
   exit 1
 fi
 grep -q 'Agent is not the configured named codex Orchestrator' "$TMP/stop-wrong-name-plan.err"
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-wrong-name-unmanaged-plan.out" 2> "$TMP/stop-wrong-name-unmanaged-plan.err"; then
+  echo "expected unmanaged mode to preserve foreign Agent rejection" >&2
+  exit 1
+fi
+grep -q 'Agent is not the configured named codex Orchestrator' "$TMP/stop-wrong-name-unmanaged-plan.err"
 
 reset_fixture
 seed_bound_agent idle
@@ -1166,6 +1381,17 @@ fi
 grep -q 'Agent is not the configured codex Orchestrator' "$TMP/stop-wrong-kind-plan.err"
 
 reset_fixture
+append_workspace w1
+write_runtime_binding w1 term-w1
+printf '%s\n' 'w1:t1:p1' > "$FAKE_HERDR_FOREGROUND_PANE_FILE"
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-bound-busy-unmanaged.out" 2> "$TMP/stop-bound-busy-unmanaged.err"; then
+  echo "expected unmanaged mode to reject activity override on a bound pane" >&2
+  exit 1
+fi
+grep -q -- '--include-unmanaged applies only to unbound legacy panes' "$TMP/stop-bound-busy-unmanaged.err"
+[[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+
+reset_fixture
 seed_bound_agent idle
 export HANCHOU_TEST_DUPLICATE_AGENT=1
 if hanchou_test stop-orchestrator work --all > "$TMP/stop-multiple-agent-plan.out" 2> "$TMP/stop-multiple-agent-plan.err"; then
@@ -1173,6 +1399,11 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-multiple-agent-plan.ou
   exit 1
 fi
 grep -q 'multiple Agent records occupy its only pane' "$TMP/stop-multiple-agent-plan.err"
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-multiple-agent-unmanaged-plan.out" 2> "$TMP/stop-multiple-agent-unmanaged-plan.err"; then
+  echo "expected unmanaged mode to preserve multiple-Agent rejection" >&2
+  exit 1
+fi
+grep -q 'multiple Agent records occupy its only pane' "$TMP/stop-multiple-agent-unmanaged-plan.err"
 
 # A process identity change after an earlier close stops before the affected
 # workspace. Lifecycle state remains durable for a newly reviewed retry.
@@ -1205,6 +1436,11 @@ fi
 grep -q 'pane identity or cwd does not match the Hanchou Core' "$TMP/stop-unsafe.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 [[ "$(wc -l < "$FAKE_HERDR_WORKSPACES" | tr -d ' ')" == "2" ]]
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-unsafe-unmanaged.out" 2> "$TMP/stop-unsafe-unmanaged.err"; then
+  echo "expected unmanaged mode to preserve base-cwd containment" >&2
+  exit 1
+fi
+grep -q 'pane identity or cwd does not match the Hanchou Core' "$TMP/stop-unsafe-unmanaged.err"
 
 reset_fixture
 append_workspace w1
@@ -1215,6 +1451,11 @@ if stop_orchestrator_apply > "$TMP/stop-shape.out" 2> "$TMP/stop-shape.err"; the
 fi
 grep -q 'expected one tab, one pane, and no worktree' "$TMP/stop-shape.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-shape-unmanaged.out" 2> "$TMP/stop-shape-unmanaged.err"; then
+  echo "expected unmanaged mode to preserve one-tab/one-pane containment" >&2
+  exit 1
+fi
+grep -q 'expected one tab, one pane, and no worktree' "$TMP/stop-shape-unmanaged.err"
 
 reset_fixture
 append_workspace w1
@@ -1225,6 +1466,11 @@ if stop_orchestrator_apply > "$TMP/stop-worktree.out" 2> "$TMP/stop-worktree.err
 fi
 grep -q 'expected one tab, one pane, and no worktree' "$TMP/stop-worktree.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-worktree-unmanaged.out" 2> "$TMP/stop-worktree-unmanaged.err"; then
+  echo "expected unmanaged mode to preserve no-worktree containment" >&2
+  exit 1
+fi
+grep -q 'expected one tab, one pane, and no worktree' "$TMP/stop-worktree-unmanaged.err"
 
 # The configured Agent name outside the dedicated label set is never included
 # by --all and therefore makes the whole stop fail closed.
@@ -1272,6 +1518,21 @@ if stop_orchestrator_apply > "$TMP/stop-first-failure.out" 2> "$TMP/stop-first-f
 fi
 grep -q 'closed=\[\], remaining=\[w1, w2\], uncertain=\[\]' "$TMP/stop-first-failure.err"
 [[ "$(wc -l < "$FAKE_HERDR_WORKSPACES" | tr -d ' ')" == "2" ]]
+
+# A failed unmanaged close keeps the explicit mode in its retry instruction;
+# silently falling back to the default plan would make the stale pane
+# impossible to review on the next attempt.
+reset_fixture
+append_workspace w1
+printf '%s\n' 'w1:t1:p1' > "$FAKE_HERDR_FOREGROUND_PANE_FILE"
+export HANCHOU_TEST_WORKSPACE_CLOSE_FAIL_IDS=w1
+if stop_orchestrator_unmanaged_apply > "$TMP/stop-unmanaged-first-failure.out" 2> "$TMP/stop-unmanaged-first-failure.err"; then
+  echo "expected the simulated unmanaged workspace close to fail" >&2
+  exit 1
+fi
+grep -q 'closed=\[\], remaining=\[w1\], uncertain=\[\]' "$TMP/stop-unmanaged-first-failure.err"
+grep -q 'hanchou stop-orchestrator work --all --include-unmanaged' "$TMP/stop-unmanaged-first-failure.err"
+[[ "$(grep -c '^w1|00-orchestrator|' "$FAKE_HERDR_WORKSPACES" || true)" == "1" ]]
 
 # A success response without disappearance is not accepted as a close.
 reset_fixture
@@ -1348,6 +1609,11 @@ fi
 grep -q 'bound terminal term-w1 moved to workspace w8' "$TMP/stop-moved.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 [[ -e "$ORCHESTRATOR_RUNTIME" && -e "$ORCHESTRATOR_MARKER" ]]
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-moved-unmanaged.out" 2> "$TMP/stop-moved-unmanaged.err"; then
+  echo "expected unmanaged mode to preserve moved-binding rejection" >&2
+  exit 1
+fi
+grep -q 'bound terminal term-w1 moved to workspace w8' "$TMP/stop-moved-unmanaged.err"
 
 # With no live workspace or moved terminal, a reviewed apply can clean only stale
 # lifecycle files and remains a no-op for every other Hanchou subsystem.

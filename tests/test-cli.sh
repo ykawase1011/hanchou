@@ -124,6 +124,8 @@ const cases = [
   [["hanchou", "project", "add", "example-app", "--path", "/workspace/example-app"], null],
   [["hanchou", "onboard", "work", "--yes"], null],
   [["hanchou", "stop-orchestrator", "work", "--all", "--yes"], "prompt"],
+  [["hanchou", "stop-orchestrator", "work", "--all", "--include-unmanaged"], "prompt"],
+  [["hanchou", "stop-orchestrator", "work", "--all", "--include-unmanaged", "--plan", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "--yes"], "prompt"],
   [["./bin/hanchou", "stop-orchestrator", "work", "--all", "--plan", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "--yes"], "prompt"],
   [["hanchou", "inbox", "list", "--json"], "allow"],
   [["hanchou", "inbox", "show", "evt_example"], "allow"],
@@ -183,6 +185,7 @@ hanchou_test project --help | grep -q '{list,show,resolve,doctor}'
 hanchou_test onboard --help | grep -q -- '--yes'
 hanchou_test launch --help | grep -q -- '--no-browser'
 hanchou_test stop-orchestrator --help | grep -q -- '--all'
+hanchou_test stop-orchestrator --help | grep -q -- '--include-unmanaged'
 hanchou_test stop-orchestrator --help | grep -q -- '--plan PLAN'
 hanchou_test dashboard --help | grep -q '{serve,snapshot}'
 hanchou_test dashboard serve --help | grep -q '{personal,work}'
@@ -197,17 +200,37 @@ if hanchou_test stop-orchestrator work >/dev/null 2>"$TMP/stop-all.err"; then
   exit 1
 fi
 grep -q 'the following arguments are required: --all' "$TMP/stop-all.err"
+if hanchou_test stop-orchestrator work --include-unmanaged >/dev/null 2>"$TMP/stop-unmanaged-all.err"; then
+  echo "expected stop-orchestrator --include-unmanaged to require --all" >&2
+  exit 1
+fi
+grep -q 'the following arguments are required: --all' "$TMP/stop-unmanaged-all.err"
+if hanchou_test stop-orchestrator work --all --include-unmanaged=true >/dev/null 2>"$TMP/stop-unmanaged-value.err"; then
+  echo "expected stop-orchestrator boolean flag to reject an explicit value" >&2
+  exit 1
+fi
+grep -q "argument --include-unmanaged: ignored explicit argument 'true'" "$TMP/stop-unmanaged-value.err"
 if hanchou_test stop-orchestrator work --all --yes >/dev/null 2>"$TMP/stop-plan-required.err"; then
   echo "expected stop-orchestrator --yes to require --plan" >&2
   exit 1
 fi
 grep -q 'the following arguments are required: --plan' "$TMP/stop-plan-required.err"
+if hanchou_test stop-orchestrator work --all --include-unmanaged --yes >/dev/null 2>"$TMP/stop-unmanaged-plan-required.err"; then
+  echo "expected unmanaged stop apply to require --plan" >&2
+  exit 1
+fi
+grep -q 'the following arguments are required: --plan' "$TMP/stop-unmanaged-plan-required.err"
 VALID_STOP_PLAN=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 if hanchou_test stop-orchestrator work --all --plan "$VALID_STOP_PLAN" >/dev/null 2>"$TMP/stop-yes-required.err"; then
   echo "expected stop-orchestrator --plan to require --yes" >&2
   exit 1
 fi
 grep -q 'argument --plan: requires --yes' "$TMP/stop-yes-required.err"
+if hanchou_test stop-orchestrator work --all --include-unmanaged --plan "$VALID_STOP_PLAN" >/dev/null 2>"$TMP/stop-unmanaged-yes-required.err"; then
+  echo "expected unmanaged stop plan token to require --yes" >&2
+  exit 1
+fi
+grep -q 'argument --plan: requires --yes' "$TMP/stop-unmanaged-yes-required.err"
 if hanchou_test stop-orchestrator work --all --plan not-a-token --yes >/dev/null 2>"$TMP/stop-plan-invalid.err"; then
   echo "expected stop-orchestrator to reject a malformed plan token" >&2
   exit 1
@@ -271,6 +294,12 @@ if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test stop-orchestrator work --al
 fi
 grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
   "$TMP/custom-stop-config.err"
+if HANCHOU_CONFIG_ROOT="$CUSTOM_CONFIG" hanchou_test stop-orchestrator work --all --include-unmanaged >/dev/null 2>"$TMP/custom-unmanaged-stop-config.err"; then
+  echo "expected unmanaged stop custom-config rejection" >&2
+  exit 1
+fi
+grep -q 'managed Agent runtime does not accept a custom --config-root or HANCHOU_CONFIG_ROOT' \
+  "$TMP/custom-unmanaged-stop-config.err"
 node - "$CUSTOM_CONFIG/profiles/work.toml" <<'JS'
 const fs = require("node:fs");
 const path = process.argv[2];

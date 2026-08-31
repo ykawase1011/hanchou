@@ -77,6 +77,19 @@ PTY/process session; use manual TUI cleanup if that cannot be approved. Start
 one clean L0 with `hanchou start-orchestrator work` afterward. TTY/Agent checks
 and the token are defense-in-depth, not a complete same-user security boundary.
 
+If the default plan refuses only an unbound, no-Agent-record legacy pane's
+activity and the human explicitly approves terminating its whole pane OS
+session, replan with
+`hanchou stop-orchestrator work --all --include-unmanaged`. Review every
+`UNMANAGED-ACTIVE` row and copy only its
+exact flag-preserving token command. The option does not relax label, Core base
+cwd, one-tab/one-pane, no-worktree, ID/binding, real-Agent containment, or
+Herdr `pane process-info` schema validation. Review pane-reported `cwd` and all
+`process_cwds` evidence; current-cwd refusal considers every foreground
+process. Its `process_scan_unavailable` reason refers only to the later OS scan.
+After drift or partial failure, replan with `--include-unmanaged`; never retry a
+default-mode token or drop the flag. Otherwise use manual TUI cleanup.
+
 The Core goal remains open until that live Agent answers the initial status
 query using both Beads and Herdr and explicitly reports zero for empty active,
 blocked, and delegated-task results.

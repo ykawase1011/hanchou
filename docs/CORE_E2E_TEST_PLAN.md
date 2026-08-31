@@ -14,8 +14,9 @@
    named Agent without closing any workspace automatically.
 6. Review `hanchou stop-orchestrator work --all`; verify it closes nothing.
    Verify the plan prints one 64-character lowercase-hex token and the exact
-   `--all --plan <token> --yes` command. Verify each row exposes process
-   `PID:name`, additional count, and foreground cwd, and that the token binds the
+   `--all --plan <64hex-token> --yes` command. Verify each row exposes process
+   `PID:name`, pane-reported `cwd`, every foreground process
+   `process_cwds=PID:name@cwd`, and `observed_additional`, and that the token binds the
    profile digest/resolved state paths plus target identities. Verify apply
    rejects a missing, malformed, wrong, or stale token, non-interactive input,
    and a managed-Agent caller before closing anything. Reject an unowned legacy
@@ -24,6 +25,21 @@
    result of that best-effort scan, not proof that all same-session processes
    are absent; verify Agent-occupied rows use `observed_additional=n/a` because
    their OS shell is not scanned.
+   Verify each default refusal for a busy foreground, current-cwd mismatch,
+   observed background process, unavailable OS scan, or stale pane authority
+   suggests only the read-only `--all --include-unmanaged` plan. Verify that
+   explicit mode labels only unbound/no-Agent-record overrides
+   `UNMANAGED-ACTIVE`, prints process, foreground/base cwd, observed count and
+   sorted reasons, warns about whole-session termination, and emits an exact
+   flag-preserving apply command. Default/include tokens must differ and fail
+   when exchanged; activity drift must invalidate the include token before the
+   first close. Verify `current_cwd_outside_core` considers every foreground
+   process cwd. The flag must not override a bound pane, foreign/multiple Agent,
+   Agent-list/direct-lookup disagreement, Core-external base cwd, multi-pane
+   shape, worktree, moved binding, opaque-ID inconsistency, or malformed Herdr
+   `pane process-info` result type, foreground PID/PGID/TTY, or process records.
+   Verify `process_scan_unavailable` applies only to the later OS process-table
+   scan and does not bypass that Herdr response validation.
    Apply the exact printed command and verify only fully validated dedicated
    Orchestrator workspaces close, the bound one closes last, unrelated/worktree
    spaces remain, and lifecycle files survive any partial failure. After
@@ -33,7 +49,9 @@
    exactly one clean Orchestrator. Record the Herdr 0.8.2 limitation that final
    revalidation and workspace close are not one conditional operation, and
    verify the human-facing plan describes apply as approval to terminate the
-   complete target PTY/process session.
+   complete target PTY/process session. In a mixed include-mode set, verify
+   unmanaged targets close first and the bound target closes last; partial
+   retry guidance must retain `--include-unmanaged` and require a new token.
 7. Verify the Dashboard shows Herdr/Beads/Relay/workspace summary, changes no
    durable state, and refuses non-loopback or state-changing HTTP access.
 8. Ask L0 for active/blocked Beads Tasks and live Herdr execution Agents; verify

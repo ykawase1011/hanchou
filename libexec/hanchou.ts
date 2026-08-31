@@ -129,13 +129,17 @@ type OrchestratorStopTarget = {
   terminal_id: string;
   bound: boolean;
   managed: boolean;
+  unmanaged: boolean;
+  unmanaged_reasons: string[];
   focused: boolean;
   agents: string[];
   status: string;
+  base_directory: string;
   working_directory: string;
   foreground_process_count: number;
   additional_process_count: number | null;
   processes: string[];
+  process_working_directories: string[];
   identity_fingerprint: string;
 };
 
@@ -4115,24 +4119,36 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
 function orchestratorPaneProcessInfo(name: string, paneId: string): JsonObject {
   const value = parseJsonOutput(run(herdrArgv(name, "pane", "process-info", "--pane", paneId), { capture: true }));
   const info = value?.result?.process_info;
-  if (!info || typeof info !== "object" || Array.isArray(info) || info.pane_id !== paneId) {
+  const positiveU32 = (candidate: unknown): boolean => Number.isInteger(candidate) && Number(candidate) > 0 && Number(candidate) <= 0xffff_ffff;
+  const optionalPositiveU32 = (candidate: unknown): boolean => candidate === undefined || candidate === null || positiveU32(candidate);
+  const optionalString = (candidate: unknown): boolean => candidate === undefined || candidate === null || typeof candidate === "string";
+  if (
+    value?.result?.type !== "pane_process_info"
+    || !info
+    || typeof info !== "object"
+    || Array.isArray(info)
+    || info.pane_id !== paneId
+    || !optionalPositiveU32(info.shell_pid)
+    || !optionalPositiveU32(info.foreground_process_group_id)
+    || !optionalString(info.tty)
+  ) {
     throw new CommandError(`unexpected Herdr process-info response for pane ${paneId}: ${pyCompact(value)}`);
   }
   // Herdr 0.8.2 omits this field when the vector is empty. Normalize that
   // official wire shape before applying the stricter available-shell check.
-  const foregroundProcesses = info.foreground_processes ?? [];
+  const foregroundProcesses = info.foreground_processes === undefined ? [] : info.foreground_processes;
   if (!Array.isArray(foregroundProcesses)) {
     throw new CommandError(`unexpected Herdr process-info response for pane ${paneId}: ${pyCompact(value)}`);
   }
   for (const processInfo of foregroundProcesses) {
-    if (!processInfo || typeof processInfo !== "object" || Array.isArray(processInfo) || !Number.isInteger(processInfo.pid) || typeof processInfo.name !== "string") {
+    if (!processInfo || typeof processInfo !== "object" || Array.isArray(processInfo) || !positiveU32(processInfo.pid) || typeof processInfo.name !== "string") {
       throw new CommandError(`unexpected foreground process record for pane ${paneId}: ${pyCompact(processInfo)}`);
     }
     if (
-      (processInfo.argv0 !== undefined && typeof processInfo.argv0 !== "string")
-      || (processInfo.argv !== undefined && (!Array.isArray(processInfo.argv) || processInfo.argv.some((item: unknown) => typeof item !== "string")))
-      || (processInfo.cmdline !== undefined && typeof processInfo.cmdline !== "string")
-      || (processInfo.cwd !== undefined && typeof processInfo.cwd !== "string")
+      !optionalString(processInfo.argv0)
+      || (processInfo.argv !== undefined && processInfo.argv !== null && (!Array.isArray(processInfo.argv) || processInfo.argv.some((item: unknown) => typeof item !== "string")))
+      || !optionalString(processInfo.cmdline)
+      || !optionalString(processInfo.cwd)
     ) {
       throw new CommandError(`unexpected foreground process record for pane ${paneId}: ${pyCompact(processInfo)}`);
     }
@@ -4201,12 +4217,41 @@ function paneShellProcessTree(processInfo: JsonObject): JsonObject[] {
   return [...related.values()].sort((left, right) => left.pid - right.pid);
 }
 
+function unmanagedOrchestratorStopRefusal(name: string, workspaceId: string, reason: string, bound: boolean): CommandError {
+  if (bound) {
+    return new CommandError(`refusing to stop bound workspace ${orchestratorStopPlanField(workspaceId)}: ${orchestratorStopPlanField(reason)}; --include-unmanaged applies only to unbound legacy panes; no workspace was closed`);
+  }
+  return new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: ${orchestratorStopPlanField(reason)}; no workspace was closed. Inspect it in Herdr first. If every process may be terminated, run \`hanchou stop-orchestrator ${name} --all --include-unmanaged\` to print a human-reviewed cleanup plan`);
+}
+
+function verifyNoPaneAgent(name: string, workspaceId: string, paneId: string): void {
+  const result = run(herdrArgv(name, "agent", "get", paneId), { check: false, capture: true });
+  const text = (result.returncode === 0 ? result.stdout : result.stderr || result.stdout).trim();
+  let value: any;
+  try {
+    value = text ? JSON.parse(text) : null;
+  } catch {
+    throw new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: direct pane Agent lookup returned malformed JSON; no workspace was closed`);
+  }
+  if (result.returncode === 0) {
+    if (value?.result?.agent && typeof value.result.agent === "object" && !Array.isArray(value.result.agent)) {
+      throw new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: pane Agent lookup disagrees with the successful Agent list; no workspace was closed`);
+    }
+    throw new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: direct pane Agent lookup returned an unexpected success response; no workspace was closed`);
+  }
+  if (value?.error?.code !== "agent_not_found") {
+    const code = value?.error?.code ?? "unknown";
+    throw new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: direct pane Agent lookup failed with ${orchestratorStopPlanField(code)}; no workspace was closed`);
+  }
+}
+
 function orchestratorStopTarget(
   name: string,
   profile: JsonObject,
   workspace: JsonObject,
   agents: JsonObject[],
   binding: OrchestratorRuntimeBinding | null,
+  includeUnmanaged: boolean,
 ): OrchestratorStopTarget {
   const workspaceId = workspace.workspace_id;
   if (typeof workspaceId !== "string" || !workspaceId) throw new CommandError("cannot stop Orchestrator: Herdr workspace has no workspace_id");
@@ -4245,6 +4290,9 @@ function orchestratorStopTarget(
       }
     }
   }
+  if (!occupants.length) {
+    verifyNoPaneAgent(name, workspaceId, String(pane.pane_id));
+  }
   const bound = binding?.workspace_id === workspaceId;
   if (bound) {
     for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"] as const) {
@@ -4270,29 +4318,51 @@ function orchestratorStopTarget(
       throw new CommandError(`refusing to stop unbound workspace ${workspaceId}: its Agent is not the configured named ${expectedKind} Orchestrator; no workspace was closed`);
     }
   }
+  const unmanagedReasons: string[] = [];
   if (!occupant && (pane.agent !== undefined || pane.agent_session !== undefined)) {
-    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane reports Agent authority without a matching Agent record; no workspace was closed`);
+    if (!includeUnmanaged || bound) {
+      throw unmanagedOrchestratorStopRefusal(name, workspaceId, "pane reports Agent authority without a matching Agent record", bound);
+    }
+    unmanagedReasons.push("stale_pane_authority");
   }
   const processInfo = orchestratorPaneProcessInfo(name, String(pane.pane_id));
   const foregroundProcesses = processInfo.foreground_processes as JsonObject[];
   let shellProcessTree: JsonObject[] = [];
+  let shellProcessTreeVerified = false;
   if (!occupant && !isAvailablePaneShell(processInfo)) {
-    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: unowned legacy pane is not an available interactive shell; no workspace was closed`);
+    if (!includeUnmanaged || bound) {
+      throw unmanagedOrchestratorStopRefusal(name, workspaceId, "unowned legacy pane is not an available interactive shell", bound);
+    }
+    unmanagedReasons.push("foreground_busy");
   }
   if (!occupant) {
-    if (!sameExistingDirectory(pane.foreground_cwd, ROOT) || !sameExistingDirectory(foregroundProcesses[0]?.cwd, ROOT)) {
-      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: available shell is not currently in the Hanchou Core cwd; no workspace was closed`);
+    const currentDirectories = [pane.foreground_cwd, ...foregroundProcesses.map((processRecord) => processRecord.cwd)];
+    if (currentDirectories.some((directory) => !sameExistingDirectory(directory, ROOT))) {
+      if (!includeUnmanaged || bound) {
+        throw unmanagedOrchestratorStopRefusal(name, workspaceId, "available shell is not currently in the Hanchou Core cwd", bound);
+      }
+      unmanagedReasons.push("current_cwd_outside_core");
     }
-    try {
-      shellProcessTree = paneShellProcessTree(processInfo);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: cannot verify the available shell's observable process set: ${detail}; no workspace was closed`);
-    }
-    if (shellProcessTree.length !== 1) {
-      throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: available shell has ${shellProcessTree.length - 1} background or descendant process(es); no workspace was closed`);
+    if (isAvailablePaneShell(processInfo)) {
+      try {
+        shellProcessTree = paneShellProcessTree(processInfo);
+        shellProcessTreeVerified = true;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        if (!includeUnmanaged || bound) {
+          throw unmanagedOrchestratorStopRefusal(name, workspaceId, `cannot verify the available shell's observable process set: ${detail}`, bound);
+        }
+        unmanagedReasons.push("process_scan_unavailable");
+      }
+      if (shellProcessTreeVerified && shellProcessTree.length !== 1) {
+        if (!includeUnmanaged || bound) {
+          throw unmanagedOrchestratorStopRefusal(name, workspaceId, `available shell has ${shellProcessTree.length - 1} background or descendant process(es)`, bound);
+        }
+        unmanagedReasons.push("background_processes_observed");
+      }
     }
   }
+  unmanagedReasons.sort();
   const descriptions = occupants.map((occupant) => {
     const occupantName = typeof occupant.name === "string" && occupant.name ? occupant.name : "unnamed";
     const kind = typeof occupant.agent === "string" && occupant.agent ? occupant.agent : occupant.launch_pending ? "launch-pending" : "unknown";
@@ -4309,6 +4379,8 @@ function orchestratorStopTarget(
     pane_id: pane.pane_id,
     terminal_id: pane.terminal_id,
     bound,
+    unmanaged: unmanagedReasons.length > 0,
+    unmanaged_reasons: unmanagedReasons,
     workspace_agent_status: workspace.agent_status ?? null,
     pane_agent: pane.agent ?? null,
     pane_agent_session: pane.agent_session ?? null,
@@ -4332,6 +4404,7 @@ function orchestratorStopTarget(
       cwd: item.cwd ?? null,
     })),
     process: {
+      shell_process_tree_verified: shellProcessTreeVerified,
       shell_pid: processInfo.shell_pid ?? null,
       foreground_process_group_id: processInfo.foreground_process_group_id ?? null,
       foreground_processes: foregroundProcesses
@@ -4354,24 +4427,29 @@ function orchestratorStopTarget(
     terminal_id: String(pane.terminal_id),
     bound,
     managed: bound || named,
+    unmanaged: unmanagedReasons.length > 0,
+    unmanaged_reasons: unmanagedReasons,
     focused: workspace.focused === true || pane.focused === true,
     agents: descriptions,
     status,
+    base_directory: String(pane.cwd ?? "unknown"),
     working_directory: String(pane.foreground_cwd ?? pane.cwd ?? "unknown"),
     foreground_process_count: foregroundProcesses.length,
-    additional_process_count: occupant ? null : Math.max(0, shellProcessTree.length - 1),
+    additional_process_count: occupant || !shellProcessTreeVerified ? null : Math.max(0, shellProcessTree.length - 1),
     processes: foregroundProcesses.map((item) => `${item.pid}:${item.name}`),
+    process_working_directories: foregroundProcesses.map((item) => `${item.pid}:${item.name}@${String(item.cwd ?? "unknown")}`),
     identity_fingerprint: createHash("sha256").update(JSON.stringify(sortedJson(identity))).digest("hex"),
   };
 }
 
-function orchestratorStopSnapshot(name: string, profile: JsonObject): {
+function orchestratorStopSnapshot(name: string, profile: JsonObject, includeUnmanaged: boolean): {
   targets: OrchestratorStopTarget[];
   binding: OrchestratorRuntimeBinding | null;
   runtimeExists: boolean;
   markerExists: boolean;
   planToken: string;
   workspaceIds: Set<string>;
+  includeUnmanaged: boolean;
 } {
   const control = profilePaths(profile).control_dir;
   const runtimePath = orchestratorRuntimePath(profile);
@@ -4401,9 +4479,9 @@ function orchestratorStopSnapshot(name: string, profile: JsonObject): {
       }
     }
   }
-  const targets = candidates.map((workspace) => orchestratorStopTarget(name, profile, workspace, agents, binding));
+  const targets = candidates.map((workspace) => orchestratorStopTarget(name, profile, workspace, agents, binding, includeUnmanaged));
   const planIdentity = {
-    schema: "hanchou.orchestrator-stop-plan.v1",
+    schema: "hanchou.orchestrator-stop-plan.v2",
     profile: name,
     profile_digest: createHash("sha256").update(readFileSync(join(CONFIG_ROOT, "profiles", `${name}.toml`))).digest("hex"),
     profile_state_paths: sortedJson(profilePaths(profile)),
@@ -4413,6 +4491,7 @@ function orchestratorStopSnapshot(name: string, profile: JsonObject): {
     workspace_label: String(profile.orchestrator.workspace_label),
     agent_name: agentName,
     agent_kind: String(profile.orchestrator.kind ?? "codex").toLowerCase(),
+    include_unmanaged: includeUnmanaged,
     runtime_exists: runtimeExists,
     marker_exists: markerExists,
     binding: binding ? {
@@ -4430,20 +4509,42 @@ function orchestratorStopSnapshot(name: string, profile: JsonObject): {
         terminal_id: target.terminal_id,
         bound: target.bound,
         managed: target.managed,
+        unmanaged: target.unmanaged,
+        focused: target.focused,
         identity_fingerprint: target.identity_fingerprint,
       })),
   };
   const planToken = createHash("sha256").update(JSON.stringify(sortedJson(planIdentity))).digest("hex");
-  return { targets, binding, runtimeExists, markerExists, planToken, workspaceIds };
+  return { targets, binding, runtimeExists, markerExists, planToken, workspaceIds, includeUnmanaged };
+}
+
+function orchestratorStopPlanField(value: unknown): string {
+  const encoded = JSON.stringify(String(value));
+  return encoded.slice(1, -1).replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
 function printOrchestratorStopPlan(name: string, profile: JsonObject, snapshot: ReturnType<typeof orchestratorStopSnapshot>): void {
   console.log(`Hanchou Orchestrator stop plan: ${name}`);
   console.log(`  Herdr session: ${validatedHerdrSession(name, profile)}`);
   console.log(`  scope: every validated \`${profile.orchestrator.workspace_label}\` workspace in the Hanchou Core cwd`);
+  console.log(`  unmanaged legacy panes: ${snapshot.includeUnmanaged ? "included after hard containment checks" : "excluded (default)"}`);
   for (const target of snapshot.targets) {
-    const ownership = target.bound ? "bound" : target.managed ? "named" : "legacy";
-    console.log(`  CLOSE ${target.workspace_id} / ${target.terminal_id} / ${ownership} / agent=${target.agents.join(",") || "-"} / status=${target.status} / processes=${target.processes.join(",") || "-"} / observed_additional=${target.additional_process_count ?? "n/a"} / cwd=${target.working_directory} / focused=${target.focused ? "yes" : "no"}`);
+    const ownership = target.bound ? "bound" : target.managed ? "named" : target.unmanaged ? "UNMANAGED-ACTIVE" : "legacy";
+    const unmanagedDetail = target.unmanaged ? ` / reasons=${target.unmanaged_reasons.map(orchestratorStopPlanField).join("; ")}` : "";
+    const agents = target.agents.map(orchestratorStopPlanField).join(",") || "-";
+    const processes = target.processes.map(orchestratorStopPlanField).join(",") || "-";
+    const processWorkingDirectories = target.process_working_directories.map(orchestratorStopPlanField).join(",") || "-";
+    console.log(`  CLOSE ${orchestratorStopPlanField(target.workspace_id)} / tab=${orchestratorStopPlanField(target.tab_id)} / pane=${orchestratorStopPlanField(target.pane_id)} / terminal=${orchestratorStopPlanField(target.terminal_id)} / ${ownership} / agent=${agents} / status=${orchestratorStopPlanField(target.status)} / processes=${processes} / process_cwds=${processWorkingDirectories} / observed_additional=${target.additional_process_count ?? "n/a"} / cwd=${orchestratorStopPlanField(target.working_directory)} / base_cwd=${orchestratorStopPlanField(target.base_directory)} / focused=${target.focused ? "yes" : "no"}${unmanagedDetail}`);
+  }
+  if (snapshot.targets.some((target) => target.unmanaged)) {
+    console.log("  WARNING: UNMANAGED rows are not proven idle. Apply terminates their entire pane OS sessions, including unobserved processes.");
+    if (snapshot.targets.some((target) => target.unmanaged_reasons.includes("process_scan_unavailable"))) {
+      console.log("  WARNING: process_scan_unavailable means Hanchou could not establish whether any additional process exists.");
+    }
+    if (snapshot.targets.some((target) => target.unmanaged_reasons.includes("stale_pane_authority"))) {
+      console.log("  WARNING: stale_pane_authority means the pane still reports Agent metadata that Herdr Agent lookup does not resolve.");
+    }
+    console.log("  WARNING: Herdr 0.8.2 has no conditional close; pane state can still change between final revalidation and close.");
   }
   console.log(`  effect: close ${snapshot.targets.length} Herdr workspace(s); Herdr terminates every process in each pane OS session, including processes not shown above`);
   if (snapshot.targets.some((target) => target.additional_process_count !== null)) {
@@ -4454,14 +4555,19 @@ function printOrchestratorStopPlan(name: string, profile: JsonObject, snapshot: 
   console.log(`  plan token: ${snapshot.planToken}`);
 }
 
+function orchestratorStopReviewCommand(name: string, includeUnmanaged: boolean): string {
+  return `hanchou stop-orchestrator ${name} --all${includeUnmanaged ? " --include-unmanaged" : ""}`;
+}
+
 function stopPartialError(
   name: string,
+  includeUnmanaged: boolean,
   message: string,
   closed: string[],
   remaining: string[],
   uncertain: string[] = [],
 ): CommandError {
-  return new CommandError(`${message}; closed=[${closed.join(", ")}], remaining=[${remaining.join(", ")}], uncertain=[${uncertain.join(", ")}]. Run \`hanchou stop-orchestrator ${name} --all\` again, review the new plan, and use its exact apply command`);
+  return new CommandError(`${message}; closed=[${closed.join(", ")}], remaining=[${remaining.join(", ")}], uncertain=[${uncertain.join(", ")}]. Run \`${orchestratorStopReviewCommand(name, includeUnmanaged)}\` again, review the new plan, and use its exact apply command`);
 }
 
 function partialStopDetail(error: unknown): string {
@@ -4488,6 +4594,7 @@ function stopOrchestrator(
   profile: JsonObject,
   yes: boolean,
   reviewedPlan: string | null,
+  includeUnmanaged: boolean,
 ): void {
   if (yes) {
     if (process.env.HERDR_ENV === "1" || process.env.HANCHOU_AGENT_ID) {
@@ -4496,18 +4603,18 @@ function stopOrchestrator(
     if (!process.stdin.isTTY) throw new CommandError("stop-orchestrator --yes requires an interactive terminal controlled by the human operator");
   }
   if (!yes) {
-    const snapshot = orchestratorStopSnapshot(name, profile);
+    const snapshot = orchestratorStopSnapshot(name, profile, includeUnmanaged);
     printOrchestratorStopPlan(name, profile, snapshot);
     if (!snapshot.targets.length && !snapshot.runtimeExists && !snapshot.markerExists) {
       console.log(`orchestrator already stopped: ${name}`);
       return;
     }
-    console.log(`\nNo changes made. Review every CLOSE row, then run this exact command from your ordinary terminal:\n  hanchou stop-orchestrator ${name} --all --plan ${snapshot.planToken} --yes`);
+    console.log(`\nNo changes made. Review every CLOSE row, then run this exact command from your ordinary terminal:\n  ${orchestratorStopReviewCommand(name, includeUnmanaged)} --plan ${snapshot.planToken} --yes`);
     return;
   }
 
   const control = profilePaths(profile).control_dir;
-  const reviewed = orchestratorStopSnapshot(name, profile);
+  const reviewed = orchestratorStopSnapshot(name, profile, includeUnmanaged);
   printOrchestratorStopPlan(name, profile, reviewed);
   if (reviewedPlan !== reviewed.planToken) {
     throw new CommandError(`reviewed stop plan does not match the current Herdr state; no workspace was closed. Review the rows above, then use the exact command containing plan token ${reviewed.planToken}`);
@@ -4518,14 +4625,14 @@ function stopOrchestrator(
   }
   ensureOrchestratorLifecycleLockDirectory(control);
   withLock(join(control, ".hanchou-orchestrator-lifecycle.lock"), () => {
-    const initial = orchestratorStopSnapshot(name, profile);
+    const initial = orchestratorStopSnapshot(name, profile, includeUnmanaged);
     if (reviewedPlan !== initial.planToken) {
       throw new CommandError("Herdr state changed while the lifecycle lock was acquired; no workspace was closed. Run the read-only stop plan again and review its new exact apply command");
     }
     const originalIds = new Set(initial.targets.map((target) => target.workspace_id));
     const ordered = [...initial.targets].sort((left, right) => {
-      const leftRank = left.bound ? 2 : left.managed ? 1 : 0;
-      const rightRank = right.bound ? 2 : right.managed ? 1 : 0;
+      const leftRank = left.unmanaged ? 0 : left.bound ? 3 : left.managed ? 2 : 1;
+      const rightRank = right.unmanaged ? 0 : right.bound ? 3 : right.managed ? 2 : 1;
       return leftRank - rightRank || left.workspace_id.localeCompare(right.workspace_id);
     });
     const closed: string[] = [];
@@ -4533,64 +4640,64 @@ function stopOrchestrator(
       const remaining = ordered.filter((candidate) => !closed.includes(candidate.workspace_id)).map((candidate) => candidate.workspace_id);
       let current: ReturnType<typeof orchestratorStopSnapshot>;
       try {
-        current = orchestratorStopSnapshot(name, profile);
+        current = orchestratorStopSnapshot(name, profile, includeUnmanaged);
       } catch (error) {
         const detail = partialStopDetail(error);
-        throw stopPartialError(name, `cannot revalidate before closing workspace ${target.workspace_id}: ${detail}`, closed, remaining);
+        throw stopPartialError(name, includeUnmanaged, `cannot revalidate before closing workspace ${target.workspace_id}: ${detail}`, closed, remaining);
       }
       const unexpected = current.targets.find((candidate) => !originalIds.has(candidate.workspace_id));
       if (unexpected) {
-        throw stopPartialError(name, `a new same-label workspace ${unexpected.workspace_id} appeared during stop`, closed, [...remaining, unexpected.workspace_id]);
+        throw stopPartialError(name, includeUnmanaged, `a new same-label workspace ${unexpected.workspace_id} appeared during stop`, closed, [...remaining, unexpected.workspace_id]);
       }
       const live = current.targets.find((candidate) => candidate.workspace_id === target.workspace_id);
       if (!live) {
         if (current.workspaceIds.has(target.workspace_id)) {
-          throw stopPartialError(name, `workspace ${target.workspace_id} still exists but moved outside the reviewed stop scope`, closed, remaining);
+          throw stopPartialError(name, includeUnmanaged, `workspace ${target.workspace_id} still exists but moved outside the reviewed stop scope`, closed, remaining);
         }
         closed.push(target.workspace_id);
         continue;
       }
       for (const key of ["tab_id", "pane_id", "terminal_id"] as const) {
         if (live[key] !== target[key]) {
-          throw stopPartialError(name, `workspace ${target.workspace_id} changed ${key} during stop`, closed, remaining);
+          throw stopPartialError(name, includeUnmanaged, `workspace ${target.workspace_id} changed ${key} during stop`, closed, remaining);
         }
       }
       if (live.identity_fingerprint !== target.identity_fingerprint) {
-        throw stopPartialError(name, `workspace ${target.workspace_id} changed Agent or process identity during stop`, closed, remaining);
+        throw stopPartialError(name, includeUnmanaged, `workspace ${target.workspace_id} changed Agent or process identity during stop`, closed, remaining);
       }
       let result: RunResult;
       try {
         result = run(herdrArgv(name, "workspace", "close", target.workspace_id), { check: false, capture: true });
       } catch (error) {
         const detail = partialStopDetail(error);
-        throw stopPartialError(name, `cannot determine whether workspace ${target.workspace_id} received the close request: ${detail}`, closed, remaining, [target.workspace_id]);
+        throw stopPartialError(name, includeUnmanaged, `cannot determine whether workspace ${target.workspace_id} received the close request: ${detail}`, closed, remaining, [target.workspace_id]);
       }
       let after: JsonObject[];
       try {
         after = herdrRecords(name, "workspace", "workspaces");
       } catch (error) {
         const detail = partialStopDetail(error);
-        throw stopPartialError(name, `cannot verify workspace ${target.workspace_id} after its close request: ${detail}`, closed, remaining, [target.workspace_id]);
+        throw stopPartialError(name, includeUnmanaged, `cannot verify workspace ${target.workspace_id} after its close request: ${detail}`, closed, remaining, [target.workspace_id]);
       }
       const absent = !after.some((workspace) => workspace.workspace_id === target.workspace_id);
       if (result.returncode !== 0 && !absent) {
         const detail = (result.stderr || result.stdout).trim().slice(0, 500) || "Herdr rejected workspace close";
-        throw stopPartialError(name, `cannot close workspace ${target.workspace_id}: ${detail}`, closed, remaining);
+        throw stopPartialError(name, includeUnmanaged, `cannot close workspace ${target.workspace_id}: ${detail}`, closed, remaining);
       }
-      if (!absent) throw stopPartialError(name, `Herdr returned success but workspace ${target.workspace_id} is still present`, closed, remaining);
+      if (!absent) throw stopPartialError(name, includeUnmanaged, `Herdr returned success but workspace ${target.workspace_id} is still present`, closed, remaining);
       closed.push(target.workspace_id);
       console.log(`closed Orchestrator workspace ${target.workspace_id}`);
     }
 
     let finalSnapshot: ReturnType<typeof orchestratorStopSnapshot>;
     try {
-      finalSnapshot = orchestratorStopSnapshot(name, profile);
+      finalSnapshot = orchestratorStopSnapshot(name, profile, includeUnmanaged);
     } catch (error) {
       const detail = partialStopDetail(error);
-      throw stopPartialError(name, `cannot verify the final Orchestrator state: ${detail}`, closed, [], ["final-state"]);
+      throw stopPartialError(name, includeUnmanaged, `cannot verify the final Orchestrator state: ${detail}`, closed, [], ["final-state"]);
     }
     if (finalSnapshot.targets.length) {
-      throw stopPartialError(name, "one or more Orchestrator workspaces remain after close", closed, finalSnapshot.targets.map((target) => target.workspace_id));
+      throw stopPartialError(name, includeUnmanaged, "one or more Orchestrator workspaces remain after close", closed, finalSnapshot.targets.map((target) => target.workspace_id));
     }
     const markerPath = join(control, ".hanchou-orchestrator-init.json");
     const runtimePath = orchestratorRuntimePath(profile);
@@ -4609,7 +4716,7 @@ function stopOrchestrator(
       if (removedState) fsyncDirectory(control);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      throw stopPartialError(name, `workspaces are closed but local lifecycle state cleanup failed: ${detail}`, closed, [], ["local-lifecycle-state"]);
+      throw stopPartialError(name, includeUnmanaged, `workspaces are closed but local lifecycle state cleanup failed: ${detail}`, closed, [], ["local-lifecycle-state"]);
     }
     console.log(`stopped Orchestrator: ${name} (closed ${closed.length} workspace(s))`);
     console.log(`restart with: hanchou start-orchestrator ${name}`);
@@ -5166,7 +5273,7 @@ options:
   bootstrap: profileHelp("bootstrap"),
   doctor: profileHelp("doctor"),
   "start-orchestrator": profileHelp("start-orchestrator"),
-  "stop-orchestrator": `usage: hanchou stop-orchestrator [-h] --all [--plan PLAN] [--yes] [{personal,work}]
+  "stop-orchestrator": `usage: hanchou stop-orchestrator [-h] --all [--include-unmanaged] [--plan PLAN] [--yes] [{personal,work}]
 
 Plan or close every validated dedicated Orchestrator workspace in the selected profile.
 Applying terminates every process in those panes and must run in the human operator's ordinary terminal.
@@ -5177,6 +5284,8 @@ positional arguments:
 options:
   -h, --help       show this help message and exit
   --all            explicitly select every validated dedicated Orchestrator workspace
+  --include-unmanaged
+                    include contained unbound legacy panes that are not proven idle
   --plan PLAN      exact plan token printed by the immediately preceding review
   --yes            apply the reviewed stop plan`,
   apply: `usage: hanchou apply [-h] [--yes] [--install-upstream] [{personal,work}]
@@ -5589,7 +5698,7 @@ function parseCliUnchecked(argv: string[]): JsonObject {
   };
   if (result.command === "plan" || result.command === "bootstrap" || result.command === "doctor" || result.command === "start-orchestrator") return profileCommand();
   if (result.command === "stop-orchestrator") {
-    const parsed = profileCommand([["all", "boolean"], ["plan", "string"], ["yes", "boolean"]]);
+    const parsed = profileCommand([["all", "boolean"], ["include-unmanaged", "boolean"], ["plan", "string"], ["yes", "boolean"]]);
     if (!parsed.all) throw new CommandError("the following arguments are required: --all");
     parsed.plan ??= null;
     if (parsed.yes && !parsed.plan) throw new CommandError("the following arguments are required: --plan");
@@ -5827,7 +5936,7 @@ async function main(): Promise<void> {
           const detail = ready.error ? `: ${ready.error}` : "";
           throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
         }
-        stopOrchestrator(name, profile, Boolean(args.yes), args.plan ? String(args.plan) : null);
+        stopOrchestrator(name, profile, Boolean(args.yes), args.plan ? String(args.plan) : null, Boolean(args.include_unmanaged));
         break;
       }
       case "dashboard": await dashboardCommand(args, name, profile); break;

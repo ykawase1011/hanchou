@@ -239,10 +239,11 @@ hanchou stop-orchestrator <profile> --all --plan <64hex-token> --yes
 ```
 
 apply時のsnapshotが一致しなければtoken mismatchとしてclose前にfail closedとします。対象の
-状態変化後、およびpartial failureで一部をcloseした後は、`--all`から再planして新tokenを使い、
-旧tokenを再利用しません。対象はconfigured label、Hanchou Core cwd、1 tab／1 pane、
-no-worktreeをすべて満たすworkspaceに限定し、同じlabelの不一致が1件でもあればclose前に
-fail closedとします。occupied targetは設定済みOrchestrator Agent identityとの一致を要求します。
+状態変化後、およびpartial failureで一部をcloseした後は、同じmodeのread-only planから再planして
+新tokenを使い、旧tokenを再利用しません。対象はconfigured label、Hanchou Coreと一致するpane
+base cwd、1 tab／1 pane、no-worktreeをすべて満たすworkspaceに限定し、同じlabelの不一致が
+1件でもあればclose前にfail closedとします。occupied targetは設定済みOrchestrator Agent
+identityとの一致を要求します。
 unowned legacy targetはforegroundがCore cwd上の利用可能なshellで、同じTTYまたはshell descendantの
 追加processがOS process table上で観測されない場合だけ対象にします。planの各`CLOSE` rowにある
 `observed_additional`は、unowned legacy targetではこのbest-effort観測の件数、Agent occupant
@@ -256,6 +257,32 @@ session内にある全processの終了を人間が承認する操作とします
 Herdr TUIで個別確認して手動cleanupします。Herdr server/session、Beads、Relay、Dashboard、
 repository、worktreeは変更しません。全targetの消失確認後だけruntime bindingと初期化markerを
 削除します。完全なsession PID列挙には将来のHerdr API拡張が必要です。
+
+`--include-unmanaged`はdefaultの自動fallbackにせず、人間が明示した場合だけ使用します。
+activity判定をoverrideできるのはunboundかつauthoritativeなAgent recordがないlegacy paneに
+限り、次のactivity refusalだけをoverrideできます。
+`foreground_busy`、`current_cwd_outside_core`、`background_processes_observed`、
+`process_scan_unavailable`、`stale_pane_authority`です。
+exact configured label、pane base cwdのCore一致、1 tab／1 pane、no-worktree、全opaque ID、
+binding／moved-terminal、Agent listとdirect pane lookup、実在Agentのname／kind／identity整合は
+hard containmentとして維持します。Herdr `pane process-info`のresult type、foreground
+PID／PGID／TTY、process recordもschema-validでなければなりません。
+`process_scan_unavailable`がoverrideするのは後段のOS process table scanだけであり、malformed
+Herdr responseは対象にしません。これらが1件でも不一致なら全close前にfail closedとします。
+
+```text
+hanchou stop-orchestrator <profile> --all --include-unmanaged
+hanchou stop-orchestrator <profile> --all --include-unmanaged --plan <64hex-token> --yes
+```
+
+include modeのplanは対象を`UNMANAGED-ACTIVE`と表示し、foreground `PID:name`、pane-reported
+`cwd`、全foreground processの`process_cwds=PID:name@cwd`、`observed_additional`、base cwd、
+override理由、whole-session終了警告を表示します。`current_cwd_outside_core`はこの全process cwdも
+判定します。
+OS scanを完了できない場合の`observed_additional=n/a`を「追加processなし」と解釈しません。
+plan identityへ`include_unmanaged`を束縛し、exact apply commandとpartial failure後の再planにも
+`--include-unmanaged`を必須とします。unmanaged targetを先に、bound targetを最後にcloseします。
+`launch`／`start-orchestrator`およびManaged Agentはこのmodeを自動選択しません。
 
 applyは通常の対話terminalでのみ受け付け、`HERDR_ENV=1`または`HANCHOU_AGENT_ID`を持つ
 callerを拒否し、Codex policyではallowlistしません。これらとplan tokenは、人間のreviewを
