@@ -102,10 +102,10 @@ if (/pattern\s*=\s*\[\s*["']hanchou["']\s*,\s*["']inbox["']\s*\]/.test(source)) 
 }
 for (const expected of [
   '[["hanchou", "./bin/hanchou", "bin/hanchou"], "stop-orchestrator"]',
-  '["hanchou", "project", ["list", "show", "resolve", "doctor"]]',
-  '["hanchou", "inbox", ["list", "show"]]',
-  '["hanchou", "inbox", ["claim", "ack"]]',
-  '["hanchou", "inbox", ["retry", "dead-letter"]]',
+  '[["hanchou", "./bin/hanchou", "bin/hanchou"], "project", ["list", "show", "resolve", "doctor"]]',
+  '[["hanchou", "./bin/hanchou", "bin/hanchou"], "inbox", ["list", "show"]]',
+  '[["hanchou", "./bin/hanchou", "bin/hanchou"], "inbox", ["claim", "ack"]]',
+  '[["hanchou", "./bin/hanchou", "bin/hanchou"], "inbox", ["retry", "dead-letter"]]',
   'decision = "prompt"',
 ]) {
   if (!source.includes(expected)) throw new Error(`missing rule fragment: ${expected}`);
@@ -118,6 +118,7 @@ import { spawnSync } from "node:child_process";
 const rules = process.argv[2];
 const cases = [
   [["hanchou", "project", "list", "--json"], "allow"],
+  [["./bin/hanchou", "project", "list", "--json"], "allow"],
   [["hanchou", "project", "show", "example-app", "--json"], "allow"],
   [["hanchou", "project", "resolve", "--path", "/workspace/example-app", "--json"], "allow"],
   [["hanchou", "project", "doctor"], "allow"],
@@ -126,10 +127,12 @@ const cases = [
   [["hanchou", "stop-orchestrator", "work", "--all", "--yes"], "prompt"],
   [["hanchou", "stop-orchestrator", "work", "--all", "--include-unmanaged"], "prompt"],
   [["hanchou", "stop-orchestrator", "work", "--all", "--include-unmanaged", "--plan", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "--yes"], "prompt"],
-  [["./bin/hanchou", "stop-orchestrator", "work", "--all", "--plan", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "--yes"], "prompt"],
+  [["./bin/hanchou", "stop-orchestrator", "--all", "--plan", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "--yes"], "prompt"],
   [["hanchou", "inbox", "list", "--json"], "allow"],
+  [["./bin/hanchou", "inbox", "list", "--json"], "allow"],
   [["hanchou", "inbox", "show", "evt_example"], "allow"],
   [["hanchou", "inbox", "claim", "--to", "orchestrator", "--json"], "allow"],
+  [["./bin/hanchou", "inbox", "claim", "--to", "orchestrator", "--json"], "allow"],
   [["hanchou", "inbox", "ack", "evt_example", "--by", "orchestrator"], "allow"],
   [["hanchou", "inbox", "retry", "evt_example"], "prompt"],
   [["hanchou", "inbox", "dead-letter", "evt_example", "--reason", "invalid"], "prompt"],

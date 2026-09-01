@@ -35,6 +35,15 @@ hanchou-editor
 
 Writer/Editor are installed to Codex only.
 
+The profile-local managed source is `<profile-root>/hanchou-skills`, sibling to
+`<profile-root>/hanchou`; candidate Core is validated against that candidate
+Skills checkout. Pair validation requires the Skills VERSION declared by Core,
+byte-identical shared `hanchou-cli`, and every configured public Skill. The
+`--global --copy` destinations are same-user integration
+state rather than profile-isolated state. A later bootstrap from another
+profile may replace them, so the operator must serialize cross-profile
+update/bootstrap and check each affected profile with `doctor`.
+
 ## Private overlays
 
 Company/personal Skills live in separate private repositories and are referenced

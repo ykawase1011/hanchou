@@ -32,6 +32,23 @@ Codex Sol Orchestrator in Herdr
              └─ Delivery: user-facing reports
 ```
 
+Each profile uses one local instance and one persistent Orchestrator:
+
+```text
+~/HanchouWorkspace/<profile>/       exact Orchestrator cwd
+├── bin/hanchou                     root/profile-fixed regular launcher
+├── hanchou/                        managed detached Core
+├── hanchou-skills/                 managed detached Public Skills
+└── repositories/                   canonical target shelf
+```
+
+Core and Skills come from their fixed official public HTTPS `refs/heads/main`
+and are pinned to independent exact commits, but validation, activation,
+current/previous recording, update, and rollback operate on the pair. L0 has
+explicit direct read/write scope to the entire profile root; delegation is Role
+policy, not filesystem enforcement. Same-user global integrations remain shared
+and may reflect the last successful bootstrap.
+
 ## Response lifecycle
 
 1. Orchestrator replies immediately with an answer, Task acknowledgement, or one
@@ -68,8 +85,10 @@ hanchou             setup, routing, Relay, Delivery, cross-system operations
 
 ## Current implementation boundary
 
-Implemented in the scaffold:
+Implemented in the v2.4.0 Core:
 
+- profile-local init, fixed Core/Public Skills sources, exact-pair
+  update/rollback, and profile-root Orchestrator lifecycle;
 - fixed-path human onboarding and project authorization enforcement;
 - configuration/apply/doctor/status/launch/open;
 - loopback-only read-only status Dashboard;
@@ -82,6 +101,8 @@ Implemented in the scaffold:
 
 Required before operational replacement:
 
+- target-Mac cutover and live E2E of the implemented `init`, exact-pair
+  `update`/`rollback`, profile-local launcher, and profile-root lifecycle;
 - live execution/Relay/Delivery E2E on the target Mac;
 - restart/orphan reconciliation hardening and execution cancellation;
 - typed Hanchou schedule wrapper and same-Orchestrator wake;

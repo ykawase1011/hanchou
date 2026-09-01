@@ -11,12 +11,16 @@ import {
   fstatSync,
   fsyncSync,
   lstatSync,
+  linkSync,
+  mkdtempSync,
   mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
   realpathSync,
   renameSync,
+  rmdirSync,
+  rmSync,
   statSync,
   symlinkSync,
   unlinkSync,
@@ -64,9 +68,59 @@ const AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const PROJECT_ID_PATTERN = /^[a-z][a-z0-9._-]{0,63}$/;
 const INBOX_STATES = new Set(["pending", "processing", "acknowledged", "dead-letter"]);
 const DELIVERY_STATES = new Set(["pending", "rendered", "delivered", "failed"]);
-const CODEX_RULES_PATH = join(ROOT, ".codex", "rules", "hanchou.rules");
 const TERMINAL_JOURNAL_SCHEMA = "hanchou.relay-terminal-journal.v1";
 const INBOX_TRANSITION_JOURNAL_SCHEMA = "hanchou.relay-inbox-transition-journal.v1";
+const INSTANCE_SCHEMA = "hanchou.instance.v1";
+const INSTANCE_TRANSACTION_SCHEMA = "hanchou.instance-transaction.v1";
+const OFFICIAL_CORE_SOURCE = "https://github.com/ykawase1011/hanchou.git";
+const OFFICIAL_SKILLS_SOURCE = "https://github.com/ykawase1011/hanchou-skills.git";
+const OFFICIAL_INSTANCE_REF = "refs/heads/main";
+const GIT_COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+
+type InstanceCommits = {
+  core: string;
+  skills: string;
+};
+
+type InstanceMetadata = {
+  schema: "hanchou.instance.v1";
+  profile: string;
+  instance_root: string;
+  core_path: string;
+  skills_path: string;
+  launcher_path: string;
+  source: {
+    core: string;
+    skills: string;
+    ref: string;
+  };
+  current: InstanceCommits;
+  previous: InstanceCommits | null;
+  legacy_orchestrator_roots: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+type InstanceTransaction = {
+  schema: "hanchou.instance-transaction.v1";
+  profile: string;
+  action: "update" | "rollback";
+  from: InstanceCommits;
+  to: InstanceCommits;
+  status: "switching" | "post-activation" | "rollback-failed";
+  started_at: string;
+  error?: string;
+};
+
+type InstanceCommandOverrides = {
+  root?: string;
+  coreSource?: string;
+  skillsSource?: string;
+  ref?: string;
+  interactive?: boolean;
+  validateCandidate?: (corePath: string, skillsPath: string) => void;
+  postActivate?: (launcherPath: string, profile: string) => void;
+};
 
 type ProjectEntry = {
   id: string;
@@ -108,12 +162,13 @@ type ProjectAuthorization = {
 };
 
 type OrchestratorRuntimeBinding = {
-  schema: "hanchou.orchestrator-runtime.v1";
+  schema: "hanchou.orchestrator-runtime.v1" | "hanchou.orchestrator-runtime.v2";
   profile: string;
   session: string;
   agent_name: string;
   workspace_label: string;
-  cwd: string;
+  core_root: string;
+  workspace_cwd: string;
   workspace_id: string;
   tab_id: string;
   pane_id: string;
@@ -254,6 +309,25 @@ export function trustedMiseExecutable(): string {
     } catch { /* try the next fixed location */ }
   }
   throw new CommandError("required command not found in a trusted location: mise (install it with `brew install mise`)");
+}
+
+function trustedGitExecutable(): string {
+  const candidates = [
+    "/usr/bin/git",
+    "/opt/homebrew/bin/git",
+    "/usr/local/bin/git",
+    "/home/linuxbrew/.linuxbrew/bin/git",
+    join(operatorHome(), ".local", "bin", "git"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const resolved = realpathSync(candidate);
+      const info = statSync(resolved);
+      const ownerAllowed = typeof process.getuid !== "function" || info.uid === process.getuid() || info.uid === 0;
+      if (info.isFile() && (info.mode & 0o111) !== 0 && (info.mode & 0o022) === 0 && ownerAllowed) return resolved;
+    } catch { /* try the next fixed location */ }
+  }
+  throw new CommandError("required command not found in a trusted location: git (install it with `brew install git`)");
 }
 
 function trustedMiseEnvironment(): NodeJS.ProcessEnv {
@@ -543,7 +617,1271 @@ export function onboardProfile(args: JsonObject, name: string, interactive = Boo
   console.log(`\nonboarding workspace ready: ${workspaceRoot}`);
   console.log(`authorization ready: ${rootId}`);
   console.log(`next: clone or create only Agent-safe Git repositories below ${workspaceRoot}`);
-  console.log(`then: hanchou bootstrap ${name} && hanchou launch ${name}`);
+  console.log(`then: ${displayedProfileCommand(name, "bootstrap")} && ${displayedProfileCommand(name, "launch")}`);
+}
+
+function defaultInstanceRoot(name: string): string {
+  return join(operatorHome(), "HanchouWorkspace", name);
+}
+
+function displayedHanchouExecutable(name: string): string {
+  const launcher = process.env.HANCHOU_INSTANCE_LAUNCHER;
+  const expected = join(defaultInstanceRoot(name), "bin", "hanchou");
+  if (process.env.HANCHOU_INSTANCE_PROFILE === name && launcher && isAbsolute(launcher) && resolve(launcher) === resolve(expected)) {
+    return shellQuote(expected);
+  }
+  return "hanchou";
+}
+
+function displayedProfileCommand(name: string, command: string, suffix = ""): string {
+  const executable = displayedHanchouExecutable(name);
+  const profile = executable === "hanchou" ? ` ${name}` : "";
+  return `${executable} ${command}${profile}${suffix}`;
+}
+
+function instanceLayout(name: string, overrideRoot?: string): Record<string, string> {
+  const root = onboardingWorkspacePath(overrideRoot ?? defaultInstanceRoot(name));
+  return {
+    root,
+    core: join(root, "hanchou"),
+    skills: join(root, "hanchou-skills"),
+    repositories: join(root, "repositories"),
+    launcher: join(root, "bin", "hanchou"),
+    control: join(root, ".hanchou"),
+    metadata: join(root, ".hanchou", "instance.json"),
+    transaction: join(root, ".hanchou", "transaction.json"),
+    plans: join(root, ".hanchou", "plans"),
+  };
+}
+
+function instancePlanCache(name: string): string {
+  return join(operatorHome(), ".cache", "hanchou", "instance-plans", name);
+}
+
+function ensurePrivateDirectoryChain(path: string, label: string): void {
+  const home = operatorHome();
+  if (!pathWithin(home, path)) throw new CommandError(`${label} must be strictly below the operator HOME: ${path}`);
+  let component = home;
+  validateAuthorityComponent(component, label, false);
+  for (const part of relative(home, path).split(/[\\/]+/).filter(Boolean)) {
+    component = join(component, part);
+    if (!lexists(component)) {
+      try { mkdirSync(component, { mode: 0o700 }); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }
+    validateAuthorityComponent(component, label, false);
+  }
+  chmodSync(path, 0o700);
+}
+
+function instanceSources(overrides: InstanceCommandOverrides): { core: string; skills: string; ref: string } {
+  return {
+    core: overrides.coreSource ?? OFFICIAL_CORE_SOURCE,
+    skills: overrides.skillsSource ?? OFFICIAL_SKILLS_SOURCE,
+    ref: overrides.ref ?? OFFICIAL_INSTANCE_REF,
+  };
+}
+
+function instanceGitEnvironment(): NodeJS.ProcessEnv {
+  const env = trustedMiseEnvironment();
+  env.GIT_TERMINAL_PROMPT = "0";
+  env.GIT_ASKPASS = "/usr/bin/false";
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_CONFIG_GLOBAL = "/dev/null";
+  env.GIT_CONFIG_SYSTEM = "/dev/null";
+  env.GIT_NO_REPLACE_OBJECTS = "1";
+  env.GIT_ATTR_NOSYSTEM = "1";
+  env.GIT_LFS_SKIP_SMUDGE = "1";
+  delete env.GITHUB_TOKEN;
+  delete env.GH_TOKEN;
+  return env;
+}
+
+function instanceGit(args: string[], cwd?: string): RunResult {
+  return run([
+    trustedGitExecutable(),
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "credential.helper=",
+    "-c", "gc.auto=0",
+    "-c", "maintenance.auto=false",
+    "-c", "fetch.writeCommitGraph=false",
+    ...args,
+  ], {
+    env: instanceGitEnvironment(),
+    cwd,
+    capture: true,
+    timeout: 180_000,
+    redactOutput: true,
+  });
+}
+
+function validateCommit(value: unknown, label: string): string {
+  if (typeof value !== "string" || !GIT_COMMIT_PATTERN.test(value)) throw new CommandError(`invalid ${label}: ${String(value)}`);
+  return value;
+}
+
+function remoteInstanceCommit(source: string, ref: string): string {
+  const proc = instanceGit(["ls-remote", "--exit-code", source, ref]);
+  const rows = proc.stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (rows.length !== 1) throw new CommandError(`expected one public Git ref for ${ref} at ${source}`);
+  const [commit, observedRef, ...extra] = rows[0].split(/\s+/);
+  if (extra.length || observedRef !== ref) throw new CommandError(`unexpected public Git ref response for ${ref} at ${source}`);
+  return validateCommit(commit, `commit returned for ${source}`);
+}
+
+function remoteInstanceCommits(sources: { core: string; skills: string; ref: string }): InstanceCommits {
+  return {
+    core: remoteInstanceCommit(sources.core, sources.ref),
+    skills: remoteInstanceCommit(sources.skills, sources.ref),
+  };
+}
+
+function checkoutCommit(path: string): string {
+  return validateCommit(instanceGit(["-C", path, "rev-parse", "HEAD"]).stdout.trim(), `checkout HEAD at ${path}`);
+}
+
+function validateManagedGitAdminTree(gitDirectory: string, label: string): void {
+  const objectsDirectory = join(gitDirectory, "objects");
+  const requiredDirectories = [
+    gitDirectory,
+    objectsDirectory,
+    join(objectsDirectory, "info"),
+    join(objectsDirectory, "pack"),
+    join(gitDirectory, "refs"),
+    join(gitDirectory, "logs"),
+    join(gitDirectory, "info"),
+    join(gitDirectory, "hooks"),
+  ];
+  const requiredFiles = [
+    join(gitDirectory, "HEAD"),
+    join(gitDirectory, "config"),
+    join(gitDirectory, "index"),
+    join(gitDirectory, "logs", "HEAD"),
+  ];
+  for (const path of requiredDirectories) {
+    if (!lexists(path) || !lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink()) {
+      throw new CommandError(`${label} Git administrative directory must be a regular non-symlink directory: ${path}`);
+    }
+  }
+  for (const path of requiredFiles) {
+    if (!lexists(path) || !lstatSync(path).isFile() || lstatSync(path).isSymbolicLink()) {
+      throw new CommandError(`${label} Git administrative file must be a regular non-symlink file: ${path}`);
+    }
+  }
+
+  const visit = (path: string): void => {
+    let info: Stats;
+    try { info = lstatSync(path); }
+    catch (error) { throw new CommandError(`cannot inspect ${label} Git administrative state ${path}: ${error}`); }
+    if (info.isSymbolicLink()) {
+      throw new CommandError(`${label} Git administrative state must not contain symbolic links: ${path}`);
+    }
+    if (typeof process.getuid === "function" && info.uid !== process.getuid()) {
+      throw new CommandError(`${label} Git administrative state must be owned by the effective OS user: ${path}`);
+    }
+    if (info.isDirectory()) {
+      for (const entry of readdirSync(path)) visit(join(path, entry));
+      return;
+    }
+    if (!info.isFile()) {
+      throw new CommandError(`${label} Git administrative state must contain only directories and regular files: ${path}`);
+    }
+    if (basename(path).endsWith(".lock")) {
+      throw new CommandError(`${label} Git administrative state contains an unexpected lock file: ${path}`);
+    }
+    // Local clones may legitimately hard-link immutable object files. Git's
+    // mutable administration files must be single-link files so checkout or
+    // reflog writes cannot modify an operator file through a planted hard link.
+    if (!pathWithin(objectsDirectory, path, true) && info.nlink !== 1) {
+      throw new CommandError(`${label} Git administrative file must not be hard-linked: ${path}`);
+    }
+  };
+  visit(gitDirectory);
+}
+
+function validateManagedGitAdminState(path: string, source: string, label: string): void {
+  const gitDirectory = join(path, ".git");
+  const configPath = join(gitDirectory, "config");
+  const indexPath = join(gitDirectory, "index");
+  validateManagedGitAdminTree(gitDirectory, label);
+  validateAuthorityComponent(configPath, `${label} Git config`, true);
+  validateAuthorityComponent(indexPath, `${label} Git index`, true);
+
+  const allowedValues: Record<string, Set<string>> = {
+    "core.repositoryformatversion": new Set(["0"]),
+    "core.filemode": new Set(["true", "false"]),
+    "core.bare": new Set(["false"]),
+    "core.logallrefupdates": new Set(["true"]),
+    "core.ignorecase": new Set(["true", "false"]),
+    "core.precomposeunicode": new Set(["true", "false"]),
+    "remote.origin.url": new Set([source]),
+    "remote.origin.tagopt": new Set(["--no-tags"]),
+    "remote.origin.fetch": new Set([
+      "+refs/heads/*:refs/remotes/origin/*",
+      "+refs/heads/main:refs/remotes/origin/main",
+    ]),
+    "branch.main.remote": new Set(["origin"]),
+    "branch.main.merge": new Set(["refs/heads/main"]),
+  };
+  const entries = instanceGit(["-C", path, "config", "--local", "--no-includes", "--null", "--list"])
+    .stdout.split("\0").filter(Boolean);
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    const separator = entry.indexOf("\n");
+    if (separator <= 0) throw new CommandError(`${label} Git config contains a malformed entry`);
+    const key = entry.slice(0, separator).toLowerCase();
+    const value = entry.slice(separator + 1);
+    if (seen.has(key)) throw new CommandError(`${label} Git config contains duplicate key ${key}`);
+    seen.add(key);
+    if (!allowedValues[key]?.has(value)) {
+      throw new CommandError(`${label} Git config contains unapproved ${key}`);
+    }
+  }
+  for (const key of ["core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates", "remote.origin.url", "remote.origin.fetch"]) {
+    if (!seen.has(key)) throw new CommandError(`${label} Git config is missing required key ${key}`);
+  }
+
+  const hooksDirectory = join(gitDirectory, "hooks");
+  if (lexists(hooksDirectory)) {
+    validateAuthorityComponent(hooksDirectory, `${label} Git hooks directory`, false);
+    const unexpectedHooks = readdirSync(hooksDirectory).filter((entry) => !entry.endsWith(".sample"));
+    if (unexpectedHooks.length) throw new CommandError(`${label} Git hooks directory contains unapproved entries: ${unexpectedHooks.sort().join(", ")}`);
+  }
+  for (const forbidden of [
+    join(gitDirectory, "config.worktree"),
+    join(gitDirectory, "commondir"),
+    join(gitDirectory, "info", "attributes"),
+    join(gitDirectory, "info", "grafts"),
+    join(gitDirectory, "objects", "info", "alternates"),
+    join(gitDirectory, "refs", "replace"),
+  ]) {
+    if (lexists(forbidden)) throw new CommandError(`${label} Git administrative state is not allowed: ${forbidden}`);
+  }
+  const packedRefs = join(gitDirectory, "packed-refs");
+  if (lexists(packedRefs)) {
+    validateAuthorityComponent(packedRefs, `${label} packed refs`, true);
+    if (readText(packedRefs).split(/\r?\n/).some((line) => line.includes(" refs/replace/"))) {
+      throw new CommandError(`${label} Git packed refs contain a replace ref`);
+    }
+  }
+  const infoExclude = join(gitDirectory, "info", "exclude");
+  if (lexists(infoExclude)) {
+    validateAuthorityComponent(infoExclude, `${label} Git info exclude`, true);
+    const rules = readText(infoExclude).split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+    if (rules.length) throw new CommandError(`${label} Git info exclude contains unapproved ignore rules`);
+  }
+  const indexed = instanceGit(["-C", path, "ls-files", "-v", "-z"]).stdout.split("\0").filter(Boolean);
+  const flagged = indexed.filter((entry) => !entry.startsWith("H "));
+  if (flagged.length) throw new CommandError(`${label} Git index contains skip-worktree, assume-unchanged, or other nonstandard flags`);
+}
+
+function ensureCleanManagedCheckout(path: string, source: string, expected: string, label: string, allowIgnoredArtifacts = false): void {
+  validateAuthorityDirectoryChain(path, `${label} checkout`);
+  const gitDirectory = join(path, ".git");
+  if (!lexists(gitDirectory)) throw new CommandError(`${label} checkout is not a managed Git repository: ${path}`);
+  validateAuthorityComponent(gitDirectory, `${label} Git directory`, false);
+  validateManagedGitAdminState(path, source, label);
+  const origin = instanceGit(["-C", path, "remote", "get-url", "origin"]).stdout.trim();
+  if (origin !== source) throw new CommandError(`${label} checkout origin mismatch: expected ${source}, got ${origin}`);
+  const actual = checkoutCommit(path);
+  if (actual !== expected) throw new CommandError(`${label} checkout drift: expected ${expected}, got ${actual}`);
+  const symbolic = run([trustedGitExecutable(), "-C", path, "symbolic-ref", "-q", "HEAD"], {
+    env: instanceGitEnvironment(), capture: true, check: false, timeout: 30_000, redactOutput: true,
+  });
+  if (symbolic.returncode === 0) throw new CommandError(`${label} checkout must remain detached at an exact commit: ${path}`);
+  const status = instanceGit(["-C", path, "status", "--porcelain=v1", "--untracked-files=all"]).stdout.trim();
+  if (status) throw new CommandError(`${label} checkout has local changes; preserve or remove them before updating: ${path}`);
+  if (!allowIgnoredArtifacts) {
+    const ignored = instanceGit(["-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z"]).stdout;
+    if (ignored) throw new CommandError(`${label} checkout contains ignored files outside the reviewed commit: ${path}`);
+  }
+}
+
+function fetchExactCommitWithoutFetchHead(repository: string, source: string, expected: string, label: string): void {
+  instanceGit([
+    "-C", repository,
+    "fetch",
+    "--no-tags",
+    "--no-write-fetch-head",
+    "--no-auto-maintenance",
+    "--no-auto-gc",
+    source,
+    expected,
+  ]);
+  const fetched = validateCommit(
+    instanceGit(["-C", repository, "rev-parse", "--verify", `${expected}^{commit}`]).stdout.trim(),
+    label,
+  );
+  if (fetched !== expected) throw new CommandError(`${label} mismatch: expected ${expected}, got ${fetched}`);
+}
+
+function instancePlanToken(value: JsonObject): string {
+  return createHash("sha256").update(JSON.stringify(sortedJson(value))).digest("hex");
+}
+
+function readVersion(path: string): string {
+  const versionPath = join(path, "VERSION");
+  if (!existsSync(versionPath)) throw new CommandError(`candidate VERSION is missing: ${versionPath}`);
+  const value = readText(versionPath).trim();
+  if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$/.test(value)) throw new CommandError(`candidate VERSION is invalid: ${value}`);
+  return value;
+}
+
+function cloneInstanceRepository(source: string, ref: string, expected: string, destination: string): void {
+  if (lexists(destination)) throw new CommandError(`candidate destination already exists: ${destination}`);
+  mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+  const branch = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : "";
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/.test(branch) || branch.includes("..")) {
+    throw new CommandError(`managed instance ref must name a simple branch: ${ref}`);
+  }
+  instanceGit(["clone", "--no-tags", "--single-branch", "--branch", branch, source, destination]);
+  const actual = checkoutCommit(destination);
+  if (actual !== expected) throw new CommandError(`public ${ref} moved while preparing the candidate: expected ${expected}, got ${actual}; rerun the plan`);
+  instanceGit(["-C", destination, "checkout", "--detach", expected]);
+  ensureCleanManagedCheckout(destination, source, expected, "candidate");
+}
+
+function requireFastForwardCandidate(path: string, current: string, candidate: string, label: string): void {
+  if (current === candidate) return;
+  const ancestry = run([trustedGitExecutable(), "-C", path, "merge-base", "--is-ancestor", current, candidate], {
+    env: instanceGitEnvironment(), capture: true, check: false, timeout: 30_000, redactOutput: true,
+  });
+  if (ancestry.returncode !== 0) {
+    throw new CommandError(`${label} public main is not a fast-forward from the installed commit; refuse update and inspect the upstream history`);
+  }
+}
+
+export function candidateValidationEnvironment(corePath: string, skillsPath: string): NodeJS.ProcessEnv {
+  const candidateRoot = dirname(corePath);
+  if (dirname(skillsPath) !== candidateRoot) throw new CommandError("candidate Core and Skills must share one validation root");
+  validateAuthorityDirectoryChain(candidateRoot, "candidate validation root");
+  const validationHome = mkdtempSync(join(candidateRoot, ".validation-"));
+  chmodSync(validationHome, 0o700);
+  validateAuthorityDirectoryChain(validationHome, "candidate validation home");
+  const env = trustedMiseEnvironment();
+  for (const key of [
+    "GITHUB_TOKEN", "GH_TOKEN", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy",
+  ]) delete env[key];
+  env.HOME = validationHome;
+  env.XDG_CONFIG_HOME = join(validationHome, ".config");
+  env.XDG_CACHE_HOME = join(validationHome, ".cache");
+  env.XDG_DATA_HOME = join(validationHome, ".local", "share");
+  env.NPM_CONFIG_USERCONFIG = "/dev/null";
+  env.NPM_CONFIG_CACHE = join(validationHome, ".npm");
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_CONFIG_GLOBAL = "/dev/null";
+  env.GIT_CONFIG_SYSTEM = "/dev/null";
+  return env;
+}
+
+function cleanupCandidateValidationHome(path: string, candidateRoot: string): void {
+  try {
+    if (dirname(path) !== candidateRoot || !basename(path).startsWith(".validation-")) {
+      throw new CommandError("candidate validation HOME is outside its fixed root");
+    }
+    validateAuthorityDirectoryChain(path, "candidate validation home");
+    validateAuthorityComponent(path, "candidate validation home", false);
+    rmSync(path, { recursive: true, force: true });
+  } catch (error) {
+    console.log(`WARN candidate validation HOME was retained: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export function validateInstancePair(corePath: string, skillsPath: string): void {
+  const versions = loadToml(join(corePath, "config", "versions.toml"));
+  const expectedSkillsVersion = versions.components?.hanchou_skills?.version;
+  const actualSkillsVersion = readVersion(skillsPath);
+  if (typeof expectedSkillsVersion !== "string" || expectedSkillsVersion !== actualSkillsVersion) {
+    throw new CommandError(`candidate pair mismatch: Core requires Hanchou Skills ${String(expectedSkillsVersion)}, got ${actualSkillsVersion}`);
+  }
+  const coreCliSkill = join(corePath, "skills", "hanchou-cli", "SKILL.md");
+  const publicCliSkill = join(skillsPath, "skills", "hanchou-cli", "SKILL.md");
+  if (!existsSync(coreCliSkill) || !existsSync(publicCliSkill) || readText(coreCliSkill) !== readText(publicCliSkill)) {
+    throw new CommandError("candidate pair mismatch: the shared hanchou-cli Skill is not byte-identical");
+  }
+  const sources = loadToml(join(corePath, "config", "skills", "sources.example.toml"));
+  for (const source of sources.sources ?? []) {
+    if (source?.enabled !== true || source.location !== "../hanchou-skills") continue;
+    for (const skill of source.skills ?? []) {
+      if (typeof skill !== "string" || !existsSync(join(skillsPath, "skills", skill, "SKILL.md"))) {
+        throw new CommandError(`candidate pair mismatch: configured public Skill is missing: ${String(skill)}`);
+      }
+    }
+  }
+}
+
+function defaultValidateInstanceCandidate(corePath: string, skillsPath: string): void {
+  const mise = trustedMiseExecutable();
+  const env = candidateValidationEnvironment(corePath, skillsPath);
+  try {
+    for (const repository of [corePath, skillsPath]) {
+      run([mise, "-C", repository, "install"], { cwd: repository, env, timeout: 600_000 });
+      run([mise, "-C", repository, "exec", "--", "npm", "ci", "--ignore-scripts"], { cwd: repository, env, timeout: 600_000 });
+      run([mise, "-C", repository, "exec", "--", "make", "check"], { cwd: repository, env, timeout: 900_000 });
+    }
+    validateInstancePair(corePath, skillsPath);
+  } finally {
+    cleanupCandidateValidationHome(String(env.HOME), dirname(corePath));
+  }
+}
+
+function prepareInstanceCandidate(
+  name: string,
+  root: string,
+  current: InstanceCommits | null,
+  sources: { core: string; skills: string; ref: string },
+  commits: InstanceCommits,
+  registryDigest: string | null,
+  overrides: InstanceCommandOverrides,
+): JsonObject {
+  const cacheParent = current ? join(root, ".hanchou", "candidates") : instancePlanCache(name);
+  ensurePrivateDirectoryChain(cacheParent, "instance candidate cache");
+  const temporary = mkdtempSync(join(cacheParent, ".preparing-"));
+  try {
+    const corePath = join(temporary, "hanchou");
+    const skillsPath = join(temporary, "hanchou-skills");
+    cloneInstanceRepository(sources.core, sources.ref, commits.core, corePath);
+    cloneInstanceRepository(sources.skills, sources.ref, commits.skills, skillsPath);
+    if (current) {
+      requireFastForwardCandidate(corePath, current.core, commits.core, "Core");
+      requireFastForwardCandidate(skillsPath, current.skills, commits.skills, "Skills");
+    }
+    validateCandidateInDisposableClones(corePath, skillsPath, sources, commits, overrides);
+    ensureCleanManagedCheckout(corePath, sources.core, commits.core, "candidate Core");
+    ensureCleanManagedCheckout(skillsPath, sources.skills, commits.skills, "candidate Skills");
+    const planBody: JsonObject = {
+      schema: "hanchou.instance-plan.v1",
+      operation: current ? "update" : "init",
+      profile: name,
+      instance_root: root,
+      sources,
+      current,
+      candidate: commits,
+      versions: { core: readVersion(corePath), skills: readVersion(skillsPath) },
+      registry_digest: registryDigest,
+    };
+    const token = instancePlanToken(planBody);
+    const destination = join(cacheParent, token);
+    if (lexists(destination)) {
+      rmSync(temporary, { recursive: true, force: true });
+      const existing = trustedPlanRecord(join(destination, "plan.json"));
+      const existingBody = { ...existing };
+      delete existingBody.token;
+      delete existingBody.candidate_path;
+      delete existingBody.prepared_at;
+      if (!deepEqual(existingBody, planBody)) throw new CommandError(`instance plan token collision at ${destination}`);
+      validatePreparedCandidate(existing, overrides, false);
+      return existing;
+    }
+    durableRename(temporary, destination);
+    const record = { ...planBody, token, candidate_path: destination, prepared_at: utcnow() };
+    atomicWrite(join(destination, "plan.json"), `${JSON.stringify(record)}\n`, 0o600);
+    return record;
+  } catch (error) {
+    if (lexists(temporary)) rmSync(temporary, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function trustedPlanRecord(path: string): JsonObject {
+  validateAuthorityDirectoryChain(dirname(path), "instance plan directory");
+  if (!trustedLifecycleArtifact(path, "instance plan")) throw new CommandError(`instance plan not found: ${path}`);
+  const record = readJsonFile(path, "instance plan");
+  if (record.schema !== "hanchou.instance-plan.v1" || typeof record.token !== "string" || !/^[a-f0-9]{64}$/.test(record.token)) {
+    throw new CommandError(`invalid instance plan: ${path}`);
+  }
+  const body = { ...record };
+  delete body.token;
+  delete body.candidate_path;
+  delete body.prepared_at;
+  if (instancePlanToken(body) !== record.token) throw new CommandError(`instance plan fingerprint mismatch: ${path}`);
+  const candidateRoot = dirname(path);
+  if (record.candidate_path !== candidateRoot) {
+    throw new CommandError(`instance plan candidate path must exactly match its fixed plan directory: ${path}`);
+  }
+  return record;
+}
+
+function trustedInstanceMetadata(
+  name: string,
+  root: string,
+  required = true,
+  expectedSources = { core: OFFICIAL_CORE_SOURCE, skills: OFFICIAL_SKILLS_SOURCE, ref: OFFICIAL_INSTANCE_REF },
+): InstanceMetadata | null {
+  const layout = instanceLayout(name, root);
+  if (lexists(layout.control)) validateAuthorityDirectoryChain(layout.control, "instance control directory");
+  if (!lexists(layout.metadata)) {
+    if (required) throw new CommandError(`Hanchou instance is not initialized: ${layout.metadata}; run the seed Core's \`hanchou init ${name}\``);
+    return null;
+  }
+  if (!trustedLifecycleArtifact(layout.metadata, "instance metadata")) return null;
+  validateAuthorityDirectoryChain(layout.root, "instance root");
+  validateInstanceControlFile(layout.launcher, "profile-local launcher");
+  if ((lstatSync(layout.launcher).mode & 0o111) === 0) throw new CommandError(`profile-local launcher is not executable: ${layout.launcher}`);
+  const value = readJsonFile(layout.metadata, "instance metadata");
+  const expected: JsonObject = {
+    schema: INSTANCE_SCHEMA,
+    profile: name,
+    instance_root: realpathSync(layout.root),
+    core_path: realpathSync(layout.core),
+    skills_path: realpathSync(layout.skills),
+    launcher_path: realpathSync(layout.launcher),
+  };
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    if (value[key] !== expectedValue) throw new CommandError(`instance metadata mismatch for ${key}: expected ${expectedValue}, got ${String(value[key])}`);
+  }
+  if (value.source?.core !== expectedSources.core || value.source?.skills !== expectedSources.skills || value.source?.ref !== expectedSources.ref) {
+    throw new CommandError("instance metadata does not use the fixed official public repositories and main ref");
+  }
+  for (const key of ["core", "skills"]) validateCommit(value.current?.[key], `instance current.${key}`);
+  if (value.previous !== null) for (const key of ["core", "skills"]) validateCommit(value.previous?.[key], `instance previous.${key}`);
+  if (!Array.isArray(value.legacy_orchestrator_roots) || value.legacy_orchestrator_roots.some((item: unknown) => typeof item !== "string" || !isAbsolute(item))) {
+    throw new CommandError(`instance metadata has invalid legacy_orchestrator_roots: ${layout.metadata}`);
+  }
+  for (const key of ["created_at", "updated_at"]) if (!isTimestamp(value[key])) throw new CommandError(`instance metadata has invalid ${key}: ${layout.metadata}`);
+  ensureCleanManagedCheckout(layout.core, expectedSources.core, value.current.core, "managed Core");
+  ensureCleanManagedCheckout(layout.skills, expectedSources.skills, value.current.skills, "managed Skills");
+  validateExistingInstanceControlSurface(layout, layout.core);
+  return value as InstanceMetadata;
+}
+
+function configuredInstance(name: string, required = false): { layout: Record<string, string>; metadata: InstanceMetadata } | null {
+  const configuredRoot = process.env.HANCHOU_INSTANCE_ROOT;
+  if (!configuredRoot) {
+    if (required) throw new CommandError(`this command must be run through ${defaultInstanceRoot(name)}/bin/hanchou`);
+    return null;
+  }
+  if (!isAbsolute(configuredRoot)) throw new CommandError("HANCHOU_INSTANCE_ROOT must be an absolute path fixed by the profile-local launcher");
+  const expectedProfile = process.env.HANCHOU_INSTANCE_PROFILE;
+  if (expectedProfile !== name) throw new CommandError(`profile-local launcher mismatch: expected profile ${expectedProfile ?? "(unset)"}, selected ${name}`);
+  const expectedRoot = defaultInstanceRoot(name);
+  if (resolve(configuredRoot) !== resolve(expectedRoot)) {
+    throw new CommandError(`profile-local launcher root mismatch: expected ${expectedRoot}, got ${configuredRoot}`);
+  }
+  const layout = instanceLayout(name, configuredRoot);
+  let metadata: InstanceMetadata;
+  try { metadata = trustedInstanceMetadata(name, layout.root, true) as InstanceMetadata; }
+  catch (error) {
+    const transaction = readInstanceTransaction(layout.transaction);
+    if (transaction) {
+      throw new CommandError(`incomplete ${transaction.action} transaction (${transaction.status}) at ${layout.transaction}; automatic commands are blocked until the managed checkouts and metadata are manually inspected and repaired`);
+    }
+    throw error;
+  }
+  if (realpathSync(ROOT) !== metadata.core_path) {
+    throw new CommandError(`profile-local launcher loaded the wrong Core: expected ${metadata.core_path}, got ${realpathSync(ROOT)}`);
+  }
+  return { layout, metadata };
+}
+
+function instanceWorkspaceRoot(name: string): string {
+  const instance = configuredInstance(name, false);
+  return instance ? realpathSync(instance.layout.root) : realpathSync(ROOT);
+}
+
+function instanceProjectCwd(name: string): string {
+  const instance = configuredInstance(name, false);
+  return instance ? realpathSync(instance.layout.root) : realpathSync(ROOT);
+}
+
+function renderInstanceLauncher(name: string): string {
+  return `#!/bin/bash -p
+set -euo pipefail
+PATH="/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+HANCHOU_LOCAL_SOURCE="${"${BASH_SOURCE[0]}"}"
+while [[ -L "$HANCHOU_LOCAL_SOURCE" ]]; do
+  HANCHOU_LOCAL_SOURCE_DIR="$(cd "$(dirname "$HANCHOU_LOCAL_SOURCE")" && pwd -P)"
+  HANCHOU_LOCAL_SOURCE="$(readlink "$HANCHOU_LOCAL_SOURCE")"
+  [[ "$HANCHOU_LOCAL_SOURCE" != /* ]] && HANCHOU_LOCAL_SOURCE="$HANCHOU_LOCAL_SOURCE_DIR/$HANCHOU_LOCAL_SOURCE"
+done
+HANCHOU_LOCAL_BIN_DIR="$(cd "$(dirname "$HANCHOU_LOCAL_SOURCE")" && pwd -P)"
+HANCHOU_LOCAL_ROOT="$(cd "$HANCHOU_LOCAL_BIN_DIR/.." && pwd -P)"
+HANCHOU_LOCAL_CORE="$HANCHOU_LOCAL_ROOT/hanchou"
+
+if [[ -L "$HANCHOU_LOCAL_CORE" || ! -d "$HANCHOU_LOCAL_CORE" || ! -x "$HANCHOU_LOCAL_CORE/bin/hanchou" ]]; then
+  echo "hanchou: managed Core is missing or unsafe: $HANCHOU_LOCAL_CORE" >&2
+  exit 127
+fi
+
+unset HANCHOU_CONFIG_ROOT
+HANCHOU_INSTANCE_ROOT="$HANCHOU_LOCAL_ROOT"
+HANCHOU_INSTANCE_PROFILE=${shellQuote(name)}
+HANCHOU_PROFILE=${shellQuote(name)}
+HANCHOU_INSTANCE_LAUNCHER="$HANCHOU_LOCAL_BIN_DIR/hanchou"
+export HANCHOU_INSTANCE_ROOT HANCHOU_INSTANCE_PROFILE HANCHOU_PROFILE HANCHOU_INSTANCE_LAUNCHER
+
+exec "$HANCHOU_LOCAL_CORE/bin/hanchou" "$@"
+`;
+}
+
+function instanceInstructions(name: string, sourceRoot: string): string {
+  const templatePath = join(sourceRoot, "templates", "instance", "AGENTS.md.tmpl");
+  if (existsSync(templatePath)) return readText(templatePath).replaceAll("{{PROFILE}}", name);
+  return `# Hanchou ${name} profile workspace
+
+This directory is the Hanchou L0 control workspace for profile \`${name}\`.
+The managed Core is \`./hanchou\`; public Hanchou Skills are in
+\`./hanchou-skills\`; human-authorized project repositories are below
+\`./repositories\`.
+
+When this session is the Herdr Agent named \`orchestrator\`, read and follow:
+
+- \`hanchou/roles/orchestrator/ROLE.md\`
+- \`hanchou/docs/SESSION_HANDOFF.md\`
+- \`hanchou/docs/RELAY.md\`
+- \`hanchou/docs/REPORTING.md\`
+
+Use \`./bin/hanchou\` for Hanchou commands. Do not edit the managed
+\`hanchou\` or \`hanchou-skills\` checkouts; a human updates them with
+\`./bin/hanchou update\`. Do not directly implement work inside
+\`repositories/\` from L0. Resolve authorization and delegate project work to
+an isolated worker/worktree. This profile root is a policy boundary for
+convenience, not an OS-level security boundary.
+`;
+}
+
+function validateInitInstanceTarget(layout: Record<string, string>): void {
+  if (!lexists(layout.root)) return;
+  validateAuthorityDirectoryChain(layout.root, "instance root");
+  const allowed = new Set(["repositories", ".hanchou"]);
+  const unexpected = readdirSync(layout.root).filter((entry) => !allowed.has(entry));
+  if (unexpected.length) {
+    throw new CommandError(`instance root contains unknown entries; refusing to overwrite: ${unexpected.sort().join(", ")}`);
+  }
+  if (lexists(layout.repositories)) validateAuthorityComponent(layout.repositories, "instance repository shelf", false);
+  if (lexists(layout.control)) {
+    validateAuthorityComponent(layout.control, "instance control directory", false);
+    const controlEntries = readdirSync(layout.control);
+    if (controlEntries.length) {
+      throw new CommandError(`uninitialized instance control directory is not empty; inspect before retrying: ${controlEntries.sort().join(", ")}`);
+    }
+  }
+}
+
+function validateInitDeploymentDestinations(layout: Record<string, string>): void {
+  for (const path of [
+    layout.core,
+    layout.skills,
+    join(layout.root, "bin"),
+    join(layout.root, ".codex"),
+    join(layout.root, ".claude"),
+    join(layout.root, "AGENTS.md"),
+    join(layout.root, "CLAUDE.md"),
+    layout.metadata,
+  ]) {
+    if (lexists(path)) throw new CommandError(`init deployment target appeared after review; refusing to overwrite: ${path}`);
+  }
+}
+
+function validateInstanceControlFile(path: string, label = "instance managed control file"): void {
+  validateAuthorityComponent(path, label, true);
+  if (lstatSync(path).nlink !== 1) throw new CommandError(`${label} must not be hard-linked: ${path}`);
+}
+
+function writeInstanceControlFile(path: string, text: string): void {
+  validateAuthorityDirectoryChain(dirname(path), "instance control directory");
+  if (lexists(path)) validateInstanceControlFile(path);
+  backupAndWrite(path, text);
+}
+
+function validateExistingInstanceControlSurface(layout: Record<string, string>, sourceRoot: string): void {
+  for (const directory of [
+    join(layout.root, "bin"),
+    join(layout.root, ".codex"),
+    join(layout.root, ".codex", "agents"),
+    join(layout.root, ".codex", "rules"),
+    join(layout.root, ".claude"),
+    join(layout.root, ".claude", "agents"),
+  ]) validateAuthorityComponent(directory, "instance managed control directory", false);
+  const files = [
+    layout.launcher,
+    join(layout.root, "AGENTS.md"),
+    join(layout.root, "CLAUDE.md"),
+    join(layout.root, ".codex", "config.toml"),
+    join(layout.root, ".codex", "rules", "hanchou.rules"),
+    ...listMatchingFiles(join(sourceRoot, ".codex", "agents"), ".toml").map((source) => join(layout.root, ".codex", "agents", basename(source))),
+    ...listMatchingFiles(join(sourceRoot, ".claude", "agents"), ".md").map((source) => join(layout.root, ".claude", "agents", basename(source))),
+  ];
+  for (const path of files) validateInstanceControlFile(path);
+}
+
+function materializeInstanceControlSurface(name: string, layout: Record<string, string>, sourceRoot = ROOT): void {
+  for (const directory of [join(layout.root, "bin"), join(layout.root, ".codex"), join(layout.root, ".codex", "agents"), join(layout.root, ".codex", "rules"), join(layout.root, ".claude"), join(layout.root, ".claude", "agents")]) {
+    if (!lexists(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
+    validateAuthorityDirectoryChain(directory, "instance control directory");
+  }
+  writeInstanceControlFile(layout.launcher, renderInstanceLauncher(name));
+  chmodSync(layout.launcher, 0o700);
+  writeInstanceControlFile(join(layout.root, "AGENTS.md"), instanceInstructions(name, sourceRoot));
+  writeInstanceControlFile(join(layout.root, "CLAUDE.md"), instanceInstructions(name, sourceRoot));
+  const codexConfig = readText(join(sourceRoot, ".codex", "config.toml"))
+    .replaceAll("roles/orchestrator/ROLE.md", "hanchou/roles/orchestrator/ROLE.md");
+  writeInstanceControlFile(join(layout.root, ".codex", "config.toml"), codexConfig);
+  writeInstanceControlFile(join(layout.root, ".codex", "rules", "hanchou.rules"), readText(join(sourceRoot, ".codex", "rules", "hanchou.rules")));
+  for (const source of listMatchingFiles(join(sourceRoot, ".codex", "agents"), ".toml")) {
+    writeInstanceControlFile(join(layout.root, ".codex", "agents", basename(source)), readText(source));
+  }
+  for (const source of listMatchingFiles(join(sourceRoot, ".claude", "agents"), ".md")) {
+    writeInstanceControlFile(join(layout.root, ".claude", "agents", basename(source)), readText(source));
+  }
+}
+
+function writeInstanceMetadata(path: string, metadata: InstanceMetadata): void {
+  atomicWrite(path, `${JSON.stringify(metadata)}\n`, 0o600);
+}
+
+function requireHumanInstanceApply(operation: string, args: JsonObject, interactive: boolean): string {
+  if (!args.yes) throw new CommandError(`${operation} apply requires --yes`);
+  if (process.env.HERDR_ENV === "1" || process.env.HANCHOU_AGENT_ID) {
+    throw new CommandError(`${operation} --yes must be run from an ordinary terminal outside a Herdr-managed Agent`);
+  }
+  if (!interactive) throw new CommandError(`${operation} --yes requires an interactive terminal controlled by the human operator`);
+  if (typeof args.plan !== "string" || !/^[a-f0-9]{64}$/.test(args.plan)) throw new CommandError(`${operation} --yes requires the exact 64-character --plan token`);
+  return args.plan;
+}
+
+function requireHumanInstanceReview(operation: string, interactive: boolean): void {
+  if (process.env.HERDR_ENV === "1" || process.env.HANCHOU_AGENT_ID) {
+    throw new CommandError(`${operation} prepares or switches executable supply-chain code and must run outside a Herdr-managed Agent`);
+  }
+  if (!interactive) throw new CommandError(`${operation} requires an interactive terminal controlled by the human operator`);
+}
+
+function printInstancePlan(record: JsonObject): void {
+  const operation = String(record.operation);
+  console.log(`Hanchou instance ${operation} plan: ${record.profile}`);
+  console.log(`  instance root: ${record.instance_root}`);
+  console.log(`  Core: ${record.current?.core ?? "not installed"} -> ${record.candidate.core} (version ${record.versions.core})`);
+  console.log(`  Skills: ${record.current?.skills ?? "not installed"} -> ${record.candidate.skills} (version ${record.versions.skills})`);
+  console.log(`  source ref: ${record.sources.ref}`);
+  console.log("  candidate: downloaded and validated; deployed checkouts are unchanged");
+  console.log(`  plan token: ${record.token}`);
+  const command = operation === "init"
+    ? `${shellQuote(join(ROOT, "bin", "hanchou"))} init ${record.profile} --plan ${record.token} --yes`
+    : `${shellQuote(join(String(record.instance_root), "bin", "hanchou"))} ${operation} --plan ${record.token} --yes`;
+  console.log(`\nReview the exact commits above, then run from an ordinary terminal:\n  ${command}`);
+}
+
+function expectedCandidateRecordPath(base: string, token: string): string {
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new CommandError(`invalid instance plan token: ${token}`);
+  return join(base, token, "plan.json");
+}
+
+function validatePreparedCandidate(record: JsonObject, overrides: InstanceCommandOverrides, runValidation = true): void {
+  const candidateRoot = String(record.candidate_path);
+  const expectedRoot = join(dirname(candidateRoot), String(record.token));
+  if (candidateRoot !== expectedRoot) throw new CommandError("instance plan candidate path is not bound to its token");
+  const corePath = join(candidateRoot, "hanchou");
+  const skillsPath = join(candidateRoot, "hanchou-skills");
+  ensureCleanManagedCheckout(corePath, String(record.sources.core), validateCommit(record.candidate.core, "candidate Core commit"), "candidate Core");
+  ensureCleanManagedCheckout(skillsPath, String(record.sources.skills), validateCommit(record.candidate.skills, "candidate Skills commit"), "candidate Skills");
+  if (runValidation) validateCandidateInDisposableClones(
+    corePath,
+    skillsPath,
+    { core: String(record.sources.core), skills: String(record.sources.skills) },
+    { core: String(record.candidate.core), skills: String(record.candidate.skills) },
+    overrides,
+  );
+  ensureCleanManagedCheckout(corePath, String(record.sources.core), record.candidate.core, "candidate Core");
+  ensureCleanManagedCheckout(skillsPath, String(record.sources.skills), record.candidate.skills, "candidate Skills");
+}
+
+function removePreparedCandidate(record: JsonObject): void {
+  const candidateRoot = String(record.candidate_path);
+  const expectedRoot = join(dirname(candidateRoot), String(record.token));
+  if (candidateRoot !== expectedRoot) throw new CommandError("refusing to remove an unbound instance candidate path");
+  validateAuthorityDirectoryChain(candidateRoot, "instance candidate directory");
+  validateAuthorityComponent(candidateRoot, "instance candidate directory", false);
+  rmSync(candidateRoot, { recursive: true, force: true });
+}
+
+function cleanupPreparedCandidate(record: JsonObject): void {
+  try { removePreparedCandidate(record); }
+  catch (error) {
+    console.log(`WARN validated candidate cache was retained: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function clonePreparedCheckout(sourcePath: string, publicSource: string, commit: string, destination: string): void {
+  instanceGit(["clone", "--no-hardlinks", "--no-tags", sourcePath, destination]);
+  instanceGit(["-C", destination, "remote", "set-url", "origin", publicSource]);
+  instanceGit(["-C", destination, "checkout", "--detach", commit]);
+  ensureCleanManagedCheckout(destination, publicSource, commit, "managed candidate");
+}
+
+function validateCandidateInDisposableClones(
+  corePath: string,
+  skillsPath: string,
+  sources: { core: string; skills: string },
+  commits: InstanceCommits,
+  overrides: InstanceCommandOverrides,
+): void {
+  if (dirname(corePath) !== dirname(skillsPath)) throw new CommandError("candidate Core and Skills must share one root");
+  const validationRoot = mkdtempSync(join(dirname(corePath), ".candidate-check-"));
+  try {
+    const validationCore = join(validationRoot, "hanchou");
+    const validationSkills = join(validationRoot, "hanchou-skills");
+    clonePreparedCheckout(corePath, sources.core, commits.core, validationCore);
+    clonePreparedCheckout(skillsPath, sources.skills, commits.skills, validationSkills);
+    (overrides.validateCandidate ?? defaultValidateInstanceCandidate)(validationCore, validationSkills);
+    ensureCleanManagedCheckout(validationCore, sources.core, commits.core, "validated disposable Core", true);
+    ensureCleanManagedCheckout(validationSkills, sources.skills, commits.skills, "validated disposable Skills", true);
+  } finally {
+    try {
+      validateAuthorityDirectoryChain(validationRoot, "candidate validation directory");
+      validateAuthorityComponent(validationRoot, "candidate validation directory", false);
+      rmSync(validationRoot, { recursive: true, force: true });
+    } catch (error) {
+      console.log(`WARN disposable candidate validation directory was retained: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+export function initInstanceCommand(
+  args: JsonObject,
+  name: string,
+  profile: JsonObject,
+  overrides: InstanceCommandOverrides = {},
+): void {
+  const sources = instanceSources(overrides);
+  const layout = instanceLayout(name, overrides.root);
+  const interactive = overrides.interactive ?? Boolean(process.stdin.isTTY);
+  requireHumanInstanceReview("init", interactive);
+  const existing = trustedInstanceMetadata(name, layout.root, false, sources);
+  if (existing) {
+    console.log(`Hanchou instance already initialized: ${layout.root}`);
+    console.log(`use: ${layout.launcher} update`);
+    return;
+  }
+  validateInitInstanceTarget(layout);
+  for (const [label, path] of [["managed Core", layout.core], ["managed Skills", layout.skills], ["profile-local launcher", layout.launcher]] as Array<[string, string]>) {
+    if (lexists(path)) throw new CommandError(`${label} path already exists without trusted instance metadata; refusing to overwrite: ${path}`);
+  }
+  const registry = loadProjectRegistry(name, true);
+
+  if (!args.yes) {
+    const lockRoot = join(operatorHome(), ".config", "hanchou", name);
+    ensurePrivateDirectoryChain(lockRoot, "instance lifecycle lock directory");
+    const record = withLock(join(lockRoot, ".instance-lifecycle.lock"), () => {
+      const commits = remoteInstanceCommits(sources);
+      return prepareInstanceCandidate(name, layout.root, null, sources, commits, registry.registry_digest, overrides);
+    });
+    printInstancePlan(record);
+    return;
+  }
+
+  const token = requireHumanInstanceApply("init", args, interactive);
+  const recordPath = expectedCandidateRecordPath(instancePlanCache(name), token);
+  const record = trustedPlanRecord(recordPath);
+  if (record.operation !== "init" || record.profile !== name || record.instance_root !== layout.root || record.token !== token) {
+    throw new CommandError("init plan does not match this profile and instance root");
+  }
+  if (!deepEqual(record.sources, sources) || record.current !== null) throw new CommandError("init plan source/current state mismatch");
+  if (record.registry_digest !== registry.registry_digest) throw new CommandError("init plan is stale because the human-owned project registry changed");
+  validatePreparedCandidate(record, overrides, false);
+
+  const lockRoot = join(operatorHome(), ".config", "hanchou", name);
+  ensurePrivateDirectoryChain(lockRoot, "instance lifecycle lock directory");
+  withLock(join(lockRoot, ".instance-lifecycle.lock"), () => {
+    if (trustedInstanceMetadata(name, layout.root, false, sources)) throw new CommandError(`Hanchou instance was initialized concurrently: ${layout.root}`);
+    validateInitInstanceTarget(layout);
+    for (const path of [layout.core, layout.skills, layout.launcher]) if (lexists(path)) throw new CommandError(`init target appeared after review: ${path}`);
+    const lockedRegistry = loadProjectRegistry(name, true);
+    if (lockedRegistry.registry_digest !== record.registry_digest) throw new CommandError("init plan is stale because the project registry changed after review");
+
+    ensurePrivateDirectoryChain(layout.control, "instance control directory");
+    const staging = mkdtempSync(join(layout.control, ".installing-"));
+    const installedPaths: Array<{ path: string; dev: number; ino: number; directory: boolean }> = [];
+    const installStagedPath = (source: string, destination: string): void => {
+      if (lexists(destination)) throw new CommandError(`init deployment target appeared during installation; refusing to overwrite: ${destination}`);
+      const sourceInfo = lstatSync(source);
+      if (sourceInfo.isDirectory() && !sourceInfo.isSymbolicLink()) {
+        mkdirSync(destination, { mode: 0o700 });
+        const installed = lstatSync(destination);
+        installedPaths.push({ path: destination, dev: installed.dev, ino: installed.ino, directory: true });
+        for (const entry of readdirSync(source)) {
+          const childDestination = join(destination, entry);
+          if (lexists(childDestination)) throw new CommandError(`init child target appeared during installation: ${childDestination}`);
+          renameSync(join(source, entry), childDestination);
+        }
+        rmdirSync(source);
+      } else if (sourceInfo.isFile() && !sourceInfo.isSymbolicLink()) {
+        linkSync(source, destination);
+        const installed = lstatSync(destination);
+        installedPaths.push({ path: destination, dev: installed.dev, ino: installed.ino, directory: false });
+        unlinkSync(source);
+      } else {
+        throw new CommandError(`staged instance target must be a regular file or directory: ${source}`);
+      }
+      fsyncDirectory(dirname(destination));
+    };
+    const validateInstalledIdentities = (): void => {
+      for (const installed of installedPaths) {
+        const current = lstatSync(installed.path);
+        if (current.dev !== installed.dev || current.ino !== installed.ino || current.isDirectory() !== installed.directory) {
+          throw new CommandError(`installed instance target identity changed before commit: ${installed.path}`);
+        }
+      }
+    };
+    try {
+      clonePreparedCheckout(join(record.candidate_path, "hanchou"), sources.core, record.candidate.core, join(staging, "hanchou"));
+      clonePreparedCheckout(join(record.candidate_path, "hanchou-skills"), sources.skills, record.candidate.skills, join(staging, "hanchou-skills"));
+      validateCandidateInDisposableClones(
+        join(staging, "hanchou"),
+        join(staging, "hanchou-skills"),
+        sources,
+        record.candidate as InstanceCommits,
+        overrides,
+      );
+      ensureCleanManagedCheckout(join(staging, "hanchou"), sources.core, record.candidate.core, "staged Core");
+      ensureCleanManagedCheckout(join(staging, "hanchou-skills"), sources.skills, record.candidate.skills, "staged Skills");
+      const stagedSurface = instanceLayout(name, join(staging, "surface"));
+      materializeInstanceControlSurface(name, stagedSurface, join(staging, "hanchou"));
+      const recheckedRegistry = loadProjectRegistry(name, true);
+      if (record.registry_digest !== recheckedRegistry.registry_digest) {
+        throw new CommandError("init plan is stale because the project registry changed during candidate validation");
+      }
+      validateInitDeploymentDestinations(layout);
+      onboardProfile({ yes: true }, name, interactive);
+      validateInitDeploymentDestinations(layout);
+      installStagedPath(join(staging, "hanchou"), layout.core);
+      installStagedPath(join(staging, "hanchou-skills"), layout.skills);
+      for (const entry of ["bin", ".codex", ".claude", "AGENTS.md", "CLAUDE.md"]) {
+        installStagedPath(join(stagedSurface.root, entry), join(layout.root, entry));
+      }
+      validateInstalledIdentities();
+      ensureCleanManagedCheckout(layout.core, sources.core, record.candidate.core, "installed Core");
+      ensureCleanManagedCheckout(layout.skills, sources.skills, record.candidate.skills, "installed Skills");
+      validateExistingInstanceControlSurface(layout, layout.core);
+      const now = utcnow();
+      const legacyRoot = realpathSync(ROOT) === realpathSync(layout.core) ? [] : [realpathSync(ROOT)];
+      const metadata: InstanceMetadata = {
+        schema: INSTANCE_SCHEMA,
+        profile: name,
+        instance_root: realpathSync(layout.root),
+        core_path: realpathSync(layout.core),
+        skills_path: realpathSync(layout.skills),
+        launcher_path: realpathSync(layout.launcher),
+        source: sources,
+        current: clone(record.candidate),
+        previous: null,
+        legacy_orchestrator_roots: legacyRoot,
+        created_at: now,
+        updated_at: now,
+      };
+      writeInstanceMetadata(layout.metadata, metadata);
+      cleanupPreparedCandidate(record);
+      if (lexists(staging)) {
+        try { rmSync(staging, { recursive: true, force: true }); }
+        catch (error) { console.log(`WARN init staging directory was retained: ${error instanceof Error ? error.message : String(error)}`); }
+      }
+    } catch (error) {
+      if (!lexists(layout.metadata)) {
+        for (const installed of installedPaths.reverse()) {
+          if (!lexists(installed.path)) continue;
+          const current = lstatSync(installed.path);
+          if (current.dev !== installed.dev || current.ino !== installed.ino || current.isDirectory() !== installed.directory) {
+            console.log(`WARN retained replaced init target during cleanup: ${installed.path}`);
+            continue;
+          }
+          rmSync(installed.path, { recursive: installed.directory, force: true });
+        }
+      }
+      if (lexists(staging)) rmSync(staging, { recursive: true, force: true });
+      throw error;
+    }
+  });
+  console.log(`\nHanchou instance ready: ${layout.root}`);
+  console.log(`local command: ${layout.launcher}`);
+  console.log(`next: cd ${shellQuote(layout.root)} && ./bin/hanchou bootstrap && ./bin/hanchou doctor`);
+}
+
+function operationInstance(name: string, overrides: InstanceCommandOverrides): { layout: Record<string, string>; metadata: InstanceMetadata; sources: { core: string; skills: string; ref: string } } {
+  const sources = instanceSources(overrides);
+  if (overrides.root) {
+    const layout = instanceLayout(name, overrides.root);
+    const metadata = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+    return { layout, metadata, sources };
+  }
+  const configured = configuredInstance(name, true) as { layout: Record<string, string>; metadata: InstanceMetadata };
+  return { ...configured, sources };
+}
+
+function defaultPostActivate(launcherPath: string): void {
+  const env = { ...process.env };
+  delete env.HERDR_ENV;
+  delete env.HANCHOU_AGENT_ID;
+  run([launcherPath, "bootstrap"], { env, timeout: 1_800_000 });
+  run([launcherPath, "doctor"], { env, timeout: 300_000 });
+}
+
+function readInstanceTransaction(path: string): InstanceTransaction | null {
+  if (!lexists(path)) return null;
+  if (!trustedLifecycleArtifact(path, "instance transaction")) return null;
+  const value = readJsonFile(path, "instance transaction");
+  if (value.schema !== INSTANCE_TRANSACTION_SCHEMA || !new Set(["update", "rollback"]).has(value.action) || !new Set(["switching", "post-activation", "rollback-failed"]).has(value.status)) {
+    throw new CommandError(`invalid instance transaction: ${path}`);
+  }
+  for (const side of ["from", "to"]) for (const key of ["core", "skills"]) validateCommit(value[side]?.[key], `transaction ${side}.${key}`);
+  if (!isTimestamp(value.started_at)) throw new CommandError(`invalid instance transaction timestamp: ${path}`);
+  return value as InstanceTransaction;
+}
+
+function checkoutPreparedCommit(managedPath: string, candidatePath: string, expected: string): void {
+  fetchExactCommitWithoutFetchHead(managedPath, candidatePath, expected, "prepared candidate");
+  instanceGit(["-C", managedPath, "checkout", "--detach", expected]);
+}
+
+function switchInstance(
+  action: "update" | "rollback",
+  name: string,
+  layout: Record<string, string>,
+  metadata: InstanceMetadata,
+  record: JsonObject,
+  overrides: InstanceCommandOverrides,
+): void {
+  const from = clone(metadata.current);
+  const to = clone(record.candidate) as InstanceCommits;
+  const candidateCore = join(String(record.candidate_path), "hanchou");
+  const candidateSkills = join(String(record.candidate_path), "hanchou-skills");
+  ensureCleanManagedCheckout(layout.core, metadata.source.core, from.core, "managed Core before switch");
+  ensureCleanManagedCheckout(layout.skills, metadata.source.skills, from.skills, "managed Skills before switch");
+  validatePreparedCandidate(record, overrides, false);
+  fetchExactCommitWithoutFetchHead(layout.core, candidateCore, to.core, "prepared Core candidate");
+  fetchExactCommitWithoutFetchHead(layout.skills, candidateSkills, to.skills, "prepared Skills candidate");
+  instanceGit(["-C", layout.core, "update-ref", "refs/hanchou/previous", from.core]);
+  instanceGit(["-C", layout.skills, "update-ref", "refs/hanchou/previous", from.skills]);
+
+  const transaction: InstanceTransaction = {
+    schema: INSTANCE_TRANSACTION_SCHEMA,
+    profile: name,
+    action,
+    from,
+    to,
+    status: "switching",
+    started_at: utcnow(),
+  };
+  atomicWrite(layout.transaction, `${JSON.stringify(transaction)}\n`, 0o600);
+  const postActivate = overrides.postActivate ?? defaultPostActivate;
+  try {
+    ensureCleanManagedCheckout(layout.core, metadata.source.core, from.core, "managed Core at activation");
+    ensureCleanManagedCheckout(layout.skills, metadata.source.skills, from.skills, "managed Skills at activation");
+    checkoutPreparedCommit(layout.core, candidateCore, to.core);
+    checkoutPreparedCommit(layout.skills, candidateSkills, to.skills);
+    ensureCleanManagedCheckout(layout.core, metadata.source.core, to.core, "activated Core");
+    ensureCleanManagedCheckout(layout.skills, metadata.source.skills, to.skills, "activated Skills");
+    const activated: InstanceMetadata = {
+      ...metadata,
+      current: to,
+      previous: from,
+      updated_at: utcnow(),
+    };
+    writeInstanceMetadata(layout.metadata, activated);
+    materializeInstanceControlSurface(name, layout);
+    transaction.status = "post-activation";
+    atomicWrite(layout.transaction, `${JSON.stringify(transaction)}\n`, 0o600);
+    postActivate(layout.launcher, name);
+    unlinkSync(layout.transaction);
+    cleanupPreparedCandidate(record);
+  } catch (error) {
+    const original = error instanceof Error ? error.message : String(error);
+    try {
+      instanceGit(["-C", layout.core, "checkout", "--detach", from.core]);
+      instanceGit(["-C", layout.skills, "checkout", "--detach", from.skills]);
+      ensureCleanManagedCheckout(layout.core, metadata.source.core, from.core, "restored Core");
+      ensureCleanManagedCheckout(layout.skills, metadata.source.skills, from.skills, "restored Skills");
+      writeInstanceMetadata(layout.metadata, metadata);
+      materializeInstanceControlSurface(name, layout);
+      postActivate(layout.launcher, name);
+      unlinkSync(layout.transaction);
+      throw new CommandError(`${action} failed after switch and was rolled back to the previous commits: ${original}`);
+    } catch (rollbackError) {
+      if (rollbackError instanceof CommandError && rollbackError.message.startsWith(`${action} failed after switch and was rolled back`)) throw rollbackError;
+      transaction.status = "rollback-failed";
+      transaction.error = `${original}; rollback: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`;
+      atomicWrite(layout.transaction, `${JSON.stringify(transaction)}\n`, 0o600);
+      throw new CommandError(`${action} failed and automatic rollback is incomplete; inspect ${layout.transaction}: ${transaction.error}`);
+    }
+  }
+}
+
+export function updateInstanceCommand(
+  args: JsonObject,
+  name: string,
+  _profile: JsonObject,
+  overrides: InstanceCommandOverrides = {},
+): void {
+  const interactive = overrides.interactive ?? Boolean(process.stdin.isTTY);
+  requireHumanInstanceReview("update", interactive);
+  const { layout, metadata, sources } = operationInstance(name, overrides);
+  if (readInstanceTransaction(layout.transaction)) {
+    throw new CommandError(`an incomplete instance transaction exists at ${layout.transaction}; automatic commands are intentionally blocked until the managed checkouts and metadata are manually inspected and repaired`);
+  }
+
+  if (!args.yes) {
+    const record = withLock(join(layout.control, ".instance-lifecycle.lock"), () => {
+      const locked = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+      const candidate = remoteInstanceCommits(sources);
+      if (deepEqual(candidate, locked.current)) return null;
+      const registry = loadProjectRegistry(name, true);
+      return prepareInstanceCandidate(name, layout.root, locked.current, sources, candidate, registry.registry_digest, overrides);
+    });
+    if (!record) {
+      console.log(`Hanchou instance is current: Core ${metadata.current.core}, Skills ${metadata.current.skills}`);
+      return;
+    }
+    printInstancePlan(record);
+    return;
+  }
+
+  const token = requireHumanInstanceApply("update", args, interactive);
+  const record = trustedPlanRecord(expectedCandidateRecordPath(join(layout.control, "candidates"), token));
+  if (record.operation !== "update" || record.profile !== name || record.instance_root !== layout.root || record.token !== token) throw new CommandError("update plan does not match this instance");
+  if (!deepEqual(record.sources, sources) || !deepEqual(record.current, metadata.current)) throw new CommandError("update plan is stale because instance state changed");
+  const registry = loadProjectRegistry(name, true);
+  if (record.registry_digest !== registry.registry_digest) throw new CommandError("update plan is stale because the project registry changed");
+  validatePreparedCandidate(record, overrides, false);
+
+  withLock(join(layout.control, ".instance-lifecycle.lock"), () => {
+    const locked = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+    if (!deepEqual(locked.current, record.current)) throw new CommandError("update plan is stale because managed commits changed after review");
+    if (readInstanceTransaction(layout.transaction)) throw new CommandError("another instance transaction is incomplete");
+    const lockedRegistry = loadProjectRegistry(name, true);
+    if (record.registry_digest !== lockedRegistry.registry_digest) throw new CommandError("update plan is stale because the project registry changed after review");
+    validatePreparedCandidate(record, overrides);
+    const rechecked = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+    if (!deepEqual(rechecked, locked)) throw new CommandError("managed instance state changed while the update candidate was being validated");
+    const recheckedRegistry = loadProjectRegistry(name, true);
+    if (record.registry_digest !== recheckedRegistry.registry_digest) throw new CommandError("project registry changed while the update candidate was being validated");
+    switchInstance("update", name, layout, rechecked, record, overrides);
+  });
+  console.log(`Hanchou instance updated: Core ${record.candidate.core}, Skills ${record.candidate.skills}`);
+  console.log("Hanchou did not issue an Orchestrator workspace stop. Bootstrap may reload changed services; restart L0 explicitly to load changed role instructions.");
+}
+
+function prepareLocalInstanceCandidate(
+  name: string,
+  layout: Record<string, string>,
+  metadata: InstanceMetadata,
+  target: InstanceCommits,
+  registryDigest: string | null,
+  overrides: InstanceCommandOverrides,
+): JsonObject {
+  const cacheParent = join(layout.control, "candidates");
+  ensurePrivateDirectoryChain(cacheParent, "instance candidate cache");
+  const temporary = mkdtempSync(join(cacheParent, ".preparing-"));
+  try {
+    for (const [managed, source, commit, destination] of [
+      [layout.core, metadata.source.core, target.core, join(temporary, "hanchou")],
+      [layout.skills, metadata.source.skills, target.skills, join(temporary, "hanchou-skills")],
+    ] as Array<[string, string, string, string]>) {
+      mkdirSync(destination, { mode: 0o700 });
+      instanceGit(["-C", destination, "init"]);
+      instanceGit(["-C", destination, "remote", "add", "origin", source]);
+      fetchExactCommitWithoutFetchHead(destination, managed, commit, "rollback candidate");
+      instanceGit(["-C", destination, "checkout", "--detach", commit]);
+      ensureCleanManagedCheckout(destination, source, commit, "rollback candidate");
+    }
+    validateCandidateInDisposableClones(
+      join(temporary, "hanchou"),
+      join(temporary, "hanchou-skills"),
+      metadata.source,
+      target,
+      overrides,
+    );
+    ensureCleanManagedCheckout(join(temporary, "hanchou"), metadata.source.core, target.core, "rollback candidate Core");
+    ensureCleanManagedCheckout(join(temporary, "hanchou-skills"), metadata.source.skills, target.skills, "rollback candidate Skills");
+    const body: JsonObject = {
+      schema: "hanchou.instance-plan.v1",
+      operation: "rollback",
+      profile: name,
+      instance_root: layout.root,
+      sources: metadata.source,
+      current: metadata.current,
+      candidate: target,
+      versions: { core: readVersion(join(temporary, "hanchou")), skills: readVersion(join(temporary, "hanchou-skills")) },
+      registry_digest: registryDigest,
+    };
+    const token = instancePlanToken(body);
+    const destination = join(cacheParent, token);
+    if (lexists(destination)) {
+      rmSync(temporary, { recursive: true, force: true });
+      const existing = trustedPlanRecord(join(destination, "plan.json"));
+      const existingBody = { ...existing };
+      delete existingBody.token;
+      delete existingBody.candidate_path;
+      delete existingBody.prepared_at;
+      if (!deepEqual(existingBody, body)) throw new CommandError(`instance rollback plan token collision at ${destination}`);
+      validatePreparedCandidate(existing, overrides, false);
+      return existing;
+    }
+    durableRename(temporary, destination);
+    const record = { ...body, token, candidate_path: destination, prepared_at: utcnow() };
+    atomicWrite(join(destination, "plan.json"), `${JSON.stringify(record)}\n`, 0o600);
+    return record;
+  } catch (error) {
+    if (lexists(temporary)) rmSync(temporary, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export function rollbackInstanceCommand(
+  args: JsonObject,
+  name: string,
+  _profile: JsonObject,
+  overrides: InstanceCommandOverrides = {},
+): void {
+  const interactive = overrides.interactive ?? Boolean(process.stdin.isTTY);
+  requireHumanInstanceReview("rollback", interactive);
+  const { layout, metadata, sources } = operationInstance(name, overrides);
+  const incomplete = readInstanceTransaction(layout.transaction);
+  if (incomplete) {
+    throw new CommandError(`automatic recovery is incomplete at ${layout.transaction}; managed checkout state must be inspected before a reviewed rollback can be prepared`);
+  }
+  if (!metadata.previous) throw new CommandError("no previous validated Hanchou release is available to roll back to");
+
+  if (!args.yes) {
+    const record = withLock(join(layout.control, ".instance-lifecycle.lock"), () => {
+      const locked = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+      if (!locked.previous) throw new CommandError("no previous validated Hanchou release is available to roll back to");
+      const registry = loadProjectRegistry(name, true);
+      return prepareLocalInstanceCandidate(name, layout, locked, locked.previous, registry.registry_digest, overrides);
+    });
+    printInstancePlan(record);
+    return;
+  }
+
+  const token = requireHumanInstanceApply("rollback", args, interactive);
+  const record = trustedPlanRecord(expectedCandidateRecordPath(join(layout.control, "candidates"), token));
+  if (record.operation !== "rollback" || record.profile !== name || record.instance_root !== layout.root || record.token !== token) throw new CommandError("rollback plan does not match this instance");
+  if (!deepEqual(record.sources, sources) || !deepEqual(record.current, metadata.current) || !deepEqual(record.candidate, metadata.previous)) {
+    throw new CommandError("rollback plan is stale because current/previous instance state changed");
+  }
+  const registry = loadProjectRegistry(name, true);
+  if (record.registry_digest !== registry.registry_digest) throw new CommandError("rollback plan is stale because the project registry changed");
+  validatePreparedCandidate(record, overrides, false);
+
+  withLock(join(layout.control, ".instance-lifecycle.lock"), () => {
+    const locked = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+    if (!deepEqual(locked.current, record.current) || !deepEqual(locked.previous, record.candidate)) throw new CommandError("rollback plan is stale because commits changed after review");
+    if (readInstanceTransaction(layout.transaction)) throw new CommandError("another instance transaction is incomplete");
+    const lockedRegistry = loadProjectRegistry(name, true);
+    if (record.registry_digest !== lockedRegistry.registry_digest) throw new CommandError("rollback plan is stale because the project registry changed after review");
+    validatePreparedCandidate(record, overrides);
+    const rechecked = trustedInstanceMetadata(name, layout.root, true, sources) as InstanceMetadata;
+    if (!deepEqual(rechecked, locked)) throw new CommandError("managed instance state changed while the rollback candidate was being validated");
+    const recheckedRegistry = loadProjectRegistry(name, true);
+    if (record.registry_digest !== recheckedRegistry.registry_digest) throw new CommandError("project registry changed while the rollback candidate was being validated");
+    switchInstance("rollback", name, layout, rechecked, record, overrides);
+  });
+  console.log(`Hanchou instance rolled back: Core ${record.candidate.core}, Skills ${record.candidate.skills}`);
+  console.log("Hanchou did not issue an Orchestrator workspace stop. Bootstrap may reload changed services; restart L0 explicitly to load restored role instructions.");
 }
 
 function validateAuthorityComponent(path: string, label: string, requireFile: boolean): void {
@@ -839,13 +2177,22 @@ function profileEnv(name: string, profile: JsonObject): NodeJS.ProcessEnv {
     // bootstrap installs the pinned runtime before any managed npm/npx command;
     // doctor reports the missing runtime without hiding the rest of its checks.
   }
+  const instance = configuredInstance(name, false);
+  const instanceEnvironment: NodeJS.ProcessEnv = instance ? {
+    HANCHOU_INSTANCE_ROOT: instance.layout.root,
+    HANCHOU_INSTANCE_PROFILE: name,
+    HANCHOU_INSTANCE_LAUNCHER: instance.layout.launcher,
+  } : {};
   return {
     ...inherited,
+    ...instanceEnvironment,
     HANCHOU_PROFILE: name,
     HANCHOU_HOME: paths.root,
     HANCHOU_CONFIG_HOME: join(home, ".config", "hanchou", name),
     HANCHOU_CONFIG_ROOT: CONFIG_ROOT,
     HANCHOU_REPO_ROOT: ROOT,
+    HANCHOU_CORE_ROOT: ROOT,
+    HANCHOU_WORKSPACE_ROOT: instance?.layout.root ?? ROOT,
     HANCHOU_BEADS_DIR: paths.beads_dir,
     HANCHOU_RELAY_DIR: paths.relay_dir,
     BEADS_DIR: paths.beads_dir,
@@ -886,7 +2233,8 @@ export function codexManagedEnvironmentArgs(
   values.HERDR_TAB_ID = tabId;
   for (const key of [
     "HANCHOU_PROFILE", "HANCHOU_HOME", "HANCHOU_CONFIG_HOME", "HANCHOU_CONFIG_ROOT",
-    "HANCHOU_REPO_ROOT", "HANCHOU_BEADS_DIR", "HANCHOU_RELAY_DIR", "BEADS_DIR",
+    "HANCHOU_REPO_ROOT", "HANCHOU_CORE_ROOT", "HANCHOU_WORKSPACE_ROOT", "HANCHOU_INSTANCE_ROOT",
+    "HANCHOU_INSTANCE_PROFILE", "HANCHOU_INSTANCE_LAUNCHER", "HANCHOU_BEADS_DIR", "HANCHOU_RELAY_DIR", "BEADS_DIR",
     "BD_AGENT_PROFILE",
   ]) {
     const value = profileEnvironment[key];
@@ -1105,7 +2453,7 @@ export function codexRulePaths(root: string): string[] {
 
 export function codexPolicyRulePaths(
   userRoot = join(expand(process.env.CODEX_HOME ?? "~/.codex"), "rules"),
-  projectRoot = join(ROOT, ".codex", "rules"),
+  projectRoot = join(process.env.HANCHOU_WORKSPACE_ROOT ?? ROOT, ".codex", "rules"),
 ): string[] {
   return [...new Set([...codexRulePaths(userRoot), ...codexRulePaths(projectRoot)])];
 }
@@ -1455,7 +2803,7 @@ function printPlan(name: string, profile: JsonObject): void {
   console.log(`  task UI: http://${profile.ui.beads_ui_host}:${profile.ui.beads_ui_port}`);
   console.log(`  install mise tools from ${MISE_CONFIG}: Herdr ${tools.herdr}, Node.js ${tools.node}`);
   console.log("  render canonical roles to .codex/agents and .claude/agents");
-  console.log(`  use project-local Codex Inbox rules: ${CODEX_RULES_PATH}`);
+  console.log(`  use project-local Codex Inbox rules: ${join(instanceProjectCwd(name), ".codex", "rules", "hanchou.rules")}`);
   console.log("  backup + replace generated user Agent definitions and ~/.config/herdr/config.toml");
   console.log("  install/update explicit public Skills plus optional machine-local overlays");
   console.log("  install Herdr Claude/Codex integrations");
@@ -1547,7 +2895,7 @@ function installSkillSources(name: string, profile: JsonObject, env: NodeJS.Proc
     if (source.scope === "global") argv.push("--global");
     if (source.copy ?? true) argv.push("--copy");
     argv.push("--yes");
-    run(argv, { env, cwd: ROOT });
+    run(argv, { env, cwd: instanceProjectCwd(name) });
   }
 }
 
@@ -1562,6 +2910,8 @@ function applyProfile(name: string, profile: JsonObject, yes: boolean, installUp
   if (!yes) { printPlan(name, profile); throw new CommandError("apply requires --yes; use `hanchou plan <profile>` for preview"); }
   if (installUpstream) for (const prerequisite of ["mise", "git", "bd", "codex", "claude", "herdr", "node", "npm", "npx"]) commandPath(prerequisite);
   ensureState(name, profile);
+  const activeInstance = configuredInstance(name, false);
+  if (activeInstance) materializeInstanceControlSurface(name, activeInstance.layout);
   const env = profileEnv(name, profile);
   renderAgents();
   installAgentDefinitions();
@@ -1571,8 +2921,10 @@ function applyProfile(name: string, profile: JsonObject, yes: boolean, installUp
   const localBin = join(operatorHome(), ".local", "bin", "hanchou");
   mkdirSync(dirname(localBin), { recursive: true });
   if (lexists(localBin)) unlinkSync(localBin);
-  symlinkSync(join(ROOT, "bin", "hanchou"), localBin);
-  console.log(`linked ${localBin} -> ${join(ROOT, "bin", "hanchou")}`);
+  const instance = configuredInstance(name, false);
+  const commandTarget = instance?.layout.launcher ?? join(ROOT, "bin", "hanchou");
+  symlinkSync(commandTarget, localBin);
+  console.log(`linked ${localBin} -> ${commandTarget}`);
   if (installUpstream) {
     run([commandPath("herdr"), "integration", "install", "codex"], { env });
     run([commandPath("herdr"), "integration", "install", "claude"], { env });
@@ -1589,7 +2941,7 @@ function applyProfile(name: string, profile: JsonObject, yes: boolean, installUp
     run([commandPath("bd"), "setup", "claude"], { env, cwd: control });
     installSkillSources(name, profile, env);
     renderLaunchd(name, profile, true);
-  } else console.log("upstream install skipped; run `hanchou bootstrap` or add --install-upstream to install integrations, plugins, Beads UI, skills, and LaunchAgents");
+  } else console.log(`upstream install skipped; run \`${displayedProfileCommand(name, "bootstrap")}\` or add --install-upstream to install integrations, plugins, Beads UI, skills, and LaunchAgents`);
   if (changed) {
     try { run(herdrArgv(name, "server", "reload-config"), { env, check: false, capture: true }); }
     catch { /* apply without upstream installation leaves reload for bootstrap */ }
@@ -1675,12 +3027,10 @@ function orchestratorRuntimeBinding(name: string, profile: JsonObject): Orchestr
   try { value = readJsonFile(path, "Orchestrator runtime binding"); }
   catch (error) { throw new CommandError(`cannot trust Orchestrator runtime binding ${path}: ${error}`); }
   const expected = {
-    schema: "hanchou.orchestrator-runtime.v1",
     profile: name,
     session: validatedHerdrSession(name, profile),
     agent_name: String(profile.orchestrator.agent_name),
     workspace_label: String(profile.orchestrator.workspace_label),
-    cwd: realpathSync(ROOT),
   };
   for (const [key, required] of Object.entries(expected)) {
     if (value[key] !== required) throw new CommandError(`Orchestrator runtime binding mismatch for ${key}: expected ${required}, got ${String(value[key])}`);
@@ -1688,7 +3038,48 @@ function orchestratorRuntimeBinding(name: string, profile: JsonObject): Orchestr
   for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id", "created_at", "updated_at"]) {
     if (typeof value[key] !== "string" || !value[key]) throw new CommandError(`Orchestrator runtime binding has invalid ${key}: ${path}`);
   }
-  return value as OrchestratorRuntimeBinding;
+  const allowedRoots = orchestratorAllowedWorkspaceRoots(name);
+  if (value.schema === "hanchou.orchestrator-runtime.v1") {
+    if (typeof value.cwd !== "string" || !allowedRoots.some((root) => sameExistingDirectory(value.cwd, root))) {
+      throw new CommandError(`Orchestrator runtime binding has an unapproved legacy cwd: ${String(value.cwd)}`);
+    }
+    return { ...value, core_root: value.cwd, workspace_cwd: realpathSync(value.cwd) } as OrchestratorRuntimeBinding;
+  }
+  if (value.schema !== "hanchou.orchestrator-runtime.v2") throw new CommandError(`unsupported Orchestrator runtime binding schema: ${String(value.schema)}`);
+  if (!sameExistingDirectory(value.core_root, ROOT)) throw new CommandError(`Orchestrator runtime binding Core mismatch: expected ${realpathSync(ROOT)}, got ${String(value.core_root)}`);
+  if (typeof value.workspace_cwd !== "string" || !allowedRoots.some((root) => sameExistingDirectory(value.workspace_cwd, root))) {
+    throw new CommandError(`Orchestrator runtime binding has an unapproved workspace cwd: ${String(value.workspace_cwd)}`);
+  }
+  return { ...value, core_root: realpathSync(value.core_root), workspace_cwd: realpathSync(value.workspace_cwd) } as OrchestratorRuntimeBinding;
+}
+
+function orchestratorAllowedWorkspaceRoots(name: string): string[] {
+  const roots = [instanceWorkspaceRoot(name)];
+  const instance = configuredInstance(name, false);
+  if (instance) {
+    for (const path of instance.metadata.legacy_orchestrator_roots) {
+      try {
+        const canonical = realpathSync(path);
+        if (!roots.includes(canonical)) roots.push(canonical);
+      } catch { /* a removed legacy Core is no longer an allowed live cwd */ }
+    }
+  }
+  return roots;
+}
+
+function clearLegacyOrchestratorRoots(name: string): void {
+  const instance = configuredInstance(name, false);
+  if (!instance || !instance.metadata.legacy_orchestrator_roots.length) return;
+  withLock(join(instance.layout.control, ".instance-lifecycle.lock"), () => {
+    const current = trustedInstanceMetadata(name, instance.layout.root, true, instance.metadata.source) as InstanceMetadata;
+    if (!current.legacy_orchestrator_roots.length) return;
+    writeInstanceMetadata(instance.layout.metadata, {
+      ...current,
+      legacy_orchestrator_roots: [],
+      updated_at: utcnow(),
+    });
+  });
+  console.log("cleared completed legacy Orchestrator cwd migration allowance");
 }
 
 function saveOrchestratorRuntime(
@@ -1696,6 +3087,7 @@ function saveOrchestratorRuntime(
   profile: JsonObject,
   record: JsonObject,
   previous: OrchestratorRuntimeBinding | null = null,
+  adoptedWorkspaceCwd: string | null = null,
 ): OrchestratorRuntimeBinding {
   const ids: Record<string, string> = {};
   for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"]) {
@@ -1707,12 +3099,13 @@ function saveOrchestratorRuntime(
   }
   const now = utcnow();
   const binding: OrchestratorRuntimeBinding = {
-    schema: "hanchou.orchestrator-runtime.v1",
+    schema: previous?.schema ?? "hanchou.orchestrator-runtime.v2",
     profile: name,
     session: validatedHerdrSession(name, profile),
     agent_name: String(profile.orchestrator.agent_name),
     workspace_label: String(profile.orchestrator.workspace_label),
-    cwd: realpathSync(ROOT),
+    core_root: previous?.core_root ?? realpathSync(ROOT),
+    workspace_cwd: previous?.workspace_cwd ?? (adoptedWorkspaceCwd ? realpathSync(adoptedWorkspaceCwd) : instanceWorkspaceRoot(name)),
     workspace_id: ids.workspace_id,
     tab_id: ids.tab_id,
     pane_id: ids.pane_id,
@@ -1720,7 +3113,14 @@ function saveOrchestratorRuntime(
     created_at: previous?.created_at ?? now,
     updated_at: now,
   };
-  atomicWrite(orchestratorRuntimePath(profile), `${JSON.stringify(binding)}\n`);
+  const persisted = binding.schema === "hanchou.orchestrator-runtime.v1"
+    ? { ...binding, cwd: binding.workspace_cwd }
+    : binding;
+  if (binding.schema === "hanchou.orchestrator-runtime.v1") {
+    delete (persisted as JsonObject).core_root;
+    delete (persisted as JsonObject).workspace_cwd;
+  }
+  atomicWrite(orchestratorRuntimePath(profile), `${JSON.stringify(persisted)}\n`);
   return binding;
 }
 
@@ -1752,7 +3152,7 @@ function boundOrchestratorPane(
     || pane.tab_id !== binding.tab_id
     || pane.pane_id !== binding.pane_id
     || pane.terminal_id !== binding.terminal_id
-    || !sameExistingDirectory(pane.cwd, binding.cwd)
+    || !sameExistingDirectory(pane.cwd, binding.workspace_cwd)
   ) {
     throw new CommandError(`recorded Orchestrator pane identity changed in ${binding.workspace_id}; no replacement was created`);
   }
@@ -1801,7 +3201,7 @@ function validateNamedOrchestrator(
     || pane.tab_id !== record.tab_id
     || pane.pane_id !== record.pane_id
     || pane.terminal_id !== record.terminal_id
-    || !sameExistingDirectory(pane.cwd, ROOT)
+    || !orchestratorAllowedWorkspaceRoots(name).some((root) => sameExistingDirectory(pane.cwd, root))
   ) {
     throw new CommandError(`unbound Agent \`${agentName}\` does not match the dedicated Hanchou pane identity; no workspace was created`);
   }
@@ -1815,7 +3215,7 @@ function legacyOrchestratorWorkspaces(profile: JsonObject, workspaces: JsonObjec
 
 function legacyOrchestratorMessage(name: string, profile: JsonObject, workspaces: JsonObject[]): string {
   const ids = workspaces.map((workspace) => String(workspace.workspace_id ?? "unknown")).join(", ");
-  return `found ${workspaces.length} unbound Herdr workspace(s) labeled \`${profile.orchestrator.workspace_label}\` (${ids}); no new workspace was created. Open \`hanchou open herdr ${name}\`, keep any workspace containing Agent \`${profile.orchestrator.agent_name}\`, and close only the verified empty duplicates with Ctrl+B then Shift+D. If no live Agent exists, close every stale labeled workspace, then rerun \`hanchou start-orchestrator ${name}\``;
+  return `found ${workspaces.length} unbound Herdr workspace(s) labeled \`${profile.orchestrator.workspace_label}\` (${ids}); no new workspace was created. Open \`${displayedProfileCommand(name, "open herdr")}\`, keep any workspace containing Agent \`${profile.orchestrator.agent_name}\`, and close only the verified empty duplicates with Ctrl+B then Shift+D. If no live Agent exists, close every stale labeled workspace, then rerun \`${displayedProfileCommand(name, "start-orchestrator")}\``;
 }
 
 function nudgeAgent(profileName: string, agent: string): [boolean, string | null] {
@@ -3810,6 +5210,7 @@ export function ensureHerdrmCompatibility(name: string, profile: JsonObject): Js
 async function dashboardSnapshot(name: string, profile: JsonObject): Promise<JsonObject> {
   const paths = profilePaths(profile);
   const registry = loadProjectRegistry(name, true);
+  const activeInstance = configuredInstance(name, false);
   const herdr = herdrStatusSnapshot(name);
   const tasks = dashboardTasks(name, profile);
   const agentResult = dashboardAgents(name);
@@ -3839,11 +5240,13 @@ async function dashboardSnapshot(name: string, profile: JsonObject): Promise<Jso
     },
     herdrm: herdrmCompatibility(name, profile),
     commands: {
-      herdr: `hanchou open herdr ${name}`,
-      orchestrator: `hanchou open orchestrator ${name}`,
-      tasks: `hanchou open tasks ${name}`,
-      automations: `hanchou open automations ${name}`,
-      herdrm: `hanchou open herdrm ${name}`,
+      status: displayedProfileCommand(name, "status"),
+      update: activeInstance ? `${shellQuote(activeInstance.layout.launcher)} update` : `hanchou init ${name}`,
+      herdr: displayedProfileCommand(name, "open herdr"),
+      orchestrator: displayedProfileCommand(name, "open orchestrator"),
+      tasks: displayedProfileCommand(name, "open tasks"),
+      automations: displayedProfileCommand(name, "open automations"),
+      herdrm: displayedProfileCommand(name, "open herdrm"),
     },
   };
 }
@@ -3901,7 +5304,7 @@ function openHerdrm(name: string, profile: JsonObject): void {
   const state = ensureHerdrmCompatibility(name, profile);
   if (!state.compatible) throw new CommandError(String(state.message));
   console.log("WARNING: use Herdrm only to monitor or attach to Hanchou Agents. Do not create Hanchou Orchestrators or workers from Herdrm New Agent.");
-  console.log(`WARNING: a direct Herdr agent/terminal attach has one writable owner. Detach any old \`hanchou open orchestrator ${name}\` direct view with Ctrl+B then q before attaching to the same pane in Herdrm.`);
+  console.log(`WARNING: a direct Herdr agent/terminal attach has one writable owner. Detach any old \`${displayedProfileCommand(name, "open orchestrator")}\` direct view with Ctrl+B then q before attaching to the same pane in Herdrm.`);
   const child = spawn("open", ["-a", "herdrm"], { detached: true, stdio: "ignore" });
   child.once("error", () => { /* Compatibility was reported; the operator can open the app manually. */ });
   child.unref();
@@ -3927,7 +5330,7 @@ async function launchProfile(args: JsonObject, name: string, profile: JsonObject
     const upgrade = absent.length
       ? ` Missing LaunchAgents: ${absent.join(", ")}; Hanchou may have been updated after the last bootstrap.`
       : "";
-    throw new CommandError(`Hanchou services are not ready (${missing}).${controlPlane}${upgrade} Run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+    throw new CommandError(`Hanchou services are not ready (${missing}).${controlPlane}${upgrade} Run \`${displayedProfileCommand(name, "bootstrap")}\`, wait a few seconds, then retry`);
   }
   const orchestrator = startOrchestrator(name, profile);
   if (!args.no_browser) openUrl(dashboardUrl(profile));
@@ -3937,19 +5340,21 @@ async function launchProfile(args: JsonObject, name: string, profile: JsonObject
   }
   console.log(orchestrator === "ready" ? `Hanchou ready: ${name}` : `Hanchou services ready; Orchestrator initialization pending: ${name}`);
   console.log(`dashboard: ${dashboardUrl(profile)}`);
-  console.log(`Herdr TUI: hanchou open herdr ${name}`);
+  console.log(`Herdr TUI: ${displayedProfileCommand(name, "open herdr")}`);
 }
 
 function startOrchestrator(name: string, profile: JsonObject): "ready" | "pending" {
   ensureState(name, profile);
   const control = profilePaths(profile).control_dir;
+  const workspaceRoot = instanceWorkspaceRoot(name);
   return withLock(join(control, ".hanchou-orchestrator-lifecycle.lock"), () => {
     const agentName = String(profile.orchestrator.agent_name);
     const managedAgentId = validateAgentId(agentName, "managed Agent ID");
     const kind = String(profile.orchestrator.kind ?? "codex");
     const marker = join(control, ".hanchou-orchestrator-init.json");
     const beadsDirectory = profilePaths(profile).beads_dir;
-    const initial = `Initialize as the Hanchou L0 Orchestrator for profile \`${name}\`. Read AGENTS.md, roles/orchestrator/ROLE.md, docs/SESSION_HANDOFF.md, docs/RELAY.md, and docs/REPORTING.md. The authoritative Beads store is \`BEADS_DIR=${beadsDirectory}\`. Use that absolute path for every \`bd\` command if BEADS_DIR is not already inherited; never fall back to a project-local Beads store. Run \`hanchou status ${name}\` and inspect only the control-plane state. If the Codex workspace sandbox denies that bounded command, retry the exact command through normal approval/escalation without using a bypass. Do not research or modify project repositories in this session. In the readiness reply, list any in-progress or blocked Beads tasks, inspect the Herdr Agents, and state the number of currently running delegated tasks; explicitly report zero for each empty result. Also report any blocking setup issue.`;
+    const docsPrefix = sameExistingDirectory(workspaceRoot, ROOT) ? "" : "hanchou/";
+    const initial = `Initialize as the Hanchou L0 Orchestrator for profile \`${name}\`. Read AGENTS.md, ${docsPrefix}roles/orchestrator/ROLE.md, ${docsPrefix}docs/SESSION_HANDOFF.md, ${docsPrefix}docs/RELAY.md, and ${docsPrefix}docs/REPORTING.md. The authoritative Beads store is \`BEADS_DIR=${beadsDirectory}\`. Use that absolute path for every \`bd\` command if BEADS_DIR is not already inherited; never fall back to a project-local Beads store. Run \`./bin/hanchou status\` and inspect only the control-plane state. If the Codex workspace sandbox denies that bounded command, retry the exact command through normal approval/escalation without using a bypass. Do not research or modify project repositories in this session. In the readiness reply, list any in-progress or blocked Beads tasks, inspect the Herdr Agents, and state the number of currently running delegated tasks; explicitly report zero for each empty result. Also report any blocking setup issue.`;
     const initialize = (record: JsonObject): "ready" | "pending" => {
       const identity = String(record.terminal_id || record.pane_id || "unknown");
       if (existsSync(marker)) {
@@ -3959,8 +5364,8 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
       const statusValue = String(record.agent_status ?? "unknown");
       if (!new Set(["idle", "done"]).has(statusValue)) {
         console.log(`orchestrator \`${agentName}\` exists with status ${statusValue}; initialization remains pending`);
-        console.log(`open its full Herdr view with \`hanchou open orchestrator ${name}\``);
-        console.log(`if this Agent must be replaced, enter \`/exit\` inside it, detach with Ctrl+B then q, and rerun \`hanchou start-orchestrator ${name}\`; Hanchou will reuse the same workspace`);
+        console.log(`open its full Herdr view with \`${displayedProfileCommand(name, "open orchestrator")}\``);
+        console.log(`if this Agent must be replaced, enter \`/exit\` inside it, detach with Ctrl+B then q, and rerun \`${displayedProfileCommand(name, "start-orchestrator")}\`; Hanchou will reuse the same workspace`);
         return "pending";
       }
       const promptArgv = herdrArgv(name, "agent", "prompt", agentName, initial);
@@ -3972,12 +5377,12 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
     const keepNamed = (record: JsonObject): "ready" | "pending" => {
       const knownWorkspaces = herdrRecords(name, "workspace", "workspaces");
       const previous = orchestratorRuntimeBinding(name, profile);
-      validateNamedOrchestrator(name, profile, record, knownWorkspaces, previous);
-      saveOrchestratorRuntime(name, profile, record, previous);
+      const pane = validateNamedOrchestrator(name, profile, record, knownWorkspaces, previous);
+      saveOrchestratorRuntime(name, profile, record, previous, previous ? null : String(pane.cwd));
       const matching = legacyOrchestratorWorkspaces(profile, knownWorkspaces);
       if (matching.length > 1) {
         const staleIds = matching.filter((workspace) => workspace.workspace_id !== record.workspace_id).map((workspace) => workspace.workspace_id).join(", ");
-        console.log(`WARN ${matching.length} workspaces are labeled \`${profile.orchestrator.workspace_label}\`; the live named Agent in ${record.workspace_id} was kept and no workspace was created. Inspect possible duplicates ${staleIds} with \`hanchou open herdr ${name}\`.`);
+        console.log(`WARN ${matching.length} workspaces are labeled \`${profile.orchestrator.workspace_label}\`; the live named Agent in ${record.workspace_id} was kept and no workspace was created. Inspect possible duplicates ${staleIds} with \`${displayedProfileCommand(name, "open herdr")}\`.`);
       }
       return initialize(record);
     };
@@ -4021,7 +5426,7 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
             }
           }
           console.log(`recorded Orchestrator Agent in pane ${binding.pane_id} is still starting or awaiting review; no replacement was created`);
-          console.log(`open it with \`hanchou open orchestrator ${name}\``);
+          console.log(`open it with \`${displayedProfileCommand(name, "open orchestrator")}\``);
           return "pending";
         }
         if (pane.agent !== undefined || pane.agent_session !== undefined) {
@@ -4033,7 +5438,7 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
     if (!binding) {
       const legacy = legacyOrchestratorWorkspaces(profile, workspaces);
       if (legacy.length) throw new CommandError(legacyOrchestratorMessage(name, profile, legacy));
-      const created = run(herdrArgv(name, "workspace", "create", "--cwd", ROOT, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
+      const created = run(herdrArgv(name, "workspace", "create", "--cwd", workspaceRoot, "--label", profile.orchestrator.workspace_label, "--env", `HANCHOU_AGENT_ID=${managedAgentId}`, "--no-focus"), { capture: true });
       const data = parseJsonOutput(created);
       const workspaceId = data?.result?.workspace?.workspace_id ?? null;
       const tabId = data?.result?.tab?.tab_id ?? nestedValue(data, "tab_id");
@@ -4051,6 +5456,7 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
       const createdPaneRecord = { ...data.result.root_pane, workspace_id: workspaceId, tab_id: tabId, pane_id: paneId, terminal_id: terminalId };
       pane = createdPaneRecord;
       binding = saveOrchestratorRuntime(name, profile, createdPaneRecord);
+      clearLegacyOrchestratorRoots(name);
     }
 
     try { if (existsSync(marker)) unlinkSync(marker); } catch (error) { throw new CommandError(`cannot reset Orchestrator initialization marker: ${error}`); }
@@ -4095,7 +5501,7 @@ function startOrchestrator(name: string, profile: JsonObject): "ready" | "pendin
           return initialize(pending);
         }
         console.log(`orchestrator in pane ${binding.pane_id} is awaiting startup or first-run trust/hook review; no replacement was created`);
-        console.log(`open it with \`hanchou open orchestrator ${name}\``);
+        console.log(`open it with \`${displayedProfileCommand(name, "open orchestrator")}\``);
         return "pending";
       }
       throw new CommandError(`cannot start orchestrator in recorded workspace ${binding.workspace_id}; the binding was kept for a safe retry: ${(started.stderr || started.stdout).trim()}`);
@@ -4221,7 +5627,7 @@ function unmanagedOrchestratorStopRefusal(name: string, workspaceId: string, rea
   if (bound) {
     return new CommandError(`refusing to stop bound workspace ${orchestratorStopPlanField(workspaceId)}: ${orchestratorStopPlanField(reason)}; --include-unmanaged applies only to unbound legacy panes; no workspace was closed`);
   }
-  return new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: ${orchestratorStopPlanField(reason)}; no workspace was closed. Inspect it in Herdr first. If every process may be terminated, run \`hanchou stop-orchestrator ${name} --all --include-unmanaged\` to print a human-reviewed cleanup plan`);
+  return new CommandError(`refusing to stop same-label workspace ${orchestratorStopPlanField(workspaceId)}: ${orchestratorStopPlanField(reason)}; no workspace was closed. Inspect it in Herdr first. If every process may be terminated, run \`${displayedProfileCommand(name, "stop-orchestrator", " --all --include-unmanaged")}\` to print a human-reviewed cleanup plan`);
 }
 
 function verifyNoPaneAgent(name: string, workspaceId: string, paneId: string): void {
@@ -4271,12 +5677,14 @@ function orchestratorStopTarget(
       throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane has no ${key}; no workspace was closed`);
     }
   }
+  const bound = binding?.workspace_id === workspaceId;
+  const allowedWorkspaceRoots = bound && binding ? [binding.workspace_cwd] : orchestratorAllowedWorkspaceRoots(name);
   if (
     pane.workspace_id !== workspaceId
     || workspace.active_tab_id !== pane.tab_id
-    || !sameExistingDirectory(pane.cwd, ROOT)
+    || !allowedWorkspaceRoots.some((root) => sameExistingDirectory(pane.cwd, root))
   ) {
-    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane identity or cwd does not match the Hanchou Core; no workspace was closed`);
+    throw new CommandError(`refusing to stop same-label workspace ${workspaceId}: pane identity or cwd is outside the approved Hanchou workspace roots; no workspace was closed`);
   }
   const occupants = agents.filter((agent) => agent.workspace_id === workspaceId);
   if (occupants.length > 1) {
@@ -4293,7 +5701,6 @@ function orchestratorStopTarget(
   if (!occupants.length) {
     verifyNoPaneAgent(name, workspaceId, String(pane.pane_id));
   }
-  const bound = binding?.workspace_id === workspaceId;
   if (bound) {
     for (const key of ["workspace_id", "tab_id", "pane_id", "terminal_id"] as const) {
       const actual = key === "workspace_id" ? workspaceId : pane[key];
@@ -4337,11 +5744,8 @@ function orchestratorStopTarget(
   }
   if (!occupant) {
     const currentDirectories = [pane.foreground_cwd, ...foregroundProcesses.map((processRecord) => processRecord.cwd)];
-    if (currentDirectories.some((directory) => !sameExistingDirectory(directory, ROOT))) {
-      if (!includeUnmanaged || bound) {
-        throw unmanagedOrchestratorStopRefusal(name, workspaceId, "available shell is not currently in the Hanchou Core cwd", bound);
-      }
-      unmanagedReasons.push("current_cwd_outside_core");
+    if (currentDirectories.some((directory) => !allowedWorkspaceRoots.some((root) => sameExistingDirectory(directory, root)))) {
+      throw unmanagedOrchestratorStopRefusal(name, workspaceId, "available shell is not currently in an approved Hanchou workspace cwd", bound);
     }
     if (isAvailablePaneShell(processInfo)) {
       try {
@@ -4487,7 +5891,8 @@ function orchestratorStopSnapshot(name: string, profile: JsonObject, includeUnma
     profile_state_paths: sortedJson(profilePaths(profile)),
     session: validatedHerdrSession(name, profile),
     config_root: realpathSync(CONFIG_ROOT),
-    core_cwd: realpathSync(ROOT),
+    core_root: realpathSync(ROOT),
+    workspace_cwds: orchestratorAllowedWorkspaceRoots(name),
     workspace_label: String(profile.orchestrator.workspace_label),
     agent_name: agentName,
     agent_kind: String(profile.orchestrator.kind ?? "codex").toLowerCase(),
@@ -4526,7 +5931,7 @@ function orchestratorStopPlanField(value: unknown): string {
 function printOrchestratorStopPlan(name: string, profile: JsonObject, snapshot: ReturnType<typeof orchestratorStopSnapshot>): void {
   console.log(`Hanchou Orchestrator stop plan: ${name}`);
   console.log(`  Herdr session: ${validatedHerdrSession(name, profile)}`);
-  console.log(`  scope: every validated \`${profile.orchestrator.workspace_label}\` workspace in the Hanchou Core cwd`);
+  console.log(`  scope: every validated \`${profile.orchestrator.workspace_label}\` workspace in an approved profile workspace cwd`);
   console.log(`  unmanaged legacy panes: ${snapshot.includeUnmanaged ? "included after hard containment checks" : "excluded (default)"}`);
   for (const target of snapshot.targets) {
     const ownership = target.bound ? "bound" : target.managed ? "named" : target.unmanaged ? "UNMANAGED-ACTIVE" : "legacy";
@@ -4556,7 +5961,7 @@ function printOrchestratorStopPlan(name: string, profile: JsonObject, snapshot: 
 }
 
 function orchestratorStopReviewCommand(name: string, includeUnmanaged: boolean): string {
-  return `hanchou stop-orchestrator ${name} --all${includeUnmanaged ? " --include-unmanaged" : ""}`;
+  return displayedProfileCommand(name, "stop-orchestrator", ` --all${includeUnmanaged ? " --include-unmanaged" : ""}`);
 }
 
 function stopPartialError(
@@ -4719,7 +6124,7 @@ function stopOrchestrator(
       throw stopPartialError(name, includeUnmanaged, `workspaces are closed but local lifecycle state cleanup failed: ${detail}`, closed, [], ["local-lifecycle-state"]);
     }
     console.log(`stopped Orchestrator: ${name} (closed ${closed.length} workspace(s))`);
-    console.log(`restart with: hanchou start-orchestrator ${name}`);
+    console.log(`restart with: ${displayedProfileCommand(name, "start-orchestrator")}`);
   }, 180_000);
 }
 
@@ -4737,7 +6142,7 @@ async function openTarget(name: string, profile: JsonObject, target: string): Pr
     const ready = await waitForHerdrReady(name, 8_000);
     if (!ready.ready) {
       const detail = ready.running && !ready.operational ? `: ${ready.error ?? "control plane unavailable"}` : "";
-      throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+      throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`${displayedProfileCommand(name, "bootstrap")}\`, wait a few seconds, then retry`);
     }
   }
   if (target === "herdr" || target === "orchestrator") {
@@ -4751,9 +6156,9 @@ async function openTarget(name: string, profile: JsonObject, target: string): Pr
         const focused = run(herdrArgv(name, "agent", "focus", agentName), { check: false, capture: true });
         if (focused.returncode !== 0) run(herdrArgv(name, "workspace", "focus", String(record.workspace_id)), { capture: true });
       } else {
-        if (!binding) throw new CommandError(`agent target ${agentName} not found; run \`hanchou launch ${name}\` first`);
+        if (!binding) throw new CommandError(`agent target ${agentName} not found; run \`${displayedProfileCommand(name, "launch")}\` first`);
         if (!boundOrchestratorPane(name, binding, workspaces)) {
-          throw new CommandError(`recorded Orchestrator workspace ${binding.workspace_id} is missing; run \`hanchou start-orchestrator ${name}\` to reconcile it`);
+          throw new CommandError(`recorded Orchestrator workspace ${binding.workspace_id} is missing; run \`${displayedProfileCommand(name, "start-orchestrator")}\` to reconcile it`);
         }
         run(herdrArgv(name, "workspace", "focus", binding.workspace_id), { capture: true });
       }
@@ -4909,8 +6314,16 @@ function statusCommand(name: string, profile: JsonObject, asJson: boolean): void
     reconcileDeliveryTransitionsUnlocked(paths.relay_dir);
     return iterDeliveries(paths.relay_dir, "pending").length;
   }) : 0;
+  const activeInstance = configuredInstance(name, false);
   const result = {
     profile: name, config_root: CONFIG_ROOT, herdr_session: profile.herdr.session,
+    instance: activeInstance ? {
+      root: activeInstance.layout.root,
+      launcher: activeInstance.layout.launcher,
+      core: activeInstance.metadata.current.core,
+      skills: activeInstance.metadata.current.skills,
+      previous: activeInstance.metadata.previous,
+    } : null,
     orchestrator: { name: agent, kind: profile.orchestrator.kind ?? "codex", model: profile.orchestrator.model ?? null, status: getAgentStatus(name, agent, true) },
     beads_dir: paths.beads_dir, relay_dir: paths.relay_dir,
     pending_inbox: existsSync(paths.relay_dir) ? iterEvents(paths.relay_dir, "pending").length : 0,
@@ -4920,14 +6333,24 @@ function statusCommand(name: string, profile: JsonObject, asJson: boolean): void
     herdrm: herdrmCompatibility(name, profile),
     usage_snapshot: usageSnapshotPath(profile),
     project_registry: { path: projects.registry_path, configured: Boolean(projects.registry_digest), projects: projects.projects.length, workspace_roots: projects.workspace_roots.length, default_policy: "deny" },
-    commands: { dashboard: `hanchou open dashboard ${name}`, herdr: `hanchou open herdr ${name}`, orchestrator: `hanchou open orchestrator ${name}`, tasks: `hanchou open tasks ${name}`, automations: `hanchou open automations ${name}`, herdrm: `hanchou open herdrm ${name}` },
+    commands: {
+      dashboard: displayedProfileCommand(name, "open dashboard"),
+      herdr: displayedProfileCommand(name, "open herdr"),
+      orchestrator: displayedProfileCommand(name, "open orchestrator"),
+      tasks: displayedProfileCommand(name, "open tasks"),
+      automations: displayedProfileCommand(name, "open automations"),
+      herdrm: displayedProfileCommand(name, "open herdrm"),
+      update: activeInstance ? `${shellQuote(activeInstance.layout.launcher)} update` : `hanchou init ${name}`,
+    },
   };
   if (asJson) jsonPrint(result, true);
   else {
     console.log(`profile:       ${name}`); console.log(`config root:   ${CONFIG_ROOT}`);
+    console.log(`instance:      ${activeInstance ? `${activeInstance.layout.root} / Core ${activeInstance.metadata.current.core.slice(0, 12)} / Skills ${activeInstance.metadata.current.skills.slice(0, 12)}` : "legacy seed checkout"}`);
     console.log(`orchestrator:  ${result.orchestrator.kind} / ${result.orchestrator.model || "provider-default"} / ${agent} / ${result.orchestrator.status || "not-running"}`);
     console.log(`Dashboard:    ${result.dashboard}`); console.log(`Herdr:        herdr --session ${name}`); console.log(`Task UI:      ${result.task_ui}`); console.log(`Beads:        ${paths.beads_dir}`); console.log(`Relay:        ${paths.relay_dir}`);
     console.log(`Inbox pending: ${result.pending_inbox}`); console.log(`Delivery pending: ${result.pending_deliveries}`); console.log(`Usage:        ${result.usage_snapshot}`);
+    console.log(`Update:       ${result.commands.update}`);
     console.log(`Projects:     ${projects.registry_path} / ${projects.projects.length} explicit / ${projects.workspace_roots.length} roots${projects.registry_digest ? "" : " / deny-all"}`);
   }
 }
@@ -5016,6 +6439,20 @@ async function waitForHerdrReady(name: string, timeout: number): Promise<JsonObj
 async function doctor(name: string, profile: JsonObject): Promise<number> {
   const env = profileEnv(name, profile);
   let failures = 0;
+  const activeInstance = configuredInstance(name, false);
+  if (activeInstance) {
+    console.log(`ok   profile-local instance: ${activeInstance.layout.root}`);
+    console.log(`ok   managed Core commit: ${activeInstance.metadata.current.core}`);
+    console.log(`ok   managed Skills commit: ${activeInstance.metadata.current.skills}`);
+    const transaction = readInstanceTransaction(activeInstance.layout.transaction);
+    console.log(`${transaction ? "FAIL" : "ok  "} instance transaction${transaction ? `: incomplete ${transaction.action}/${transaction.status} at ${activeInstance.layout.transaction}` : ": none"}`);
+    if (transaction) failures += 1;
+  } else {
+    const localMetadata = join(defaultInstanceRoot(name), ".hanchou", "instance.json");
+    const bypassed = existsSync(localMetadata);
+    console.log(`${bypassed ? "FAIL" : "ok  "} profile-local invocation${bypassed ? `: use ${defaultInstanceRoot(name)}/bin/hanchou instead of a seed checkout` : ": seed/development checkout"}`);
+    if (bypassed) failures += 1;
+  }
   try {
     const registry = loadProjectRegistry(name, true);
     console.log(`ok   project registry: ${registry.projects.length} explicit / ${registry.workspace_roots.length} workspace roots${registry.registry_digest ? "" : " / deny-all"}`);
@@ -5055,7 +6492,7 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
       const binding = orchestratorRuntimeBinding(name, profile);
       let problem: string | null = null;
       if (named) validateNamedOrchestrator(name, profile, named, workspaces, binding);
-      if (matching.length > 1) problem = `${matching.length} workspaces labeled ${profile.orchestrator.workspace_label}; open \`hanchou open herdr ${name}\` and close only verified empty duplicates`;
+      if (matching.length > 1) problem = `${matching.length} workspaces labeled ${profile.orchestrator.workspace_label}; open \`${displayedProfileCommand(name, "open herdr")}\` and close only verified empty duplicates`;
       else if (binding && !named) {
         const pane = boundOrchestratorPane(name, binding, workspaces);
         if (!pane) {
@@ -5105,7 +6542,7 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
   try {
     const cliVersion = loadToml(join(ROOT, "config", "versions.toml")).components.skills_cli.version; const entries: JsonObject[] = [];
     for (const scopeArgs of [[], ["--global"]]) {
-      const proc = run([commandPath("npx"), "-y", `skills@${cliVersion}`, "list", ...scopeArgs, "--json"], { env, cwd: ROOT, check: false, capture: true, timeout: 30_000 });
+      const proc = run([commandPath("npx"), "-y", `skills@${cliVersion}`, "list", ...scopeArgs, "--json"], { env, cwd: instanceProjectCwd(name), check: false, capture: true, timeout: 30_000 });
       if (proc.returncode === 0) { const value = JSON.parse(proc.stdout || "[]"); if (Array.isArray(value)) entries.push(...value.filter((item) => item && typeof item === "object")); }
     }
     const expectedSkills = new Set(readdirSync(join(ROOT, "skills"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(ROOT, "skills", entry.name, "SKILL.md"))).map((entry) => entry.name));
@@ -5116,9 +6553,10 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
   try { renderAgents(true); console.log("ok   generated agent definitions"); }
   catch (error) { console.log(`FAIL generated agent definitions: ${error instanceof Error ? error.message : error}`); failures += 1; }
   try {
-    const info = lstatSync(CODEX_RULES_PATH);
+    const rulesPath = join(instanceProjectCwd(name), ".codex", "rules", "hanchou.rules");
+    const info = lstatSync(rulesPath);
     const ok = info.isFile() && !info.isSymbolicLink();
-    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex control rules: ${CODEX_RULES_PATH}`);
+    console.log(`${ok ? "ok  " : "FAIL"} Hanchou Codex control rules: ${rulesPath}`);
     if (!ok) failures += 1;
   } catch (error) {
     console.log(`FAIL Hanchou Codex control rules: ${error instanceof Error ? error.message : error}`);
@@ -5127,10 +6565,13 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
   try {
     const cases: Array<[string[], string | null]> = [
       [["hanchou", "project", "list", "--json"], "allow"],
-      [["hanchou", "project", "resolve", "--path", ROOT, "--json"], "allow"],
-      [["hanchou", "project", "add", "example", "--path", ROOT], null],
+      [["./bin/hanchou", "project", "list", "--json"], "allow"],
+      [["hanchou", "project", "resolve", "--path", instanceProjectCwd(name), "--json"], "allow"],
+      [["hanchou", "project", "add", "example", "--path", instanceProjectCwd(name)], null],
       [["hanchou", "inbox", "list", "--json"], "allow"],
+      [["./bin/hanchou", "inbox", "list", "--json"], "allow"],
       [["hanchou", "inbox", "claim", "--to", String(profile.orchestrator.agent_name), "--json"], "allow"],
+      [["./bin/hanchou", "inbox", "claim", "--to", String(profile.orchestrator.agent_name), "--json"], "allow"],
       [["hanchou", "inbox", "ack", "evt_example", "--by", String(profile.orchestrator.agent_name)], "allow"],
       [["hanchou", "inbox", "retry", "evt_example"], "prompt"],
       [["hanchou", "inbox", "future-command"], null],
@@ -5138,7 +6579,7 @@ async function doctor(name: string, profile: JsonObject): Promise<number> {
     const activeRules = codexPolicyRulePaths();
     const ruleArgs = activeRules.flatMap((path) => ["--rules", path]);
     const observed = cases.map(([command, expected]) => {
-      const proc = run([commandPath("codex"), "execpolicy", "check", ...ruleArgs, "--", ...command], { env, cwd: ROOT, capture: true, timeout: 15_000 });
+      const proc = run([commandPath("codex"), "execpolicy", "check", ...ruleArgs, "--", ...command], { env, cwd: instanceProjectCwd(name), capture: true, timeout: 15_000 });
       const decision = JSON.parse(proc.stdout).decision ?? null;
       return { command, expected, decision };
     });
@@ -5224,12 +6665,12 @@ function choice(value: any, values: Set<string>, label: string): void {
 
 function printHelp(): void {
   console.log(`usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
+               {init,update,rollback,onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...
 
 Herdr-first Hanchou control utility
 
 positional arguments:
-  {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
+  {init,update,rollback,onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery}
 
 options:
   -h, --help            show this help message and exit
@@ -5258,6 +6699,31 @@ options:
 }
 
 const HELP_SURFACES: Record<string, string> = {
+  init: `usage: hanchou init [-h] [--plan PLAN] [--yes] [{personal,work}]
+
+Prepare or install a profile-local Hanchou instance below ~/HanchouWorkspace/<profile>.
+The plan downloads and validates exact public Core and Skills commits without changing the deployed instance.
+
+options:
+  -h, --help       show this help message and exit
+  --plan PLAN      exact validated candidate token printed by the prepare step
+  --yes            install the reviewed candidate from an ordinary terminal`,
+  update: `usage: hanchou update [-h] [--plan PLAN] [--yes] [{personal,work}]
+
+Prepare or apply an exact validated Core + Skills update for this profile-local instance.
+
+options:
+  -h, --help       show this help message and exit
+  --plan PLAN      exact validated candidate token printed by the prepare step
+  --yes            apply the reviewed candidate from an ordinary terminal`,
+  rollback: `usage: hanchou rollback [-h] [--plan PLAN] [--yes] [{personal,work}]
+
+Prepare or apply a rollback to the previous validated Core + Skills commit pair.
+
+options:
+  -h, --help       show this help message and exit
+  --plan PLAN      exact validated rollback token printed by the prepare step
+  --yes            apply the reviewed rollback from an ordinary terminal`,
   onboard: `usage: hanchou onboard [-h] [--yes] [{personal,work}]
 
 Create the fixed dedicated repository shelf and add its human-owned workspace-root authorization.
@@ -5697,6 +7163,14 @@ function parseCliUnchecked(argv: string[]): JsonObject {
     return { ...result, ...parsed };
   };
   if (result.command === "plan" || result.command === "bootstrap" || result.command === "doctor" || result.command === "start-orchestrator") return profileCommand();
+  if (new Set(["init", "update", "rollback"]).has(result.command)) {
+    const parsed = profileCommand([["plan", "string"], ["yes", "boolean"]]);
+    parsed.plan ??= null;
+    if (parsed.yes && !parsed.plan) throw new CommandError("the following arguments are required: --plan");
+    if (parsed.plan && !parsed.yes) throw new CommandError("argument --plan: requires --yes");
+    if (parsed.plan && !/^[a-f0-9]{64}$/.test(String(parsed.plan))) throw new CommandError(`argument --plan: invalid plan token: '${parsed.plan}'`);
+    return parsed;
+  }
   if (result.command === "stop-orchestrator") {
     const parsed = profileCommand([["all", "boolean"], ["include-unmanaged", "boolean"], ["plan", "string"], ["yes", "boolean"]]);
     if (!parsed.all) throw new CommandError("the following arguments are required: --all");
@@ -5817,7 +7291,7 @@ const SUBCOMMAND_CHOICES: Record<string, string[]> = {
   relay: ["emit", "recover", "dispatch", "daemon"], inbox: ["list", "claim", "show", "ack", "retry", "dead-letter"],
   delivery: ["create", "list", "show", "mark-rendered", "mark-delivered", "fail", "retry"],
 };
-const TOP_LEVEL_COMMANDS = ["onboard", "plan", "bootstrap", "apply", "launch", "status", "doctor", "start-orchestrator", "stop-orchestrator", "dashboard", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
+const TOP_LEVEL_COMMANDS = ["init", "update", "rollback", "onboard", "plan", "bootstrap", "apply", "launch", "status", "doctor", "start-orchestrator", "stop-orchestrator", "dashboard", "open", "render-agents", "handoff", "project", "usage", "route", "execution", "relay", "inbox", "delivery"];
 const REQUIRED_FLAGS: Record<string, string[]> = {
   "stop-orchestrator": ["all"],
   "project resolve": ["path"], "usage set": ["weekly-remaining"], "usage recommend": ["role"], "route resolve": ["role"],
@@ -5855,7 +7329,7 @@ function argumentContext(argv: string[]): string {
 
 function argumentUsage(context: string): string {
   if (!context) return `usage: hanchou [-h] [--config-root CONFIG_ROOT] [--profile {personal,work}]
-               {onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
+               {init,update,rollback,onboard,plan,bootstrap,apply,launch,status,doctor,start-orchestrator,stop-orchestrator,dashboard,open,render-agents,handoff,project,usage,route,execution,relay,inbox,delivery} ...`;
   return (HELP_SURFACES[context] ?? HELP_SURFACES[context.split(" ")[0]]).split("\n\n")[0];
 }
 
@@ -5895,7 +7369,7 @@ async function main(): Promise<void> {
     const args = parseCli(process.argv.slice(2));
     if (args.command === "__help__") return;
     CONFIG_ROOT = args.config_root ? expand(args.config_root) : process.env.HANCHOU_CONFIG_ROOT ? expand(process.env.HANCHOU_CONFIG_ROOT) : DEFAULT_CONFIG_ROOT;
-    const managedRuntime = args.command === "start-orchestrator" || args.command === "stop-orchestrator" || args.command === "launch" || args.command === "execution";
+    const managedRuntime = new Set(["init", "update", "rollback", "start-orchestrator", "stop-orchestrator", "launch", "execution"]).has(args.command);
     if (managedRuntime) {
       let selectedConfig: string;
       let defaultConfig: string;
@@ -5914,6 +7388,9 @@ async function main(): Promise<void> {
     const [name, profile] = loadProfile(args.profile_name || args.profile);
     for (const [key, value] of Object.entries(profileEnv(name, profile))) if ((key.startsWith("HANCHOU_") || new Set(["BEADS_DIR", "BD_AGENT_PROFILE"]).has(key)) && value !== undefined) process.env[key] = value;
     switch (args.command) {
+      case "init": initInstanceCommand(args, name, profile); break;
+      case "update": updateInstanceCommand(args, name, profile); break;
+      case "rollback": rollbackInstanceCommand(args, name, profile); break;
       case "onboard": onboardProfile(args, name); break;
       case "plan": printPlan(name, profile); break;
       case "bootstrap": bootstrapProfile(name, profile); break;
@@ -5925,7 +7402,7 @@ async function main(): Promise<void> {
         const ready = await waitForHerdrReady(name, 8_000);
         if (!ready.ready) {
           const detail = ready.error ? `: ${ready.error}` : "";
-          throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+          throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`${displayedProfileCommand(name, "bootstrap")}\`, wait a few seconds, then retry`);
         }
         startOrchestrator(name, profile);
         break;
@@ -5934,7 +7411,7 @@ async function main(): Promise<void> {
         const ready = await waitForHerdrReady(name, 8_000);
         if (!ready.ready) {
           const detail = ready.error ? `: ${ready.error}` : "";
-          throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`hanchou bootstrap ${name}\`, wait a few seconds, then retry`);
+          throw new CommandError(`Herdr session \`${name}\` is not operational${detail}; run \`${displayedProfileCommand(name, "bootstrap")}\`, wait a few seconds, then retry`);
         }
         stopOrchestrator(name, profile, Boolean(args.yes), args.plan ? String(args.plan) : null, Boolean(args.include_unmanaged));
         break;

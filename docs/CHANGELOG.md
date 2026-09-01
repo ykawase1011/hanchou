@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+No unreleased changes after v2.4.0.
+
+## v2.4.0
+
+- implemented the profile-local instance lifecycle: bare `init`
+  prepares/validates candidates without deployment, while exact-token init apply
+  creates a root/profile-fixed regular launcher, managed sibling Core/Public
+  Skills clean detached checkouts from fixed official HTTPS `refs/heads/main`,
+  and an immediately registered target repository shelf through bounded
+  onboarding; candidate validation checks the cross-repository version/Skill
+  contract in a reduced-ambient fresh HOME while remaining explicitly
+  unsandboxed; init refuses unknown preexisting root/control entries and managed
+  checkout validation rejects unapproved Git admin state; `update` and
+  `rollback` use reviewed exact commit-pair
+  plan/apply with bootstrap/doctor, previous-pair recovery, explicit lifecycle
+  handling, and no automatic latest daemon; all candidate-code prepare/apply
+  flows require an ordinary human TTY, failed activation attempts automatic
+  pair restoration, incomplete recovery journals block automatic lifecycle
+  commands pending human-inspected repair, and changed instructions require an
+  explicit L0 restart;
+  Orchestrator cwd becomes the exact
+  profile root with explicit whole-tree L0 access, while same-user global
+  integrations remain shared and potentially last-bootstrap-owned;
+- bumped Core/package/VERSION to 2.4.0 and both the Herdr plugin and
+  hanchou-skills version line to 0.3.0;
 - rewrote the Core CLI, execution bridge, Relay/Delivery mechanics, validators,
   and generators in TypeScript;
 - made Node.js 22 the only Hanchou implementation runtime and removed Python;
@@ -41,11 +66,12 @@
   window; apply is human approval to terminate the complete workspace process
   session, surrounding Hanchou subsystems are preserved, and lifecycle state is
   cleared only after complete closure; the TTY/Agent/token checks are
-  defense-in-depth, not a complete same-user security boundary;
+  defense-in-depth, not a complete same-user security boundary; profile-local
+  plans preserve the absolute local launcher in exact apply/retry commands;
 - added the explicit `--include-unmanaged` plan mode for a human-approved
   cleanup of unbound, no-Agent-record legacy panes whose activity is not proven
   idle; the mode reports `UNMANAGED-ACTIVE` reasons and whole-session effects,
-  remains constrained by label/Core-base-cwd/topology/worktree/ID/binding/Agent
+  remains constrained by label/approved-root base/current/process cwd/topology/worktree/ID/binding/Agent
   containment, rejects malformed Herdr `pane process-info` even when the later
   OS process-table scan is unavailable, reports every foreground process cwd,
   is bound into the exact plan token and retry command, and never becomes an

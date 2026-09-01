@@ -55,9 +55,12 @@
     commandは対象をfocusしたfull Herdr clientとし、単一ownerのdirect attachを使わない。
 24. Orchestratorの破棄は通常起動から分離したhuman-confirmed commandとする。
     `stop-orchestrator --all`はread-only planで、対象snapshotに束縛した64文字のlowercase hex
-    tokenとexact apply commandを表示する。applyは`--all --plan <64hex-token> --yes`をordinary
+    tokenとexact apply commandを表示する。profile-local invocationではabsolute local launcherを
+    commandへ保持し、seed／legacy invocationだけbare fallbackを許す。applyは
+    `--all --plan <64hex-token> --yes`をordinary
     interactive terminalから実行する。snapshotの状態変化は旧tokenを無効にして全close前に
-    fail closedとし、partial failure後も再planした新tokenを必須とする。configured label、Core cwd、
+    fail closedとし、partial failure後も再planした新tokenを必須とする。configured label、approved
+    Hanchou workspace cwd、
     1 tab／1 pane、no-worktreeに厳密一致する全件をlegacyから先にcloseし、binding対象を最後に
     処理する。全件消失後だけbinding／markerを消す。TTY／Agent環境拒否、token、Codex非allowlistは
     defense-in-depthであり、同一OS userに対する完全なsecurity boundaryとは扱わない。legacy
@@ -67,16 +70,68 @@
     Darwinでは同じOS process sessionの完全列挙にならず、Herdr 0.8.2にconditional closeもないため、
     最終revalidate後のTOCTOUは残る。applyはworkspaceのPTY／OS process session全体の終了を
     人間が承認する操作とし、承認できなければHerdr TUIで手動cleanupする。
+    approved rootは通常exact profile rootとし、移行中だけinit metadataに明記したpre-2.4
+    bootstrap Core rootを加える。任意旧pathは認めず、新profile-root workspace作成後に消去する。
 25. `--include-unmanaged`は広いforce surfaceにしない。人間が明示したときだけ、unboundかつ
     authoritative Agent recordのないlegacy paneのactivity判定をoverrideする。busy foreground、
-    current cwd差異、observed background、OS scan不能、stale pane authorityは
-    `UNMANAGED-ACTIVE`としてreview対象にできるが、exact label、Core base cwd、1 tab／1 pane、
+    observed background、OS scan不能、stale pane authorityは
+    `UNMANAGED-ACTIVE`としてreview対象にできるが、exact label、approved rootの
+    base/current/process cwd、1 tab／1 pane、
     no-worktree、ID／binding／実Agent整合とHerdr `pane process-info` schemaは常に維持する。
     `process_scan_unavailable`は後段のOS scanだけを指し、malformed Herdr responseは拒否する。
-    `current_cwd_outside_core`は全foreground process cwdを判定する。modeをtokenに束縛し、
-    apply／retryにも
+    cwd containmentはactivity overrideの対象にしない。modeをtokenに束縛し、apply／retryにも
     flagを残す。これは「unmanagedだから安全」という推定を避けながら、過去版のbusy legacy
     PTYを人間のwhole-session終了承認で整理するための限定escape hatchである。
+26. v1 instanceは`~/HanchouWorkspace/<profile>`をprofile rootとし、その直下に
+    regular-fileの`bin/hanchou`、managed clean detached checkoutの`hanchou/`と
+    `hanchou-skills/`、canonical target shelfの`repositories/`を置く。Core／Skillsは
+    target repositoryではなく、標準のdescendant worker grantでinstalled supply-chain codeを
+    作業対象にしないため`repositories/`配下へ置かない。local launcherはrootと
+    profileを固定し、caller環境や矛盾するprofile指定による差し替えを拒否する。
+27. bare `hanchou init <profile>`はcandidate pairをdownload／validateしてexact token commandを
+    表示するprepare-only stepとし、表示commandにはprepareを実行した同じseed Core executableの
+    exact pathを固定する。deployed instance、launcher、managed checkout、shelf、registryを
+    作らない。ただしcandidateのmise/npm/make codeを実行するため、prepare自体もManaged Agent外の
+    通常の人間TTYに限定する。exact `--plan <token> --yes`だけが上記instanceを作成し、
+    boundedな`onboard`処理を再利用して固定shelfも同時に登録する。`onboard`は単独でも呼べる。
+    Coreは`https://github.com/ykawase1011/hanchou.git`、Public Skillsは
+    `https://github.com/ykawase1011/hanchou-skills.git`の固定public HTTPS remoteを使い、
+    refは双方とも`refs/heads/main`に固定する。未知file、symlink、dirty/mismatched checkoutを
+    上書きせず、未deploy rootは保持する`repositories/`と空の`.hanchou/`以外のentryを拒否する。
+    candidate／registry／target-path driftはapply前に拒否し、valid instanceへの再実行は
+    updateにしない。
+28. CoreとPublic Skillsは独立したexact commitへpinするが、candidate validation、activation、
+    current／previous記録、rollback、health判定はcommit pair単位とする。candidate Coreは
+    sibling candidate Skillsと検証し、Coreが要求するSkills version、共有`hanchou-cli`のbyte一致、
+    設定済みpublic Skillの存在を要求する。validationはfresh temporary HOME/XDGを使って一般的な
+    GitHub token／HTTP proxy環境変数とambient Git設定を外し、npm install scriptを無効にするが、
+    candidate `make check`をOS sandboxなしで実行する境界は明記する。managed checkoutでのmanual edit、branch switch、
+    `git pull`を標準運用にしない。
+29. `./bin/hanchou update`は固定public `main` pairをfetch／prevalidateしてexact tokenを表示する
+    planであり、running deploymentを切り替えない。candidate codeを実行するためprepareも通常の
+    人間TTYに限定する。各candidateは対応するcurrentからfast-forwardであることを要求し、
+    currentと同じpairならtoken不要のno-opにする。exact `--plan <token> --yes`だけがreview済み
+    pairをactivateし、plan後のupstream移動を再解決しない。applyはprevious pairを記録して
+    `bootstrap`／`doctor`を完了する。half-pairやhealth failureを成功として記録せず、元pairへの
+    自動復元を試みる。applyはstop-orchestratorでL0 workspaceを意図的に閉じないが、bootstrapの
+    service reloadはsessionへ影響し得る。instruction reloadには人間の明示restartを要求する。
+    自動復元も失敗したtransactionはautomatic rollbackを含むlifecycle commandをblockし、人間が
+    両checkoutとmetadataを一貫してinspect／repairするまでjournalを保持する。
+30. `./bin/hanchou rollback`もplan/applyとし、記録済みprevious Core／Skills pair全体を戻して
+    `bootstrap`、`doctor`を行う。prepareはcandidate code実行のため通常の人間TTYに限定する。
+    成功時は退避したcurrent pairを新しいpreviousとして記録し、逆方向も再度reviewed plan/applyにする。
+    片側だけ、任意commit、dirty stateの
+    implicit resetは提供しない。`latest`をpoll／activateするdaemonは置かない。exact commit pinは
+    reproducibility／TOCTOU対策であり、release署名やupstream compromise対策とは扱わない。
+31. Orchestratorのcwdはexact profile rootとする。これはprofile tree全体への明示的なL0
+    read/write authorizationであり、Core、Skills、canonical repositoryへのdirect accessを
+    filesystemでは遮断しない。通常実装をLeafへ委譲するのはRole policyである。project registryは
+    worker dispatch boundaryであり、L0 filesystem boundaryではない。
+32. profile-local checkout／stateを複数持っても、同一OS userのprovider integration、global Agent
+    定義、plugin/tool link等は完全には分離されず、最後に成功したbootstrapが共有stateを所有し得る。
+    instance lockはglobal coordinatorにせず、人間のoperatorがcross-profile update／bootstrapを
+    直列化し、各profileでdoctorする。hard independenceには
+    別OS userまたはVMを使う。
 
 ## 初期default
 

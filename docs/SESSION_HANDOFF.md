@@ -2,7 +2,8 @@
 
 ## Goal
 
-Implement and live-test the Core only. Do not select or build Slack/Discord yet.
+Finish release validation, migrate the target Mac, and live-test the Core only.
+Do not select or build Slack/Discord yet.
 
 ## Read in order
 
@@ -27,6 +28,9 @@ herdr-beads optional Herdr board
 herdr-automations Cron source
 Codex Sol L0
 Relay Inbox + Delivery
+profile-local regular launcher
+managed Core + Public Skills exact commit pair
+exact profile-root Orchestrator cwd
 ```
 
 ## Critical behavior
@@ -39,29 +43,98 @@ Relay Inbox + Delivery
 - L2 defaults to Terra/Sonnet; Japanese draft/final review stays Codex.
 - Use upstream CLIs directly for single-system operations; use `hanchou` only for
   Hanchou-owned or cross-system mechanics.
+- One Orchestrator exists per profile, with the exact profile root as cwd and
+  explicit direct read/write scope to the whole profile tree.
+- Managed Core and Public Skills are sibling clean detached checkouts, updated
+  and rolled back only as one reviewed exact commit pair.
 
-## First implementation tasks
+## v2.4.0 implementation status
 
-1. Run `make check`.
-2. Run `mise install`, review `hanchou onboard work` and `hanchou plan work`,
-   then bootstrap a clean work profile on a test HOME or target Mac.
-3. Verify the Herdr, beads-ui, and Dashboard LaunchAgents, then start the Codex
-   Orchestrator with `hanchou launch work`.
-4. Implement/verify Beads↔Herdr dispatch command.
-5. Complete one Leaf task and prove later-turn Relay response.
-6. Prove Relay lease recovery and pending Delivery visibility.
-7. Implement daily digest schedule only after the completion loop passes.
+The v2.4.0 CLI implements `init`, `update`, `rollback`, paired Core/Public
+Skills metadata, the profile-local launcher, and profile-root Orchestrator
+lifecycle. Automated fixture coverage is in `tests/test-instance.sh` and the
+updated launch lifecycle tests.
+
+1. Bare `hanchou init <profile>` downloads/validates candidates and prints an
+   exact token plan using the same seed Core executable path, without a deployed
+   instance/shelf/registry mutation.
+   Prepare itself is ordinary-human-TTY-only because validation runs candidate
+   mise/npm/make code.
+   Ordinary-TTY `init <profile> --plan <token> --yes` creates this topology and
+   registers its fixed shelf through bounded onboarding:
+
+   ```text
+   ~/HanchouWorkspace/<profile>/
+   ├── bin/hanchou
+   ├── hanchou/
+   ├── hanchou-skills/
+   └── repositories/
+   ```
+
+   The launcher must be a regular file fixed to root/profile. Core and Skills
+   must be clean detached exact commits from the fixed official HTTPS remotes
+   `https://github.com/ykawase1011/hanchou.git` and
+   `https://github.com/ykawase1011/hanchou-skills.git`, both
+   `refs/heads/main`. Refuse conflicts, symlinks, dirty/mismatched checkout
+   state, candidate/registry/target drift, and partial setup fail without
+   deleting user content. Valid re-init is idempotent and not an update;
+   `onboard` remains separately callable for the same fixed authority.
+2. Pair metadata and the instance lock record independent exact current and
+   previous commits. Candidate Core is validated against sibling candidate
+   Skills; one-side activation/rollback is not exposed.
+3. Local update/rollback prepare is also ordinary-human-TTY-only. Exact-token
+   apply journals activation, preserves reviewed commits across upstream
+   movement, and runs bootstrap/doctor. Failure attempts automatic restoration;
+   incomplete recovery stays journaled and blocks automatic rollback/lifecycle
+   commands until a human consistently repairs both checkouts and metadata.
+   Apply does not deliberately close the L0 workspace, though bootstrap may
+   reload changed services; explicitly restart L0 to load changed instructions.
+   No automatic latest daemon or dirty implicit reset is installed.
+4. New Orchestrator creation, binding, adoption, stop containment, token
+   identity, and diagnostics use exact profile-root cwd and the current pair.
+   Legacy Core roots are migration-only containment inputs.
+5. L0 has explicit whole-tree access; worker dispatch outside the fixed grant is
+   deny-by-default. Same-user global integrations remain shared and may be
+   last-bootstrap-owned, so the operator serializes cross-profile
+   update/bootstrap and follows it with doctor. The instance lock is not a
+   global coordinator.
+
+Remaining operational work is the target-Mac cutover and live E2E below. Run
+the full `make check` release gate before distributing the versioned artifacts.
 
 ## Current target-Mac handoff
 
-Orchestrator duplicate prevention and multi-client-safe opening are implemented
-and fake-E2E tested. After updating the target checkout, run
-`hanchou start-orchestrator work` once. A rigorously matched live legacy Agent
-is bound in place; ambiguous empty legacy spaces do not cause another create.
-Open `hanchou open herdr work`, keep the row containing the live named
-`orchestrator`, and let the human close only verified empty duplicate rows with
-`Ctrl+B` then `Shift+D`. `hanchou open orchestrator work` now focuses the target
-and opens the full Herdr client instead of exclusive direct attach.
+Existing pre-2.4.0 installations use an external Core checkout as Orchestrator
+cwd. Prefer stopping the old L0 with the old checkout and old command semantics
+before creating/cutting over to the new profile-root instance.
+
+From the old trusted checkout, first review the old stop plan and use only its
+exact apply command if every listed workspace may be terminated. If automatic
+containment refuses, inspect and close only human-verified old rows in the full
+Herdr TUI. Preserve unrelated workspaces, repositories, state, and worktrees.
+After all old L0s for the profile are confirmed absent, run the implemented
+bare `init work`, review/apply its exact token command, bootstrap/doctor the
+local instance, then start exactly one new L0
+whose cwd is `~/HanchouWorkspace/work`.
+
+If pre-init cleanup is not possible, init metadata records its exact bootstrap
+Core checkout as a migration-only approved root. The new local launcher may
+adopt or stop an old workspace only when it uses that exact recorded root and
+passes all other containment checks; it never force-closes an arbitrary old
+cwd. Creating the new profile-root workspace clears the legacy allowance.
+
+Do not run manual `git pull` in either new managed checkout. After cutover,
+updates and recovery use only the new local pair-aware `update`/`rollback`
+plan/apply.
+
+### Legacy pre-cutover cleanup details
+
+The commands below describe the pre-2.4.0, old-Core-cwd stop flow.
+They are intentionally run from the old checkout before `init`; they are not the
+new profile-root lifecycle contract. After cutover, a stop plan invoked through
+the profile-local launcher preserves that launcher's absolute path in its exact
+apply/retry command; this pre-init seed flow may use the bare fallback shown
+below.
 
 If the human confirms that every same-label Orchestrator workspace may be
 terminated, use `hanchou stop-orchestrator work --all` to review the exact IDs,
@@ -82,11 +155,13 @@ activity and the human explicitly approves terminating its whole pane OS
 session, replan with
 `hanchou stop-orchestrator work --all --include-unmanaged`. Review every
 `UNMANAGED-ACTIVE` row and copy only its
-exact flag-preserving token command. The option does not relax label, Core base
-cwd, one-tab/one-pane, no-worktree, ID/binding, real-Agent containment, or
+exact flag-preserving token command. The option does not relax label, approved
+base/current/process cwd, one-tab/one-pane, no-worktree, ID/binding,
+real-Agent containment, or
 Herdr `pane process-info` schema validation. Review pane-reported `cwd` and all
-`process_cwds` evidence; current-cwd refusal considers every foreground
-process. Its `process_scan_unavailable` reason refers only to the later OS scan.
+`process_cwds` evidence; any cwd that does not exactly equal the profile root or
+an explicitly recorded legacy root is a hard refusal. Its
+`process_scan_unavailable` reason refers only to the later OS scan.
 After drift or partial failure, replan with `--include-unmanaged`; never retry a
 default-mode token or drop the flag. Otherwise use manual TUI cleanup.
 

@@ -20,7 +20,13 @@ Public shared Skills canonical repository.
 - provider-neutral operational Skills;
 - installed to Codex and Claude Code with `vercel-labs/skills`;
 - versioned independently from Core;
+- deployed at its own exact commit, but candidate validation, activation, and
+  rollback pair it with the profile-local Core exact commit;
 - no credentials or confidential policy.
+
+The managed Core and Public Skills checkouts are siblings directly below the
+profile root. Neither is placed under or authorized as a target in
+`repositories/`.
 
 Private company/personal overlays live in separate private repositories and are
 referenced only from machine-local `skills.local.toml`.

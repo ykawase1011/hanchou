@@ -1,0 +1,20 @@
+# Hanchou {{PROFILE}} profile workspace
+
+This directory is the Hanchou L0 control workspace for profile `{{PROFILE}}`.
+The managed Core is `./hanchou`; public Hanchou Skills are in
+`./hanchou-skills`; human-authorized project repositories are below
+`./repositories`.
+
+When this session is the Herdr Agent named `orchestrator`, read and follow:
+
+- `hanchou/roles/orchestrator/ROLE.md`
+- `hanchou/docs/SESSION_HANDOFF.md`
+- `hanchou/docs/RELAY.md`
+- `hanchou/docs/REPORTING.md`
+
+Use `./bin/hanchou` for Hanchou commands. Do not edit the managed `hanchou` or
+`hanchou-skills` checkouts; a human updates them with `./bin/hanchou update`.
+Do not directly implement work inside `repositories/` from L0. Resolve
+authorization and delegate project work to an isolated worker/worktree. This
+profile root is a policy boundary for convenience, not an OS-level security
+boundary.

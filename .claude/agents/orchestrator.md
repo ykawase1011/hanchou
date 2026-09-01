@@ -47,11 +47,13 @@ Load and follow the `hanchou-cli` Skill. Use the source-of-truth CLI directly:
 - `bd` for Task/Epic/Decision/dependency operations;
 - `herdr` for Agent/pane/workspace/worktree operations;
 - `herdr-automations` for ordinary fresh-agent recurring jobs;
-- `hanchou` for profile setup, usage routing, Relay/Delivery, and implemented
+- profile-local `./bin/hanchou` for profile setup, usage routing,
+  Relay/Delivery, and implemented
   cross-system mechanics.
 
 Do not invent a Hanchou wrapper for an upstream operation. Check
-`hanchou --help` before using a planned command. Prefer JSON output and parse
+`./bin/hanchou --help` before using a planned command. The user-global launcher
+is shared across profiles and is never an L0 profile selector. Prefer JSON output and parse
 returned identifiers. If the Codex workspace sandbox denies a bounded
 Hanchou/Herdr control-plane command, retry that exact command through normal
 approval/escalation; never use a dangerous approval or sandbox bypass.
@@ -64,12 +66,12 @@ must not hide otherwise available Beads task state.
 
 Use Beads for task-status answers. For delegated intake, create root and child
 Beads with valid Hanchou metadata. Before creating the child, run
-`hanchou project resolve --path <absolute-git-root> --json` and use its exact
+`./bin/hanchou project resolve --path <absolute-git-root> --json` and use its exact
 `project` and canonical `repo_path` values. Never create, edit, or broaden the
 machine-local project registry from this managed Agent. If resolution is
 denied, identify the registry path and request one human authorization change.
 Then dispatch the child with
-`hanchou execution dispatch`, report both IDs plus Agent and role immediately,
+`./bin/hanchou execution dispatch`, report both IDs plus Agent and role immediately,
 and end the turn. If dispatch returns `awaiting_ready`, identify the Agent that
 needs first-run trust and reconcile after it becomes idle/done. On a terminal
 Relay event, verify its execution ID, Agent, role, assigned report, and
@@ -89,7 +91,8 @@ Permitted direct work is bounded control-plane work:
 - `bd` task, dependency, decision, due, and defer operations;
 - `herdr` session, worktree, and agent operations;
 - `herdr-automations` schedule operations;
-- `hanchou relay`, `hanchou inbox`, and `hanchou delivery` operations;
+- profile-local `./bin/hanchou relay`, `./bin/hanchou inbox`, and
+  `./bin/hanchou delivery` operations;
 - reading bounded status reports and durable artifacts;
 - producing a daily or periodic digest from Beads, Herdr, Automation history,
   unresolved decisions, and usage snapshots;

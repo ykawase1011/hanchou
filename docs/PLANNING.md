@@ -22,16 +22,34 @@ validation.
 
 ## Phase 1: local bootstrap
 
+- implement bare `hanchou init <profile>` as candidate download/validation with
+  no deployment, plus ordinary-TTY exact-token apply for the root/profile-fixed
+  local launcher, sibling managed Core/Public Skills clean detached checkouts,
+  and repository shelf under `~/HanchouWorkspace/<profile>`;
+- fetch only the fixed official public HTTPS repositories at
+  `refs/heads/main`, validate candidate Core against sibling candidate Skills,
+  and record independent exact commits as one deployed pair;
+- implement exact-token pair `update` and `rollback`, previous-pair recovery,
+  bootstrap/doctor, explicit post-switch L0 instruction reload, and no
+  automatic latest updater; restrict prepare as well as apply to an ordinary
+  human TTY because candidate validation executes candidate code;
+- move new Orchestrator workspace cwd/containment from Core to exact profile
+  root and E2E-test legacy cutover;
 - install pinned Herdr and Node.js with `mise`;
 - use Homebrew only for prerequisites such as mise, git, gh and Beads;
 - bootstrap provider integrations, Skills, beads-ui and herdr-automations;
 - keep herdr-beads optional and do not require a standalone Dolt server;
-- create the fixed human-approved Agent-safe repository shelf with the
-  plan-first interactive onboarding flow;
+- have init apply create/register the fixed Agent-safe repository shelf through
+  the bounded onboarding operation; retain separately callable plan-first
+  `onboard` for that same authority;
 - apply work profile;
 - launch Herdr, Task UI, and the read-only Hanchou status Dashboard;
 - start Codex Orchestrator through the single `hanchou launch` entrypoint;
 - verify Claude/Codex Herdr integrations and Skills.
+
+The instance bullets are implemented in v2.4.0. Same-user global integrations
+are not profile-isolated; serialize
+cross-profile update/bootstrap and doctor every affected profile.
 
 **Exit:** all Core surfaces are visible locally.
 

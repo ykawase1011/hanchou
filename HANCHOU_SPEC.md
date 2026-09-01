@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-Hanchouは、1つの高品質なOrchestratorへ指示し、Task化・定期実行・
+Hanchouは、profileごとに1つの高品質なOrchestratorへ指示し、Task化・定期実行・
 Claude/Codexへの委譲・session可視化・後追い報告を行うためのHerdr-first
 configuration distributionです。便利機能のために別runtimeや別Task DBを
 増やさず、各componentの正本を1つに限定します。
@@ -35,6 +35,40 @@ Codex Sol Orchestrator（Herdr上の論理Agent `orchestrator`）
 
 会話contextは継続性に使いますが、durable truthにはしません。
 
+### Profile-local instance
+
+v1 instance rootは`~/HanchouWorkspace/<profile>`です。
+
+```text
+<profile-root>/
+├── bin/hanchou          root/profile固定のregular-file launcher
+├── hanchou/             managed clean detached Core checkout
+├── hanchou-skills/      managed clean detached Public Skills checkout
+└── repositories/        canonical target-repository shelf
+```
+
+bare `hanchou init <profile>`はcandidate pairをdownload／validateしてexact apply tokenを
+表示するprepare-only stepです。deployed instanceはまだ作りません。ただしvalidationが
+candidateのmise/npm/make codeを実行するため、prepare自体もManaged Agent外の通常の人間TTYに
+限定します。prepare出力は実行中の同じseed Core executableのexact pathをapply commandへ
+固定します。同じ通常の人間TTYからその
+`init <profile> --plan <token> --yes`を実行したときだけこの構造を作成し、同じ
+human approvalで固定repository shelfをworker dispatch対象として登録します。
+Coreは`https://github.com/ykawase1011/hanchou.git`、Skillsは
+`https://github.com/ykawase1011/hanchou-skills.git`の固定public HTTPS remote、
+refは双方とも`refs/heads/main`だけを使います。各checkoutは独立したexact commitの
+clean detached HEADですが、candidate validation、activation、current／previous記録、
+rollbackはCore／Skills pair単位です。candidate Coreはsibling candidate Skillsと検証します。
+このcross-pair validationはCoreが宣言するSkills version、共有`hanchou-cli`のbyte一致、
+設定済みpublic Skillの存在を含みます。validationは一時HOME/XDGを使い、一般的なGitHub token／
+HTTP proxy環境変数、ambient Git設定、npm install scriptを除きますが、`make check`は
+OS sandboxなしでcandidate codeを実行します。
+どちらも`repositories/`のtargetにしません。
+初回rootは存在しないか、保持する`repositories/`と空の`.hanchou/`だけを含む場合に限定し、
+未知のroot／control entryを上書きしません。
+
+このinstance lifecycleはv2.4.0で実装されています。
+
 ## 3. Orchestrator contract
 
 Orchestratorは丁寧・簡潔な秘書です。キャラクター口調は使用しません。
@@ -50,6 +84,12 @@ Turn 2: Relay wake → 「Task hch-123が完了しました」
 
 L0が直接行えるのは、Beads、Herdr、Schedule、Relay、Delivery、bounded artifact
 確認、日次digestなどのcontrol-plane workです。
+
+これはRole policyです。Orchestrator cwdはexact profile rootであり、利用者がprofile tree
+全体へのL0 read/writeを明示的に許可します。Core、Public Skills、canonical target
+repositoryへのdirect L0 accessをfilesystemでは遮断しません。通常実装はpolicyに従って
+Leafへ委譲します。profile rootは運用上のscopeであって、同一OS userに対する
+OS security boundaryではありません。
 
 ## 4. Delegation topology
 
@@ -86,7 +126,7 @@ single writerです。WorkerはTask graphを直接変更せず、Relay eventで�
 Herdrの`idle/done`だけではBeadをcloseしません。Acceptance criteriaとdurable
 artifactを検証します。
 
-新規dispatchはmachine-local project registryでdeny-by-defaultとします。
+新規worker dispatchはmachine-local project registryでdeny-by-defaultとします。
 人間がexact Git repositoryまたはsecret-freeな専用workspace rootを許可し、
 Agentは`list/show/resolve/doctor`のみ行います。Beadのproject ID、canonical
 repository path、profileをdispatch前に再照合し、Agent自身が許可範囲を広げる
@@ -94,7 +134,10 @@ commandは提供しません。初回の専用rootだけは、通常terminalの�
 plan確認後に登録する`hanchou onboard <profile> --yes`を提供します。この適用は
 Managed Agent環境と非対話実行から拒否します。Leafごとのworktreeは許可照合後に
 自動生成します。
-これはGit作業分離であり、host上のsecret read isolationではありません。
+標準`init` applyはこのbounded onboarding処理を内部で再利用し、作成直後から固定shelfを
+利用可能にします。`onboard`は同じauthorityを単独で確認・再適用する入口として残します。
+これはworker dispatchとGit作業分離であり、profile-root cwdのL0 filesystem boundaryや
+host上のsecret read isolationではありません。
 
 ## 7. Scheduler
 
@@ -147,6 +190,8 @@ mechanicsを担当します。
 - Profile、routing、Relay、Delivery、cross-system operationは`hanchou`。
 - machine-local project authorizationの照合は`hanchou project`。
 - human-ownedな固定専用workspaceの初期登録は`hanchou onboard`。
+- profile-local Core／Skills／launcherと固定shelf authorityのprepare/applyは`hanchou init`。
+- managed Core／Skills pairのexact update／rollbackは`hanchou update`／`rollback`。
 - service readiness、Orchestrator開始、read-only Dashboard起動は`hanchou launch`。
 
 GenericなTask／Agent facadeは作りません。`hanchou execution`は
@@ -188,27 +233,72 @@ Hanchou Core E2Eを通し、`mise.toml`のversionを明示的に更新します�
 初期セットアップの標準経路は次のとおりです。
 
 ```bash
-# prerequisite
+# prerequisiteと初回init専用のseed Core checkout
 brew install mise git gh beads
-
-cd hanchou
+git clone --branch main --single-branch \
+  https://github.com/ykawase1011/hanchou.git \
+  "$HOME/HanchouBootstrap/hanchou"
+cd "$HOME/HanchouBootstrap/hanchou"
 mise install
+mise exec -- npm ci
+make check
 
-./bin/hanchou onboard work
-./bin/hanchou onboard work --yes
-./bin/hanchou plan work
+./bin/hanchou init work
+$HOME/HanchouBootstrap/hanchou/bin/hanchou init work --plan <64hex-token> --yes
+cd "$HOME/HanchouWorkspace/work"
+
+./bin/hanchou plan
 ./bin/hanchou bootstrap
-./bin/hanchou doctor work
-./bin/hanchou launch work
+sleep 5
+./bin/hanchou doctor
+./bin/hanchou launch
 ```
+
+`<64hex-token>`は説明用placeholderであり、bare `init`が同じseed executableのpathで出力した
+exact commandを使用します。作成後はprofile-local `./bin/hanchou`が正本で、seed checkoutは
+稼働instanceの更新には使いません。
 
 `bootstrap`はHerdrのCodex／Claude integration、Hanchou Skills、必要なHerdr
 plugin等を初期設定します。既存のユーザー設定を変える場合はbackupを作成し、
-変更内容を`hanchou plan <profile>`で事前確認可能にします。
+変更内容をprofile-local `./bin/hanchou plan`で事前確認可能にします。
 
 `doctor`は少なくとも、mise、要求されたHerdr／Node.js version、Beads (`bd`)、
 Codex、Claude Code、Herdrの両provider integration、herdr-automations、beads-ui、
 loopback限定のHanchou Dashboard、Hanchou Skills、project registryを検証します。
+
+Managed checkoutの更新では`git pull`を使いません。`./bin/hanchou update`は固定remoteの
+`main`からexact candidate pairをfetch／prevalidateし、current／candidate commits、candidate versions、
+validation、exact token apply commandを表示します。candidate codeを実行するためprepareも
+Managed Agent外の通常の人間TTYに限定します。plan段階では
+running checkoutを切り替えません。各candidateは対応するcurrent commitからfast-forwardでなければ
+拒否し、pairがcurrentと同じならtokenなしでcurrentと報告します。
+`update --plan <token> --yes`はplan時のexact pairだけをactivateし、upstream移動を
+再解決せず、previous pairを記録し、宣言したlifecycle処理、
+`bootstrap`、`doctor`を完了します。tokenはprofile/root、fixed sources/ref、current/candidate
+commits、candidate versions、project registry digestに束縛します。
+dirty／mismatched stateやsnapshot driftはfail closedです。half-pairやhealth failureは
+成功として記録せず、元pairへの自動復元と
+bootstrap／doctorを試みます。復元も失敗したtransactionはautomatic rollbackを含むlifecycle
+commandをblockし、人間が両checkoutとmetadataを一貫してinspect／repairするまで
+journalを保持します。
+applyはstop-orchestratorでL0 workspaceを意図的に閉じませんが、
+bootstrapのservice reloadはsessionへ影響し得ます。成功後のinstruction reloadは人間が
+明示restartします。
+
+update／rollback planが表示するexact apply commandはprofile-local launcherのabsolute pathを
+使います。例の`./bin/hanchou`へ書き換えず、表示された1行全体を使用します。
+
+`./bin/hanchou rollback` prepareもcandidate codeを実行するため通常の人間TTYに限定します。
+exact token applyは記録済みprevious pair全体を復元し、`bootstrap`、`doctor`を行います。
+片側だけのrollback、任意commit、dirty stateの
+implicit reset、automatic latest daemonは提供しません。exact commit pinは再現性とplan/apply
+TOCTOUを改善しますが、release署名やupstream compromise対策ではありません。
+
+profile-local checkout／stateは別でも、同一OS userのprovider integration、global Agent定義、
+plugin/tool link等は共有され、最後に成功したbootstrapが所有し得ます。異なるpairのprofileを
+併用するとdriftします。instance lockはglobal coordinatorではないため、人間のoperatorが
+cross-profile update／bootstrapを直列化し、各profileでdoctorします。
+hard independenceには別OS userまたはVMが必要です。
 
 Hanchou DashboardはTask／Agentの新しい正本や操作GUIではありません。Herdr、
 Beads、Relay、workspace登録のread-only summaryと、各upstream UI／TUIへの入口だけを
@@ -223,28 +313,34 @@ terminalのopaque IDをAgent開始前にatomic保存し、初回trust待ち、�
 同じpaneを再利用します。`launch`／`start-orchestrator`はworkspaceを自動削除しません。
 保存済みbindingがなく同じlabelのlegacy workspaceが残る場合も、原則として新規作成せず
 fail closedとします。例外は、live named Agentが要求kind、label、1 tab／1 pane、
-no-worktree、Hanchou Core cwd、全opaque IDに厳密一致する場合だけで、そのworkspaceを
+no-worktree、approved Hanchou workspace cwd、全opaque IDに厳密一致する場合だけで、そのworkspaceを
 bindingへmigrationして維持します。それ以外は人間によるHerdr TUI上の確認・整理を
 要求します。`open orchestrator`は単一ownerの
 direct attachを使わず、対象をfocusしてmulti-client対応の通常Herdr TUIを開きます。
+approved rootは通常exact profile rootです。移行中だけ`init`がmetadataへ明記したpre-2.4
+bootstrap Core rootを追加し、新しいprofile-root workspace作成後にそのallowanceを消去します。
 
 人間がOrchestratorを明示的に全終了するときだけ、
-`hanchou stop-orchestrator <profile> --all`でread-only planを確認します。planはprofile／
-session、profile TOML digest、全resolved profile state path、Core／config root、lifecycle state、
+profile rootから`./bin/hanchou stop-orchestrator --all`でread-only planを確認します。planはprofile／
+session、profile TOML digest、全resolved profile state path、approved workspace-root list、
+Core／config root、lifecycle state、
 binding、targetのworkspace／pane／Agent／process identityを含むsnapshotに束縛した64文字の
 lowercase hex tokenと、次のexact apply commandを表示します。
 
 ```text
-hanchou stop-orchestrator <profile> --all --plan <64hex-token> --yes
+<exact-profile-local-launcher> stop-orchestrator --all --plan <64hex-token> --yes
 ```
+
+profile-local invocationではplanがlauncherのabsolute pathを保持します。seed／legacy invocationの
+fallbackを含め、表示されたcommand名／pathを置き換えません。
 
 apply時のsnapshotが一致しなければtoken mismatchとしてclose前にfail closedとします。対象の
 状態変化後、およびpartial failureで一部をcloseした後は、同じmodeのread-only planから再planして
-新tokenを使い、旧tokenを再利用しません。対象はconfigured label、Hanchou Coreと一致するpane
+新tokenを使い、旧tokenを再利用しません。対象はconfigured label、approved rootと一致するpane
 base cwd、1 tab／1 pane、no-worktreeをすべて満たすworkspaceに限定し、同じlabelの不一致が
 1件でもあればclose前にfail closedとします。occupied targetは設定済みOrchestrator Agent
 identityとの一致を要求します。
-unowned legacy targetはforegroundがCore cwd上の利用可能なshellで、同じTTYまたはshell descendantの
+unowned legacy targetはforeground shellのcwdがapproved rootと一致し、同じTTYまたはshell descendantの
 追加processがOS process table上で観測されない場合だけ対象にします。planの各`CLOSE` rowにある
 `observed_additional`は、unowned legacy targetではこのbest-effort観測の件数、Agent occupant
 targetではOS shell scanを実行しないため`n/a`とします。数値の0も全processの不存在証明では
@@ -261,9 +357,9 @@ repository、worktreeは変更しません。全targetの消失確認後だけru
 `--include-unmanaged`はdefaultの自動fallbackにせず、人間が明示した場合だけ使用します。
 activity判定をoverrideできるのはunboundかつauthoritativeなAgent recordがないlegacy paneに
 限り、次のactivity refusalだけをoverrideできます。
-`foreground_busy`、`current_cwd_outside_core`、`background_processes_observed`、
+`foreground_busy`、`background_processes_observed`、
 `process_scan_unavailable`、`stale_pane_authority`です。
-exact configured label、pane base cwdのCore一致、1 tab／1 pane、no-worktree、全opaque ID、
+exact configured label、paneと全foreground process cwdのapproved root一致、1 tab／1 pane、no-worktree、全opaque ID、
 binding／moved-terminal、Agent listとdirect pane lookup、実在Agentのname／kind／identity整合は
 hard containmentとして維持します。Herdr `pane process-info`のresult type、foreground
 PID／PGID／TTY、process recordもschema-validでなければなりません。
@@ -271,14 +367,13 @@ PID／PGID／TTY、process recordもschema-validでなければなりません�
 Herdr responseは対象にしません。これらが1件でも不一致なら全close前にfail closedとします。
 
 ```text
-hanchou stop-orchestrator <profile> --all --include-unmanaged
-hanchou stop-orchestrator <profile> --all --include-unmanaged --plan <64hex-token> --yes
+./bin/hanchou stop-orchestrator --all --include-unmanaged
+<exact-profile-local-launcher> stop-orchestrator --all --include-unmanaged --plan <64hex-token> --yes
 ```
 
 include modeのplanは対象を`UNMANAGED-ACTIVE`と表示し、foreground `PID:name`、pane-reported
 `cwd`、全foreground processの`process_cwds=PID:name@cwd`、`observed_additional`、base cwd、
-override理由、whole-session終了警告を表示します。`current_cwd_outside_core`はこの全process cwdも
-判定します。
+override理由、whole-session終了警告を表示します。cwd containmentはactivity overrideの対象にしません。
 OS scanを完了できない場合の`observed_additional=n/a`を「追加processなし」と解釈しません。
 plan identityへ`include_unmanaged`を束縛し、exact apply commandとpartial failure後の再planにも
 `--include-unmanaged`を必須とします。unmanaged targetを先に、bound targetを最後にcloseします。

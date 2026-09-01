@@ -6,23 +6,37 @@
 # inspect and resolve it. `hanchou onboard --yes` expands trust, so it is
 # intentionally not allowlisted and is restricted to a human interactive shell.
 prefix_rule(
+    pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], ["init", "update", "rollback"]],
+    decision = "prompt",
+    justification = "Installing or switching the profile-local Hanchou supply chain requires exact human-reviewed commits",
+    match = [
+        "hanchou init work",
+        "hanchou init work --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
+        "./bin/hanchou update",
+        "./bin/hanchou update --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
+        "./bin/hanchou rollback",
+    ],
+)
+
+prefix_rule(
     pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], "stop-orchestrator"],
     decision = "prompt",
     justification = "Stopping the Orchestrator terminates validated workspace PTYs; this prompt is defense in depth for human review",
     match = [
         "hanchou stop-orchestrator work --all",
         "hanchou stop-orchestrator work --all --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
-        "./bin/hanchou stop-orchestrator work --all",
-        "./bin/hanchou stop-orchestrator work --all --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
+        "./bin/hanchou stop-orchestrator --all",
+        "./bin/hanchou stop-orchestrator --all --plan 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --yes",
     ],
 )
 
 prefix_rule(
-    pattern = ["hanchou", "project", ["list", "show", "resolve", "doctor"]],
+    pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], "project", ["list", "show", "resolve", "doctor"]],
     decision = "allow",
     justification = "Read and validate the human-owned Hanchou project authorization registry",
     match = [
         "hanchou project list --json",
+        "./bin/hanchou project list --json",
         "hanchou project show example-app --json",
         "hanchou project resolve --path /workspace/example-app --json",
         "hanchou project doctor",
@@ -34,11 +48,12 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["hanchou", "inbox", ["list", "show"]],
+    pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], "inbox", ["list", "show"]],
     decision = "allow",
     justification = "Read validated Hanchou Inbox records in the L0 control repository",
     match = [
         "hanchou inbox list --json",
+        "./bin/hanchou inbox list --json",
         "hanchou inbox show evt_example",
     ],
     not_match = [
@@ -48,11 +63,12 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["hanchou", "inbox", ["claim", "ack"]],
+    pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], "inbox", ["claim", "ack"]],
     decision = "allow",
     justification = "Perform validated identity-bound routine Inbox transitions",
     match = [
         "hanchou inbox claim --to orchestrator --json",
+        "./bin/hanchou inbox claim --to orchestrator --json",
         "hanchou inbox ack evt_example --by orchestrator",
     ],
     not_match = [
@@ -62,11 +78,12 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["hanchou", "inbox", ["retry", "dead-letter"]],
+    pattern = [["hanchou", "./bin/hanchou", "bin/hanchou"], "inbox", ["retry", "dead-letter"]],
     decision = "prompt",
     justification = "Retry and dead-letter alter delivery semantics and require operator review",
     match = [
         "hanchou inbox retry evt_example",
+        "./bin/hanchou inbox retry evt_example",
         "hanchou inbox dead-letter evt_example --reason invalid",
     ],
     not_match = [

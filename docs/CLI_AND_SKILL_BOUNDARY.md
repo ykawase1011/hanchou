@@ -36,6 +36,12 @@ component.
 
 ### Implemented
 
+- `hanchou init <profile>` prepare plus exact-token apply for the fixed
+  profile-local launcher, managed sibling Core/Public Skills checkouts, and an
+  immediately registered repository shelf through bounded onboarding;
+- local `hanchou update` and `hanchou rollback` exact-pair plan/apply,
+  bootstrap/doctor activation, explicit L0 instruction reload, and
+  previous-pair recovery;
 - fixed-path human onboarding plus profile plan/apply/doctor/status/launch/open;
 - loopback-only read-only cross-system status Dashboard;
 - human-owned project authorization inspection and dispatch enforcement;
@@ -52,6 +58,19 @@ component.
 - `hanchou execution cancel` and automatic orphan rediscovery;
 - `hanchou schedule`: typed Hanchou reporting contract and
   `existing-orchestrator` schedules.
+
+The instance commands are implemented in v2.4.0. Core and Skills use only the fixed official public
+HTTPS remotes at `refs/heads/main`, are clean detached independent commits, and
+are validated/activated/rolled back as one pair. They are Hanchou-owned
+cross-repository mechanics, not a facade over ordinary Git. There is no
+automatic latest updater. Bare init leaves no deployed instance; only its
+ordinary-TTY exact-token apply creates the topology and authority. `onboard`
+remains separately callable for that same fixed shelf.
+
+Prepare for `init`, `update`, and `rollback` can execute candidate mise/npm/make
+code, so each surface is restricted to an ordinary interactive human terminal
+outside a managed Agent. It is not categorized with Agent-safe read-only
+inspection.
 
 ## What Hanchou CLI does not own
 
@@ -127,7 +146,7 @@ hanchou route resolve \
 ### Resolve a target repository
 
 ```bash
-hanchou project resolve --path /absolute/git/top-level --json
+./bin/hanchou project resolve --path /absolute/git/top-level --json
 ```
 
 The registry is human-owned and deny-by-default. Agents may inspect it but no
@@ -138,16 +157,19 @@ interactive terminal.
 Destructive Orchestrator reset uses a separate human-confirmation interlock:
 
 ```text
-hanchou stop-orchestrator work --all
-hanchou stop-orchestrator work --all --plan <64hex-token> --yes
-hanchou stop-orchestrator work --all --include-unmanaged
-hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
+./bin/hanchou stop-orchestrator --all
+<exact-profile-local-launcher> stop-orchestrator --all --plan <64hex-token> --yes
+./bin/hanchou stop-orchestrator --all --include-unmanaged
+<exact-profile-local-launcher> stop-orchestrator --all --include-unmanaged --plan <64hex-token> --yes
 ```
 
 The first command is a read-only plan. It prints the exact second command with a
 64-character lowercase-hex token bound to the reviewed profile TOML digest,
-resolved state paths, lifecycle binding, and workspace/pane/Agent/process
-snapshot; do not construct the token or omit it. The plan shows foreground
+resolved state paths, approved workspace-root list, lifecycle
+binding, and workspace/pane/Agent/process
+snapshot; do not construct the token, replace the printed absolute local
+launcher path, or omit either. A seed/development invocation may use the bare
+`hanchou` fallback. The plan shows foreground
 process `PID:name`, pane-reported `cwd`, and all foreground process
 `process_cwds=PID:name@cwd` evidence for each target. For a legacy shell,
 `observed_additional=0` means only that the OS process table scan observed no
@@ -159,14 +181,16 @@ new plan and token.
 
 `--include-unmanaged` is a human-owned activity override and must never be added
 automatically after a default refusal. It overrides only activity checks for an
-unbound legacy pane with no authoritative Agent record; label, Core base cwd,
+unbound legacy pane with no authoritative Agent record; label, approved-root
+base/current/process cwd,
 single-pane/no-worktree shape, IDs, binding, and real-Agent consistency remain
 hard containment, so the configured target scope does not expand. The plan
 marks overrides `UNMANAGED-ACTIVE`, prints their
 process/cwd/reason evidence, treats `observed_additional=n/a` as unknown rather
 than zero, and warns that close terminates the whole pane OS session. The
 selected mode is token-bound, so its exact apply and retry commands must retain
-the flag. `current_cwd_outside_core` checks every foreground process cwd.
+the flag. Cwd that does not exactly equal one approved root remains a hard
+refusal; a descendant path is not sufficient.
 Malformed Herdr `pane process-info` is a hard refusal; the overridable
 `process_scan_unavailable` reason covers only the later OS process-table scan.
 Managed Agents may explain this path but must not apply it.

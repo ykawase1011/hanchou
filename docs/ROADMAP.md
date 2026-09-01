@@ -11,6 +11,11 @@
 
 ## M1 — Local Core visibility
 
+- profile-local `init`, managed Core/Public Skills exact commit pair, and fixed
+  launcher;
+- exact-token pair update/rollback with bootstrap/doctor and previous-pair
+  recovery;
+- exact profile-root Orchestrator cwd plus legacy-Core-cwd migration E2E;
 - Herdr session and Orchestrator visible;
 - beads-ui and optional herdr-beads visible;
 - pinned Automations board visible;

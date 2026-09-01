@@ -14,34 +14,124 @@ operation belongs to one system.
 
 See `CLI_AND_SKILL_BOUNDARY.md` and the shared `hanchou-cli` Skill.
 
+## Profile-local instance commands
+
+These commands are implemented in v2.4.0:
+
+```bash
+# one-time, from a trusted bootstrap Core checkout
+git clone --branch main --single-branch \
+  https://github.com/ykawase1011/hanchou.git \
+  "$HOME/HanchouBootstrap/hanchou"
+cd "$HOME/HanchouBootstrap/hanchou"
+mise install
+mise exec -- npm ci
+make check
+./bin/hanchou init <profile>
+$HOME/HanchouBootstrap/hanchou/bin/hanchou init <profile> --plan <64hex-token> --yes
+
+# thereafter, from ~/HanchouWorkspace/<profile>
+./bin/hanchou update
+./bin/hanchou update --plan <64hex-token> --yes
+./bin/hanchou rollback
+./bin/hanchou rollback --plan <64hex-token> --yes
+```
+
+Bare `init` downloads and validates the candidate pair, prints the exact token
+apply command, and leaves no deployed instance. The
+printed command repeats the exact seed Core executable that performed prepare;
+do not replace it with a PATH-resolved global command. The ordinary-TTY exact
+`--plan <token> --yes` apply creates a local
+regular-file launcher, managed Core and Public Skills checkouts, and the fixed
+registered repository shelf under the exact profile root. It uses only:
+
+```text
+https://github.com/ykawase1011/hanchou.git         refs/heads/main
+https://github.com/ykawase1011/hanchou-skills.git  refs/heads/main
+```
+
+Both checkouts are clean detached HEADs at independent exact commits. They are
+validated, activated, recorded, and rolled back as one pair; candidate Core is
+validated against sibling candidate Skills, including declared Skills version,
+byte-identical shared `hanchou-cli` content, and configured public-Skill
+presence. Neither checkout is under `repositories/`. The launcher fixes its
+instance root and profile.
+
+Init apply intentionally reuses the bounded `onboard` authority operation, so
+the shelf is ready for worker dispatch immediately. `onboard` remains separately
+callable to plan/reapply that same fixed authority. Candidate, registry, or
+target-path drift invalidates the init token before deployment.
+An uninitialized root may contain only a retained `repositories/` shelf and an
+optional empty `.hanchou/`; unknown root/control entries are refused rather than
+overwritten.
+
+All three prepare surfaces (`init`, `update`, `rollback` without `--yes`) can
+run candidate mise/npm/make validation code. They therefore always require an
+ordinary interactive human terminal outside a managed Agent; they are not
+Agent-safe read-only inspections. Apply has the same caller restriction and
+additionally requires the exact token.
+
+Validation uses a fresh temporary HOME/XDG tree, removes common GitHub-token and
+HTTP-proxy variables, ignores ambient Git configuration, and disables npm
+install scripts. Candidate `make check` remains unsandboxed upstream code.
+
+`update` plan fetches and prevalidates an exact fast-forward candidate pair,
+prints current/candidate commits and candidate versions, and emits the exact
+apply command. The plan's command uses the absolute profile-local launcher path;
+copy it without editing. Apply uses that reviewed pair even if upstream `main`
+moves, records the previous pair, then runs bootstrap and doctor. `rollback`
+restores only the
+recorded previous pair with the same plan/apply and bootstrap/doctor checks.
+Post-activation failure triggers an automatic attempt to restore and revalidate
+the original pair; incomplete recovery leaves a transaction and is never
+success. The incomplete journal blocks automatic rollback and other local
+lifecycle commands until a human consistently repairs both checkouts and
+metadata; removing the journal alone is not recovery. Apply does not
+deliberately close the L0 workspace, but bootstrap may reload changed managed
+services and affect the session. L0 must be explicitly
+restarted after a successful switch to load changed instructions. Dirty or
+mismatched managed state fails closed. There is no
+per-repository rollback, arbitrary commit selector, or automatic latest daemon.
+If both public-main tips already equal the current pair, update reports the
+instance current and emits no apply token.
+
+Managed checkout checks reject unapproved local Git configuration, executable
+hooks, object indirection, and hidden/nonstandard index flags before lifecycle
+Git operations.
+
+The local launcher is the canonical selector. User-global Hanchou integration
+is shared and may reflect the last successful bootstrap, so it must not choose
+between profile instances.
+
 ## Implemented Hanchou commands
 
 ### Setup and UI
 
 ```bash
-hanchou onboard work
-hanchou onboard work --yes
-hanchou bootstrap [work|personal]
-hanchou plan work
-hanchou apply work --yes [--install-upstream]
-hanchou doctor work
-hanchou status work [--json]
-hanchou launch work [--no-browser] [--herdrm]
-hanchou start-orchestrator work
-hanchou stop-orchestrator work --all
-hanchou stop-orchestrator work --all --plan <64hex-token> --yes
-hanchou stop-orchestrator work --all --include-unmanaged
-hanchou stop-orchestrator work --all --include-unmanaged --plan <64hex-token> --yes
-hanchou open dashboard work
-hanchou open tasks work
-hanchou open herdr work
-hanchou open herdrm work
-hanchou open orchestrator work
-hanchou open automations work
-hanchou dashboard snapshot work
-hanchou dashboard serve work
-hanchou render-agents [--check]
-hanchou handoff
+# from ~/HanchouWorkspace/<profile>; the launcher fixes <profile>
+./bin/hanchou onboard
+./bin/hanchou onboard --yes
+./bin/hanchou bootstrap
+./bin/hanchou plan
+./bin/hanchou apply --yes [--install-upstream]
+./bin/hanchou doctor
+./bin/hanchou status [--json]
+./bin/hanchou launch [--no-browser] [--herdrm]
+./bin/hanchou start-orchestrator
+./bin/hanchou stop-orchestrator --all
+./bin/hanchou stop-orchestrator --all --plan <64hex-token> --yes
+./bin/hanchou stop-orchestrator --all --include-unmanaged
+./bin/hanchou stop-orchestrator --all --include-unmanaged --plan <64hex-token> --yes
+./bin/hanchou open dashboard
+./bin/hanchou open tasks
+./bin/hanchou open herdr
+./bin/hanchou open herdrm
+./bin/hanchou open orchestrator
+./bin/hanchou open automations
+./bin/hanchou dashboard snapshot
+./bin/hanchou dashboard serve
+./bin/hanchou render-agents [--check]
+./bin/hanchou handoff
 ```
 
 `bootstrap` runs `mise install` from the Core repository and then performs the
@@ -52,8 +142,10 @@ may be backed up and replaced.
 project authorization surface. It takes no arbitrary path. The first invocation
 prints a plan for the fixed `~/HanchouWorkspace/<profile>/repositories` shelf;
 `--yes` applies it only from an ordinary interactive terminal outside a
-Herdr-managed Agent. It creates mode-0700 directories, atomically writes the
-mode-0600 registry, backs up changes, and is idempotent.
+Herdr-managed Agent. In the v1 instance contract, init apply calls this bounded
+operation to create/register the shelf; separately called `onboard` creates or
+verifies it, atomically writes the mode-0600 registry, backs up changes, and is
+idempotent.
 
 `launch` does not install or silently replace services. After `bootstrap` has
 registered the macOS LaunchAgents, it verifies Herdr, beads-ui, and the
@@ -74,11 +166,14 @@ that binding after `/exit`, a blocked first run, or a failed start. It never
 closes a workspace from `launch` or `start-orchestrator`. If an unbound legacy
 workspace with the configured label exists, Hanchou fails closed instead of
 creating another one. The only migration exception is a live named Agent whose
-kind, label, one-tab/one-pane shape, no-worktree state, Core cwd, and all opaque
-IDs match exactly; Hanchou binds and keeps that Agent without creating or
-restarting a workspace.
+kind, label, one-tab/one-pane shape, no-worktree state, approved Hanchou
+workspace cwd, and all opaque IDs match exactly; Hanchou binds and keeps that
+Agent without creating or restarting a workspace. The normal approved root is
+the exact profile root; only a pre-2.4 bootstrap Core root explicitly recorded
+by init is also accepted during migration, and that allowance is cleared after
+a new profile-root workspace is created.
 
-`stop-orchestrator <profile> --all` is a read-only plan. The explicit `--all`
+`./bin/hanchou stop-orchestrator --all` is a read-only plan. The explicit `--all`
 selector is required; there is no implicit current-workspace form. Hanchou first
 checks every same-label candidate and prints the plan only when all candidates
 pass the dedicated-Orchestrator checks. The plan shows the bound/named/legacy
@@ -88,12 +183,13 @@ classification, Agent status, focus state, terminal ID, foreground process
 `observed_additional` is numeric only for an unowned legacy target whose shell
 was scanned; it is `n/a` for an Agent-occupied target. A target must have
 exactly one tab and one pane, no worktree, a pane cwd
-that resolves to the current Hanchou Core checkout, consistent pane identities,
+that resolves to an approved Hanchou root, consistent pane identities,
 and a matching durable binding when one exists. A named Orchestrator outside
 that set, a moved bound terminal, or any unsafe same-label candidate makes the
 preflight fail without closing a workspace. An occupied target must contain at
 most one matching configured Orchestrator Agent. An unowned legacy pane must
-have only an available foreground shell in the Core cwd. Hanchou also scans the
+have only an available foreground shell whose cwd exactly equals an approved
+root. Hanchou also scans the
 OS process table and accepts the legacy pane only when it observes no additional
 process sharing the shell TTY or descending from the shell. Thus
 `observed_additional=0` means zero processes detected by this best-effort union,
@@ -106,20 +202,20 @@ case where the default plan rejects an unbound legacy pane that has no
 authoritative Agent record because its activity is not proven idle:
 
 ```text
-hanchou stop-orchestrator <profile> --all --include-unmanaged
-hanchou stop-orchestrator <profile> --all --include-unmanaged --plan <64hex-token> --yes
+./bin/hanchou stop-orchestrator --all --include-unmanaged
+<exact-profile-local-launcher> stop-orchestrator --all --include-unmanaged --plan <64hex-token> --yes
 ```
 
 Do not add this flag merely to make the default plan succeed. The operator must
 first inspect the pane and explicitly approve termination of its entire OS
 process session. It does not expand the configured target set; it may override
-only `foreground_busy`, `current_cwd_outside_core`,
-`background_processes_observed`,
+only `foreground_busy`, `background_processes_observed`,
 `process_scan_unavailable`, and `stale_pane_authority` on an unbound target with
-no Agent record. It still requires the exact configured label, a Core-matching
-pane base cwd, one tab and one pane, no worktree, internally consistent opaque
-IDs, consistent binding/moved-terminal state, and consistent real Agent records
-and direct pane lookup. It never admits a foreign, wrong-kind, unnamed, or
+no Agent record. It still requires the exact configured label, approved-root
+base/current/process cwd, one tab and one pane, no worktree, internally
+consistent opaque IDs, consistent binding/moved-terminal state, and consistent
+real Agent records and direct pane lookup. It never admits a foreign,
+wrong-kind, unnamed, or
 multiply recorded Agent, or activity override on a bound target. Herdr
 `pane process-info` must also be schema-valid, including its result type,
 foreground PID/PGID/TTY, and process records. `process_scan_unavailable` refers
@@ -128,7 +224,8 @@ only to the later OS process-table scan; malformed Herdr data is never included.
 The plan classifies an overridden row as `UNMANAGED-ACTIVE` and prints its
 foreground `PID:name`, pane-reported `cwd`, all foreground process
 `process_cwds=PID:name@cwd` evidence, `observed_additional`, `base_cwd`, and
-sorted `reasons`. `current_cwd_outside_core` considers every process cwd. A busy
+sorted `reasons`. Every pane/foreground-process cwd must exactly equal one
+approved root even in this mode. A busy
 foreground or unavailable OS scan can produce
 `observed_additional=n/a`; that means not established, not zero. `unmanaged`
 means Hanchou lacks an authoritative Agent record, not that the pane is empty or
@@ -139,11 +236,15 @@ Herdr TUI instead.
 
 When targets or lifecycle state remain, the plan also prints a 64-character
 lowercase-hex token and an exact apply command. The default form is
-`stop-orchestrator <profile> --all --plan <64hex-token> --yes`; the include-mode form
+`<exact-profile-local-launcher> stop-orchestrator --all --plan <64hex-token> --yes`;
+the include-mode form
 retains `--include-unmanaged` as shown above. Copy the printed command without
-constructing or editing its token. The token is a hash
+constructing or editing its launcher path or token. A local invocation prints
+the absolute profile-local launcher; a seed/development invocation may use the
+bare-command fallback. The token is a hash
 bound to the reviewed profile/session, profile TOML digest, every resolved
-profile state path, Core and config roots, lifecycle state, binding, and
+profile state path, Core/config roots, approved workspace-root list, lifecycle
+state, binding, and
 validated workspace/pane/Agent/process identities, including the selected
 `include_unmanaged` mode. It is not a secret or an authentication credential.
 If that target snapshot changes before apply, the token mismatch fails closed
@@ -176,7 +277,7 @@ the read-only command reported by the error, review the current target set, and
 apply its new exact token command. An include-mode retry keeps
 `--include-unmanaged`; never drop the flag or reuse the old token after a
 partial close. Unmanaged rows close before the bound workspace. After a
-complete stop, `start-orchestrator <profile>` creates one new dedicated
+complete stop, `./bin/hanchou start-orchestrator` creates one new dedicated
 workspace. Planning an already stopped profile is a no-op and needs no apply.
 The full Herdr TUI cleanup flow remains the fallback when Hanchou cannot
 validate hard containment or the operator cannot approve the termination.
@@ -211,10 +312,10 @@ scaffold. New Skills and documentation use `hanchou route resolve`.
 ### Project authorization
 
 ```bash
-hanchou project list --json
-hanchou project show <project-or-root-id> --json
-hanchou project resolve --path /absolute/git/top-level --json
-hanchou project doctor [<project-or-root-id>] --json
+./bin/hanchou project list --json
+./bin/hanchou project show <project-or-root-id> --json
+./bin/hanchou project resolve --path /absolute/git/top-level --json
+./bin/hanchou project doctor [<project-or-root-id>] --json
 ```
 
 These commands only inspect the fixed, human-owned machine-local registry at

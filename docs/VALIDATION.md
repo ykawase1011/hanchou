@@ -85,15 +85,15 @@
   targets where no OS shell scan ran, documented the final-revalidate-to-close
   TOCTOU in Herdr 0.8.2 and the complete PTY/process-session termination approval;
   kept default and `--include-unmanaged` tokens non-interchangeable, failed
-  closed by default on busy/current-cwd/background/scan-unavailable/stale-authority
+  closed by default on busy-foreground/background/scan-unavailable/stale-authority
   legacy panes, and exposed only explicitly included unbound/no-Agent-record
   targets as `UNMANAGED-ACTIVE` with foreground process, foreground/base cwd,
   observed count, sorted reason, whole-session, scan-limit, and TOCTOU warnings;
-  the include mode preserved label/Core-base-cwd/one-tab-one-pane/no-worktree/
+  the include mode preserved label/approved-root base/current/process cwd/one-tab-one-pane/no-worktree/
   ID/binding/real-Agent containment, rejected Agent-list/direct-lookup
   disagreement, bound activity overrides, and malformed Herdr process-info
   result/PID/PGID/TTY/process records even when OS scan override was selected,
-  checked every foreground process cwd for current-cwd mismatch, invalidated on
+  checked every foreground process cwd for exact approved-root equality, invalidated on
   activity drift, retained its flag in partial retry guidance, and closed
   unmanaged targets before the bound Agent target;
   closed four legacy spaces before the bound Agent space, preserved an unrelated

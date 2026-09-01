@@ -399,7 +399,7 @@ if [[ "$TOOL_NAME" == "launchctl" ]]; then
   exit 99
 fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d /tmp/hanchou-launch.XXXXXX)"
 TMP="$(cd "$TMP" && pwd -P)"
 SOCKET_FIXTURE_PID=""
@@ -420,6 +420,10 @@ trap cleanup EXIT
 
 export HOME="$TMP/home"
 export HANCHOU_TEST_OPERATOR_HOME="$TMP/operator"
+export HANCHOU_INSTANCE_ROOT="$HANCHOU_TEST_OPERATOR_HOME/HanchouWorkspace/work"
+export HANCHOU_INSTANCE_PROFILE=work
+export HANCHOU_INSTANCE_LAUNCHER="$HANCHOU_INSTANCE_ROOT/bin/hanchou"
+export HANCHOU_PROFILE=work
 export HANCHOU_TEST_HIDE_SYSTEM_HERDRM=1
 export FAKE_HERDR_LOG="$TMP/herdr.log"
 export FAKE_HERDR_AGENT_STATE="$TMP/orchestrator.state"
@@ -439,6 +443,61 @@ export FAKE_HTTP_LOG="$TMP/http.log"
 export HANCHOU_TEST_HERDR_READY=1
 export HANCHOU_TEST_DASHBOARD_READY=1
 export HANCHOU_TEST_TASKS_READY=1
+
+# Exercise the same path identity used by a real profile-local launcher. A
+# temporary clean managed Core contains the current working-tree sources so
+# this test also covers changes before they are committed.
+ROOT="$HANCHOU_INSTANCE_ROOT/hanchou"
+LEGACY_CORE="$SOURCE_ROOT"
+SKILLS_ROOT="$HANCHOU_INSTANCE_ROOT/hanchou-skills"
+mkdir -p "$ROOT" "$SKILLS_ROOT" "$HANCHOU_INSTANCE_ROOT/bin" \
+  "$HANCHOU_INSTANCE_ROOT/.hanchou" "$HANCHOU_INSTANCE_ROOT/repositories" \
+  "$HANCHOU_INSTANCE_ROOT/.codex/agents" "$HANCHOU_INSTANCE_ROOT/.codex/rules" \
+  "$HANCHOU_INSTANCE_ROOT/.claude/agents"
+chmod 700 "$HANCHOU_TEST_OPERATOR_HOME" "$HANCHOU_TEST_OPERATOR_HOME/HanchouWorkspace" \
+  "$HANCHOU_INSTANCE_ROOT" "$HANCHOU_INSTANCE_ROOT/bin" "$HANCHOU_INSTANCE_ROOT/.hanchou"
+(
+  cd "$SOURCE_ROOT"
+  tar --exclude=.git --exclude=node_modules --exclude=.agents --exclude=.claude/skills --exclude=skills-lock.json -cf - .
+) | (
+  cd "$ROOT"
+  tar -xf -
+)
+git -C "$ROOT" init -q -b main
+git -C "$ROOT" config user.name "Hanchou Test"
+git -C "$ROOT" config user.email "hanchou-test@example.invalid"
+git -C "$ROOT" add .
+git -C "$ROOT" commit -qm "Managed Core fixture"
+git -C "$ROOT" config --unset user.name
+git -C "$ROOT" config --unset user.email
+git -C "$ROOT" remote add origin https://github.com/ykawase1011/hanchou.git
+CORE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+git -C "$ROOT" checkout -q --detach "$CORE_COMMIT"
+
+printf '%s\n' '0.3.0' > "$SKILLS_ROOT/VERSION"
+git -C "$SKILLS_ROOT" init -q -b main
+git -C "$SKILLS_ROOT" config user.name "Hanchou Test"
+git -C "$SKILLS_ROOT" config user.email "hanchou-test@example.invalid"
+git -C "$SKILLS_ROOT" add VERSION
+git -C "$SKILLS_ROOT" commit -qm "Managed Skills fixture"
+git -C "$SKILLS_ROOT" config --unset user.name
+git -C "$SKILLS_ROOT" config --unset user.email
+git -C "$SKILLS_ROOT" remote add origin https://github.com/ykawase1011/hanchou-skills.git
+SKILLS_COMMIT="$(git -C "$SKILLS_ROOT" rev-parse HEAD)"
+git -C "$SKILLS_ROOT" checkout -q --detach "$SKILLS_COMMIT"
+
+printf '%s\n' '#!/bin/bash' 'exit 0' > "$HANCHOU_INSTANCE_ROOT/bin/hanchou"
+chmod 700 "$HANCHOU_INSTANCE_ROOT/bin/hanchou"
+printf '%s\n' '# profile fixture' > "$HANCHOU_INSTANCE_ROOT/AGENTS.md"
+printf '%s\n' '# profile fixture' > "$HANCHOU_INSTANCE_ROOT/CLAUDE.md"
+cp "$ROOT/.codex/config.toml" "$HANCHOU_INSTANCE_ROOT/.codex/config.toml"
+cp "$ROOT/.codex/rules/hanchou.rules" "$HANCHOU_INSTANCE_ROOT/.codex/rules/hanchou.rules"
+cp "$ROOT"/.codex/agents/*.toml "$HANCHOU_INSTANCE_ROOT/.codex/agents/"
+cp "$ROOT"/.claude/agents/*.md "$HANCHOU_INSTANCE_ROOT/.claude/agents/"
+printf '%s\n' \
+  "{\"schema\":\"hanchou.instance.v1\",\"profile\":\"work\",\"instance_root\":\"$HANCHOU_INSTANCE_ROOT\",\"core_path\":\"$ROOT\",\"skills_path\":\"$SKILLS_ROOT\",\"launcher_path\":\"$HANCHOU_INSTANCE_ROOT/bin/hanchou\",\"source\":{\"core\":\"https://github.com/ykawase1011/hanchou.git\",\"skills\":\"https://github.com/ykawase1011/hanchou-skills.git\",\"ref\":\"refs/heads/main\"},\"current\":{\"core\":\"$CORE_COMMIT\",\"skills\":\"$SKILLS_COMMIT\"},\"previous\":null,\"legacy_orchestrator_roots\":[\"$LEGACY_CORE\"],\"created_at\":\"2026-08-31T00:00:00.000Z\",\"updated_at\":\"2026-08-31T00:00:00.000Z\"}" \
+  > "$HANCHOU_INSTANCE_ROOT/.hanchou/instance.json"
+chmod 600 "$HANCHOU_INSTANCE_ROOT/.hanchou/instance.json"
 
 FAKE_BIN="$TMP/bin"
 PRELOAD="$TMP/launch-preload.cjs"
@@ -632,7 +691,7 @@ write_ready_marker() {
 append_workspace() {
   local workspace_id="$1"
   local label="${2:-00-orchestrator}"
-  local workspace_cwd="${3:-$ROOT}"
+  local workspace_cwd="${3:-$HANCHOU_INSTANCE_ROOT}"
   local tab_id="${workspace_id}:t1"
   local pane_id="${tab_id}:p1"
   local terminal_id="${4:-term-${workspace_id}}"
@@ -647,7 +706,19 @@ write_runtime_binding() {
   local tab_id="${workspace_id}:t1"
   local pane_id="${tab_id}:p1"
   mkdir -p "$CONTROL_DIR"
-  printf '%s\n' "{\"schema\":\"hanchou.orchestrator-runtime.v1\",\"profile\":\"work\",\"session\":\"work\",\"agent_name\":\"orchestrator\",\"workspace_label\":\"00-orchestrator\",\"cwd\":\"$ROOT\",\"workspace_id\":\"$workspace_id\",\"tab_id\":\"$tab_id\",\"pane_id\":\"$pane_id\",\"terminal_id\":\"$terminal_id\",\"created_at\":\"2026-08-31T00:00:00.000Z\",\"updated_at\":\"2026-08-31T00:00:00.000Z\"}" \
+  printf '%s\n' "{\"schema\":\"hanchou.orchestrator-runtime.v2\",\"profile\":\"work\",\"session\":\"work\",\"agent_name\":\"orchestrator\",\"workspace_label\":\"00-orchestrator\",\"core_root\":\"$ROOT\",\"workspace_cwd\":\"$HANCHOU_INSTANCE_ROOT\",\"workspace_id\":\"$workspace_id\",\"tab_id\":\"$tab_id\",\"pane_id\":\"$pane_id\",\"terminal_id\":\"$terminal_id\",\"created_at\":\"2026-08-31T00:00:00.000Z\",\"updated_at\":\"2026-08-31T00:00:00.000Z\"}" \
+    > "$ORCHESTRATOR_RUNTIME"
+  chmod 600 "$ORCHESTRATOR_RUNTIME"
+}
+
+write_legacy_runtime_binding() {
+  local workspace_id="${1:-w1}"
+  local terminal_id="${2:-term-${workspace_id}}"
+  local legacy_cwd="${3:-$LEGACY_CORE}"
+  local tab_id="${workspace_id}:t1"
+  local pane_id="${tab_id}:p1"
+  mkdir -p "$CONTROL_DIR"
+  printf '%s\n' "{\"schema\":\"hanchou.orchestrator-runtime.v1\",\"profile\":\"work\",\"session\":\"work\",\"agent_name\":\"orchestrator\",\"workspace_label\":\"00-orchestrator\",\"cwd\":\"$legacy_cwd\",\"workspace_id\":\"$workspace_id\",\"tab_id\":\"$tab_id\",\"pane_id\":\"$pane_id\",\"terminal_id\":\"$terminal_id\",\"created_at\":\"2026-08-31T00:00:00.000Z\",\"updated_at\":\"2026-08-31T00:00:00.000Z\"}" \
     > "$ORCHESTRATOR_RUNTIME"
   chmod 600 "$ORCHESTRATOR_RUNTIME"
 }
@@ -670,16 +741,70 @@ assert_no_workspace_close() {
   fi
 }
 
+# A live named Agent without a runtime file may be adopted from the one exact
+# legacy Core cwd recorded by init. The new v2 binding preserves that actual
+# cwd; it must not pretend that the pane already moved to the profile root.
+reset_fixture
+append_workspace w1 00-orchestrator "$LEGACY_CORE"
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+hanchou_test start-orchestrator work > "$TMP/legacy-unbound-adopt.out"
+grep -q 'initialized orchestrator `orchestrator`' "$TMP/legacy-unbound-adopt.out"
+grep -Fq '"schema":"hanchou.orchestrator-runtime.v2"' "$ORCHESTRATOR_RUNTIME"
+grep -Fq "\"core_root\":\"$ROOT\"" "$ORCHESTRATOR_RUNTIME"
+grep -Fq "\"workspace_cwd\":\"$LEGACY_CORE\"" "$ORCHESTRATOR_RUNTIME"
+[[ "$(workspace_create_count)" == "0" ]]
+assert_no_workspace_close
+
+# A live v1 binding from the seed Core remains usable only because init
+# recorded that exact legacy cwd. Reconciliation preserves v1 while the Agent
+# is live; it neither moves the pane nor creates a replacement workspace.
+reset_fixture
+append_workspace w1 00-orchestrator "$LEGACY_CORE"
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_legacy_runtime_binding w1
+printf '%s\n' orchestrator > "$FAKE_HERDR_AGENT_NAME"
+printf '%s\n' 'w1|w1:t1|w1:t1:p1|term-w1' > "$FAKE_HERDR_AGENT_LOCATION"
+printf '%s\n' idle > "$FAKE_HERDR_AGENT_STATE"
+hanchou_test start-orchestrator work > "$TMP/legacy-binding.out"
+grep -q 'initialized orchestrator `orchestrator`' "$TMP/legacy-binding.out"
+grep -Fq '"schema":"hanchou.orchestrator-runtime.v1"' "$ORCHESTRATOR_RUNTIME"
+grep -Fq "\"cwd\":\"$LEGACY_CORE\"" "$ORCHESTRATOR_RUNTIME"
+[[ "$(workspace_create_count)" == "0" ]]
+assert_no_workspace_close
+
+# A v1 file cannot authorize an arbitrary cwd that was not recorded during
+# migration, even when every Herdr ID and workspace label otherwise matches.
+reset_fixture
+UNAPPROVED_LEGACY_CWD="$TMP/unapproved-legacy-core"
+mkdir -p "$UNAPPROVED_LEGACY_CWD"
+append_workspace w1 00-orchestrator "$UNAPPROVED_LEGACY_CWD"
+printf '%s\n' 1 > "$FAKE_HERDR_WORKSPACE_COUNTER"
+write_legacy_runtime_binding w1 term-w1 "$UNAPPROVED_LEGACY_CWD"
+if hanchou_test start-orchestrator work > "$TMP/unapproved-legacy.out" 2> "$TMP/unapproved-legacy.err"; then
+  echo "expected an unapproved legacy cwd to fail closed" >&2
+  exit 1
+fi
+grep -q 'runtime binding has an unapproved legacy cwd' "$TMP/unapproved-legacy.err"
+[[ "$(orchestrator_action_count)" == "0" ]]
+assert_no_workspace_close
+
 # All three services ready: create and initialize the Orchestrator exactly once.
 reset_fixture
 hanchou_test launch work --no-browser > "$TMP/ready.out"
 grep -q 'initialized orchestrator `orchestrator`' "$TMP/ready.out"
 grep -q 'started codex orchestrator `orchestrator`' "$TMP/ready.out"
 grep -q 'Hanchou ready: work' "$TMP/ready.out"
+grep -Fq "Herdr TUI: $HANCHOU_INSTANCE_LAUNCHER open herdr" "$TMP/ready.out"
 grep -q '^status server --json$' "$FAKE_HERDR_LOG"
 grep -q '^workspace create ' "$FAKE_HERDR_LOG"
+grep -Fq "workspace create --cwd $HANCHOU_INSTANCE_ROOT " "$FAKE_HERDR_LOG"
 grep -q '^agent start orchestrator ' "$FAKE_HERDR_LOG"
 grep -q '^agent prompt orchestrator ' "$FAKE_HERDR_LOG"
+grep -Fq 'hanchou/roles/orchestrator/ROLE.md' "$FAKE_HERDR_LOG"
+grep -Fq './bin/hanchou status' "$FAKE_HERDR_LOG"
 grep -Fq 'list any in-progress or blocked Beads tasks' "$FAKE_HERDR_LOG"
 grep -Fq 'state the number of currently running delegated tasks; explicitly report zero for each empty result' "$FAKE_HERDR_LOG"
 grep -q '^http://127\.0\.0\.1:3747/health$' "$FAKE_HTTP_LOG"
@@ -687,10 +812,30 @@ grep -q '^http://127\.0\.0\.1:3737/$' "$FAKE_HTTP_LOG"
 [[ ! -e "$FAKE_OPEN_LOG" ]]
 [[ ! -e "$FAKE_LAUNCHCTL_LOG" ]]
 [[ -s "$ORCHESTRATOR_RUNTIME" ]]
-grep -Fq '"schema":"hanchou.orchestrator-runtime.v1"' "$ORCHESTRATOR_RUNTIME"
+grep -Fq '"schema":"hanchou.orchestrator-runtime.v2"' "$ORCHESTRATOR_RUNTIME"
+
+# Dashboard quick commands must select the fixed local updater only when the
+# snapshot itself is running through a trusted profile-local instance.
+hanchou_test dashboard snapshot work > "$TMP/dashboard-local.json"
+grep -Fq "\"update\": \"$HANCHOU_INSTANCE_LAUNCHER update\"" "$TMP/dashboard-local.json"
+(
+  unset HANCHOU_INSTANCE_ROOT HANCHOU_INSTANCE_PROFILE HANCHOU_INSTANCE_LAUNCHER
+  hanchou_test dashboard snapshot work > "$TMP/dashboard-seed.json"
+)
+grep -Fq '"update": "hanchou init work"' "$TMP/dashboard-seed.json"
+grep -Fq "\"core_root\":\"$ROOT\"" "$ORCHESTRATOR_RUNTIME"
+grep -Fq "\"workspace_cwd\":\"$HANCHOU_INSTANCE_ROOT\"" "$ORCHESTRATOR_RUNTIME"
 grep -Fq '"workspace_id":"w1"' "$ORCHESTRATOR_RUNTIME"
 grep -Fq '"pane_id":"w1:t1:p1"' "$ORCHESTRATOR_RUNTIME"
 grep -Fq '"terminal_id":"term-w1"' "$ORCHESTRATOR_RUNTIME"
+"$NODE_BIN" --input-type=module - "$HANCHOU_INSTANCE_ROOT/.hanchou/instance.json" "$CORE_COMMIT" "$SKILLS_COMMIT" <<'JS'
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const metadata = JSON.parse(readFileSync(process.argv[2], "utf8"));
+assert.deepEqual(metadata.legacy_orchestrator_roots, []);
+assert.equal(metadata.current.core, process.argv[3]);
+assert.equal(metadata.current.skills, process.argv[4]);
+JS
 assert_no_workspace_close
 if grep -Eq '^server (start|stop|reload-config)' "$FAKE_HERDR_LOG"; then
   echo "launch restarted or reconfigured healthy Herdr" >&2
@@ -866,7 +1011,7 @@ assert_no_workspace_close
 reset_fixture
 write_runtime_binding w1
 MOVED_RUNTIME_BEFORE="$(cksum "$ORCHESTRATOR_RUNTIME")"
-append_workspace w2 00-orchestrator "$ROOT" term-w1
+append_workspace w2 00-orchestrator "$HANCHOU_INSTANCE_ROOT" term-w1
 printf '%s\n' 2 > "$FAKE_HERDR_WORKSPACE_COUNTER"
 if hanchou_test start-orchestrator work > "$TMP/binding-moved.out" 2> "$TMP/binding-moved.err"; then
   echo "expected start-orchestrator to reject a bound terminal moved to w2" >&2
@@ -1042,7 +1187,7 @@ grep -q 'effect: close 5 Herdr workspace(s)' "$TMP/stop-plan.out"
 grep -q 'legacy scan: best-effort same-TTY plus shell descendants' "$TMP/stop-plan.out"
 grep -Eq 'CLOSE w1 .*processes=2000:agent / process_cwds=2000:agent@.* / observed_additional=n/a / cwd=' "$TMP/stop-plan.out"
 grep -Eq 'CLOSE w2 .*processes=1000:zsh / process_cwds=1000:zsh@.* / observed_additional=0 / cwd=' "$TMP/stop-plan.out"
-grep -q "hanchou stop-orchestrator work --all --plan ${STOP_PLAN_TOKEN} --yes" "$TMP/stop-plan.out"
+grep -Fq "$HANCHOU_INSTANCE_LAUNCHER stop-orchestrator --all --plan ${STOP_PLAN_TOKEN} --yes" "$TMP/stop-plan.out"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 [[ -e "$ORCHESTRATOR_RUNTIME" && -e "$ORCHESTRATOR_MARKER" && -e "$FAKE_HERDR_AGENT_STATE" ]]
 grep -q '^w8|other-workspace|' "$FAKE_HERDR_WORKSPACES"
@@ -1153,7 +1298,7 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-busy-plan.out" 2> "$TM
   exit 1
 fi
 grep -q 'unowned legacy pane is not an available interactive shell' "$TMP/stop-busy-plan.err"
-grep -q 'hanchou stop-orchestrator work --all --include-unmanaged' "$TMP/stop-busy-plan.err"
+grep -Fq "$HANCHOU_INSTANCE_LAUNCHER stop-orchestrator --all --include-unmanaged" "$TMP/stop-busy-plan.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 
 # The explicit mode turns that same busy, unbound, no-Agent legacy pane into a
@@ -1166,7 +1311,7 @@ grep -q 'unmanaged legacy panes: included after hard containment checks' "$TMP/s
 grep -Eq 'CLOSE w1 .* / UNMANAGED-ACTIVE / .*processes=3000:foreground-command .*observed_additional=n/a .*reasons=foreground_busy' "$TMP/stop-busy-unmanaged-plan.out"
 grep -q 'base_cwd=' "$TMP/stop-busy-unmanaged-plan.out"
 grep -q 'WARNING: UNMANAGED rows are not proven idle' "$TMP/stop-busy-unmanaged-plan.out"
-grep -q "hanchou stop-orchestrator work --all --include-unmanaged --plan ${BUSY_UNMANAGED_TOKEN} --yes" "$TMP/stop-busy-unmanaged-plan.out"
+grep -Fq "$HANCHOU_INSTANCE_LAUNCHER stop-orchestrator --all --include-unmanaged --plan ${BUSY_UNMANAGED_TOKEN} --yes" "$TMP/stop-busy-unmanaged-plan.out"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 
 # Activity changes invalidate the reviewed token before the first close.
@@ -1307,11 +1452,13 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-current-cwd-plan.out" 
   echo "expected a legacy shell in another current cwd to fail closed" >&2
   exit 1
 fi
-grep -q 'available shell is not currently in the Hanchou Core cwd' "$TMP/stop-current-cwd-plan.err"
+grep -q 'available shell is not currently in an approved Hanchou workspace cwd' "$TMP/stop-current-cwd-plan.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
-hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-current-cwd-unmanaged-plan.out"
-grep -q 'reasons=current_cwd_outside_core' "$TMP/stop-current-cwd-unmanaged-plan.out"
-grep -Fq "cwd=$MOVED_SHELL_CWD" "$TMP/stop-current-cwd-unmanaged-plan.out"
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-current-cwd-unmanaged-plan.out" 2> "$TMP/stop-current-cwd-unmanaged-plan.err"; then
+  echo "expected unmanaged mode to preserve approved-workspace containment" >&2
+  exit 1
+fi
+grep -q 'available shell is not currently in an approved Hanchou workspace cwd' "$TMP/stop-current-cwd-unmanaged-plan.err"
 
 # Pane-reported cwd and actual process cwd are distinct review evidence. A
 # process-only mismatch must show the outside path even when pane cwd is Core.
@@ -1325,24 +1472,26 @@ if hanchou_test stop-orchestrator work --all > "$TMP/stop-process-cwd-plan.out" 
   echo "expected a legacy shell process in another cwd to fail closed" >&2
   exit 1
 fi
-grep -q 'available shell is not currently in the Hanchou Core cwd' "$TMP/stop-process-cwd-plan.err"
-hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-process-cwd-unmanaged-plan.out"
-grep -q 'reasons=current_cwd_outside_core' "$TMP/stop-process-cwd-unmanaged-plan.out"
-grep -Fq "process_cwds=1000:zsh@$PROCESS_ONLY_CWD" "$TMP/stop-process-cwd-unmanaged-plan.out"
-grep -Fq "cwd=$ROOT / base_cwd=$ROOT" "$TMP/stop-process-cwd-unmanaged-plan.out"
+grep -q 'available shell is not currently in an approved Hanchou workspace cwd' "$TMP/stop-process-cwd-plan.err"
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-process-cwd-unmanaged-plan.out" 2> "$TMP/stop-process-cwd-unmanaged-plan.err"; then
+  echo "expected unmanaged mode to reject a process cwd outside approved roots" >&2
+  exit 1
+fi
+grep -q 'available shell is not currently in an approved Hanchou workspace cwd' "$TMP/stop-process-cwd-unmanaged-plan.err"
 
-# Every foreground process cwd participates in the override reason and appears
-# in the escaped inventory, not just the first process.
+# Every foreground process cwd participates in hard containment. Activity
+# override never permits even a secondary process outside approved roots.
 reset_fixture
 append_workspace w1
 EXTRA_PROCESS_CWD="$TMP/extra-process-cwd"
 mkdir -p "$EXTRA_PROCESS_CWD"
 export HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_ID=w1
 export HANCHOU_TEST_EXTRA_FOREGROUND_PROCESS_CWD="$EXTRA_PROCESS_CWD"
-hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
-grep -q 'foreground_busy' "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
-grep -q 'current_cwd_outside_core' "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
-grep -Fq "3001:extra-process@$EXTRA_PROCESS_CWD" "$TMP/stop-extra-process-cwd-unmanaged-plan.out"
+if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-extra-process-cwd-unmanaged-plan.out" 2> "$TMP/stop-extra-process-cwd-unmanaged-plan.err"; then
+  echo "expected secondary process cwd containment to fail closed" >&2
+  exit 1
+fi
+grep -q 'available shell is not currently in an approved Hanchou workspace cwd' "$TMP/stop-extra-process-cwd-unmanaged-plan.err"
 
 # Same-label panes with an Agent must carry the exact configured name and kind;
 # a stale binding alone never authorizes an unrelated or unnamed Agent.
@@ -1422,7 +1571,7 @@ grep -q 'closed=\[w2\], remaining=\[w1\], uncertain=\[\]' "$TMP/stop-identity-ch
 [[ "$(grep -c '^w1|00-orchestrator|' "$FAKE_HERDR_WORKSPACES" || true)" == "1" ]]
 [[ -e "$ORCHESTRATOR_RUNTIME" && -e "$ORCHESTRATOR_MARKER" ]]
 
-# Every same-label target must pass topology and Core-cwd preflight before the
+# Every same-label target must pass topology and approved-cwd preflight before the
 # first close. One unsafe row therefore leaves every row untouched.
 reset_fixture
 append_workspace w1
@@ -1433,14 +1582,14 @@ if stop_orchestrator_apply > "$TMP/stop-unsafe.out" 2> "$TMP/stop-unsafe.err"; t
   echo "expected stop-orchestrator to reject a same-label workspace in another cwd" >&2
   exit 1
 fi
-grep -q 'pane identity or cwd does not match the Hanchou Core' "$TMP/stop-unsafe.err"
+grep -q 'pane identity or cwd is outside the approved Hanchou workspace roots' "$TMP/stop-unsafe.err"
 [[ "$(grep -Ec '^workspace close ' "$FAKE_HERDR_LOG" || true)" == "0" ]]
 [[ "$(wc -l < "$FAKE_HERDR_WORKSPACES" | tr -d ' ')" == "2" ]]
 if hanchou_test stop-orchestrator work --all --include-unmanaged > "$TMP/stop-unsafe-unmanaged.out" 2> "$TMP/stop-unsafe-unmanaged.err"; then
   echo "expected unmanaged mode to preserve base-cwd containment" >&2
   exit 1
 fi
-grep -q 'pane identity or cwd does not match the Hanchou Core' "$TMP/stop-unsafe-unmanaged.err"
+grep -q 'pane identity or cwd is outside the approved Hanchou workspace roots' "$TMP/stop-unsafe-unmanaged.err"
 
 reset_fixture
 append_workspace w1
@@ -1531,7 +1680,7 @@ if stop_orchestrator_unmanaged_apply > "$TMP/stop-unmanaged-first-failure.out" 2
   exit 1
 fi
 grep -q 'closed=\[\], remaining=\[w1\], uncertain=\[\]' "$TMP/stop-unmanaged-first-failure.err"
-grep -q 'hanchou stop-orchestrator work --all --include-unmanaged' "$TMP/stop-unmanaged-first-failure.err"
+grep -Fq "$HANCHOU_INSTANCE_LAUNCHER stop-orchestrator --all --include-unmanaged" "$TMP/stop-unmanaged-first-failure.err"
 [[ "$(grep -c '^w1|00-orchestrator|' "$FAKE_HERDR_WORKSPACES" || true)" == "1" ]]
 
 # A success response without disappearance is not accepted as a close.
@@ -1601,7 +1750,7 @@ grep -q 'closed=\[w1\], remaining=\[w2\], uncertain=\[\]' "$TMP/stop-next-snapsh
 reset_fixture
 write_runtime_binding w1 term-w1
 write_ready_marker term-w1
-append_workspace w8 other-workspace "$ROOT" term-w1
+append_workspace w8 other-workspace "$HANCHOU_INSTANCE_ROOT" term-w1
 if stop_orchestrator_apply > "$TMP/stop-moved.out" 2> "$TMP/stop-moved.err"; then
   echo "expected stop-orchestrator to reject a moved bound terminal" >&2
   exit 1

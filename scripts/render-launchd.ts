@@ -467,6 +467,10 @@ function renderLaunchAgents(
     BEADS_DIR: paths.beads_dir ?? "",
     RELAY_DIR: paths.relay_dir ?? "",
     REPO_ROOT: ROOT,
+    CORE_ROOT: ROOT,
+    WORKSPACE_ROOT: process.env.HANCHOU_WORKSPACE_ROOT ?? ROOT,
+    INSTANCE_ROOT: process.env.HANCHOU_INSTANCE_ROOT ?? "",
+    INSTANCE_PROFILE: process.env.HANCHOU_INSTANCE_PROFILE ?? args.profile,
     CONFIG_ROOT,
     PATH: pathValue,
   };
