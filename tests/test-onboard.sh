@@ -41,7 +41,9 @@ grep -q 'No changes made' "$TMP/plan.out"
 [[ ! -e "$WORKSPACE" ]]
 [[ ! -e "$REGISTRY" ]]
 
-if hanchou_test onboard work --yes >/dev/null 2> "$TMP/noninteractive.err"; then
+# Keep this case non-interactive even when the full validation suite is started
+# from the human operator's TTY (for example during `hanchou init`).
+if hanchou_test onboard work --yes </dev/null >/dev/null 2> "$TMP/noninteractive.err"; then
   echo "expected non-interactive onboarding rejection" >&2
   exit 1
 fi

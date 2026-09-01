@@ -1194,7 +1194,7 @@ grep -q '^w8|other-workspace|' "$FAKE_HERDR_WORKSPACES"
 
 # Even with --yes, the production CLI refuses a non-interactive or
 # Herdr-managed caller before it can close a workspace.
-if hanchou_test stop-orchestrator work --all --plan "$STOP_PLAN_TOKEN" --yes > "$TMP/stop-nontty.out" 2> "$TMP/stop-nontty.err"; then
+if hanchou_test stop-orchestrator work --all --plan "$STOP_PLAN_TOKEN" --yes </dev/null > "$TMP/stop-nontty.out" 2> "$TMP/stop-nontty.err"; then
   echo "expected stop-orchestrator --yes to reject a non-interactive caller" >&2
   exit 1
 fi
