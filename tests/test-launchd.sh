@@ -250,7 +250,10 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     node --experimental-strip-types "$ROOT/scripts/render-launchd.ts" --install work \
     > "$TMP/install-running-current.out"
   [[ "$(grep -c '^kickstart -p ' "$LAUNCHCTL_LOG")" == "3" ]]
-  [[ "$(grep -c '^current ' "$TMP/install-running-current.out")" == "3" ]]
+  if [[ "$(grep -c '^current ' "$TMP/install-running-current.out")" != "6" ]]; then
+    echo "current running install did not preserve all generated and installed plists" >&2
+    exit 1
+  fi
   cmp "$TMP/started-before-current" "$LAUNCHCTL_STARTED_STATE"
   if grep -q '^kickstart -k\|^bootout \|^bootstrap ' "$LAUNCHCTL_LOG"; then
     echo "current running service was destructively changed" >&2
