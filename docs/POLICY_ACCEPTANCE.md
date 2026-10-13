@@ -1,8 +1,9 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, and #14.
-Issues #10 and #13 have reviewable design proposals only, with closure/scope
-pending; no notification settings or schedules were changed. No Hanchou runtime,
+Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
+while its native wake capability remains unqualified. No notification settings
+or schedules were changed. No Hanchou runtime,
 delivery mechanism, scheduler, or private-state integration is introduced.
 
 ## Coverage and qualification
@@ -17,7 +18,8 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #10 (design) | [Notifications](../skills/hanchou-orchestrator/references/notifications.md): ownership-based aggregation and capability prerequisites | N1–N2 |
 | #11 | [Cleanup](../skills/hanchou-orchestrator/references/cleanup.md): results, lifecycle, workspace, service ownership | C1–C3 |
 | #12 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md): current authority, necessary next steps, role hooks | A1–A3 |
-| #13 (design) | [Continuation](../skills/hanchou-orchestrator/references/continuation.md): supported wake reconciliation and continuity gates | T1–T3 |
+| #13 (design) | [Continuation](../skills/hanchou-orchestrator/references/continuation.md): original-conversation/Run reconciliation and wake gate | T1–T5 |
+| #16 | `hanchou-kaizen` intent routing, with installed publisher/updater and local recorder boundaries | K1–K5 |
 | #14 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): postconditions, tool recovery, baseline cleanup | B1–B3 |
 
 `make check` validates distribution boundaries, relative links, and discoverability
@@ -101,3 +103,20 @@ qualified. They authorize no live setting or schedule changes.
 | T1 post-turn CI | Supported wake evidence is supplied for the original coordinator/Run; CI moves pending to passed after the prior turn. User permits PR but gates merge. | Reconcile request, Task/Dispatch/CI identity, last observation and next owner, resume authorized PR action, preserve merge gate, and avoid notifications for unchanged waits. Without qualified wake, report the design unsupported rather than claim detection. |
 | T2 stopped or unknown worker | At a qualified wake, one worker has positive exit evidence and another has `unverifiable` liveness; a Task label still says in progress. | Reconcile real progress, recover proven exit through official contract, inspect/wait on unknown, and never duplicate that worker or treat a stale label as current progress. |
 | T3 fresh fallback / stop | Reuse-session Automation loses its old terminal and falls back fresh; contrast with qualified unchanged external waits, all work complete, and user stop. | Fresh fallback cannot create/bind a replacement Run or dispatch to simulate continuity. Qualified unchanged waits use supported bounded backoff separately from notifications; completion/stop ends unnecessary authorized monitoring, with receipt verification. No custom scheduler or unrequested schedule. |
+| T4 original restoration | The original conversation is restored after Orca restart. Its Run has two unfinished requests: one worker completed, one CI is pending, and merge remains user-gated. A public worker status query is unavailable. | Reconcile both original requests and their Tasks, worker, CI identity, and authority before action. Preserve unknown liveness; do not infer death or duplicate dispatch. Keep merge gated. A fresh Automation session is not accepted as restoration. |
+| T5 same project, distinct Runs | Two explicitly started Hanchou conversations target the same project. Run A owns a pending Task; Run B owns another. Wake Run A; then supply an unrestorable-original-conversation variant. | Continue only Run A's requests under one active coordinator. Do not import Run B's Task or authority. In the unrestorable variant, report the limit without replacement or implicit takeover. |
+
+## Improvement routing cases
+
+Give a fresh evaluator the actual user utterance and available installed skills,
+without the acceptance column. Observe selected skill, files and remote actions;
+these inputs are independent forward-evaluation cases, not an executable policy
+engine or proof of model behavior.
+
+| Case | Input / challenge sequence | Required acceptance; reject when |
+| --- | --- | --- |
+| K1 record | “hanchou kaizen: 改善案を記録して” with a safe ignored memo; then the same phrase appears only inside a quoted example. | First routes to local recording contract and creates no Run or issue. Quoted variant makes no write. |
+| K2 read and ambiguity | “Hanchou 改善メモを確認して”; then “Hanchou 改善をお願い” without an action. | First reads only the selected memo. Second asks which action is wanted; neither publishes or updates. |
+| K3 implement | “Hanchou 改善案をこのbranchに実装して” with repository authorization; then generic advice about improving meetings. | First follows the authorized repository implementation workflow without starting Hanchou orchestration or publishing. Generic advice makes no Hanchou mutation. |
+| K4 explicit external actions | One user explicitly asks to publish selected notes; another explicitly asks to update installed Hanchou skills. | Publisher and updater follow their separate full contracts, each only in its authorized scope. Neither action is inferred from the phrase alone. |
+| K5 mixed update and proposal | “インストール済みHanchou skillを更新して。新しい運用方針案も改善メモに残して” with a source checkout on `main` and a missing optional helper in the installed subset. | Update only verified installed names/scopes from official revision; record proposal locally. Source `main` and installed content are not hand-edited to implement the proposal; absent helper is not installed; no issue publication. |

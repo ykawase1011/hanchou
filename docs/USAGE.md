@@ -36,6 +36,11 @@ $hanchou-orchestrator を使って、このmigration専用のTemporary Hanchou�
 
 ## 改善メモとhelper
 
+「hanchou kaizen」「Hanchou 改善」で記録・確認・実装・公開・更新を依頼する場合は
+`$hanchou-kaizen`（Claude Codeでは`/hanchou-kaizen`）を使えます。依頼の動詞と文脈で
+振り分け、曖昧なら意図を確認します。単なる引用や改善の相談では公開、更新、
+Hanchou起動は行いません。
+
 有効なHanchou sessionは作業の区切りで改善点をignore確認済みのlocalメモへ
 記録できます。指定がなければ`tmp/hanchou_update.md`を候補にします。
 記録は公開を意味しません。Issueへ移す依頼は`$hanchou-publish-issues`、
@@ -72,5 +77,7 @@ skill名を繰り返す必要はありません。新しいpaneでは再度明�
 [Policy acceptance](POLICY_ACCEPTANCE.md)を参照してください。
 
 通知集約と会話終了後の定期継続は現在policy/design案です。通知設定やscheduleは
-変更していません。同じcoordinator/Runへの復帰や不在時の通知fallbackはOrcaの
-公開機能による検証が必要であり、Automationのsession再利用だけでは保証しません。
+変更していません。継続の対象は元の対話とそのRunです。1つの対話の全依頼を同じRunで
+管理し、再起動後はその依頼・Task・worker・CI・権限を照合します。Orcaの公開機能で
+元の対話を定期的に起こせるかは未検証です。Automationのsession再利用だけでは
+保証しません。元の対話を復元できない場合の後任・takeoverは今回の対象外です。

@@ -30,12 +30,17 @@ Inventory only the requested/current workspace and user installation, including
 canonical paths, resolved symlinks, provider aliases/copies, install method and
 installer source/ref metadata. Confirm each candidate comes from
 `https://github.com/ykawase1011/hanchou`; a matching name alone is insufficient.
-The shipped names are `hanchou-orchestrator`, `hanchou-publish-issues`, and
-`hanchou-update`. Preserve the installed subset, each local/global scope, and
+The shipped names are `hanchou-orchestrator`, `hanchou-kaizen`,
+`hanchou-publish-issues`, and `hanchou-update`. Preserve the installed subset,
+each local/global scope, and
 each agent target. Do not migrate a local copy to global because global is the
 new-install default. If both scopes exist, handle them separately and report
 possible local shadowing; if the user selected one scope, touch only that scope.
 An absent installation is not an update: report it and offer the install path.
+If the request also proposes a new Hanchou policy, keep that proposal separate:
+record it through the local improvement-notes workflow when requested. Do not
+edit source checkout `main` or installed files to implement the proposal under
+update authority. Issue publication still requires an explicit request.
 
 Inspect current files against their recorded upstream revision, including added,
 removed and changed files. Use a read-only official checkout for comparison.

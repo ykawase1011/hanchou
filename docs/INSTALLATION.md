@@ -15,12 +15,12 @@ npx skills add https://github.com/stablyai/orca \
 ## Global install (default)
 
 Install for both Codex and Claude Code on Orca, without relying on provider
-auto-detection. All three skills are optional; the two helpers can also be
+auto-detection. All four skills are optional; the three helpers can also be
 installed or removed separately by their names.
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update \
   --agent codex claude-code --global
 npx skills list --global --agent codex claude-code
 ```
@@ -41,7 +41,7 @@ selection there without `--global` (the installer's project default):
 ```bash
 cd /absolute/path/to/project-or-workspace
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update \
   --agent codex claude-code
 npx skills list --agent codex claude-code
 ```
@@ -53,7 +53,7 @@ shadow the global update. Never remove a local customized copy automatically.
 
 ## Invoke, update and remove
 
-Codex uses `$hanchou-orchestrator`, `$hanchou-update`, and
+Codex uses `$hanchou-orchestrator`, `$hanchou-kaizen`, `$hanchou-update`, and
 `$hanchou-publish-issues`; Claude Code uses the same names prefixed with `/`.
 See [Onboarding](ONBOARDING.md) and [Improvement workflow](IMPROVEMENTS.md).
 Install alone never activates Hanchou, and helper-only requests create no Run.

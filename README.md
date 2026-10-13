@@ -22,11 +22,11 @@ npx skills add https://github.com/stablyai/orca \
 ```
 
 HanchouはCodexとClaude Codeの両方へglobal installするのが標準です。
-coreと2つの任意helperを明示して入れます。
+coreと3つの任意helperを明示して入れます。
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update \
   --agent codex claude-code --global
 ```
 
@@ -74,7 +74,9 @@ Claude Codeでは同じ本文をskill commandへ渡します。
 
 同じOrca runtimeで別paneを開けば、Project、Cross-project、Temporary Hanchouを
 任意個数並行利用できます。各paneは独立したRunを1つだけbindし、各Taskのowner Runも
-1つです。同じRunを複数coordinatorが通常運用で共有しません。
+1つです。通常はprojectの馴染みの窓口を1つ使い、独立した目的・権限・完了条件が
+ある場合に別Hanchouを明示して始めます。同じRunを複数coordinatorが同時に共有せず、
+元の対話の依頼を同じRunで管理します。
 
 ## Three uses
 
@@ -90,6 +92,7 @@ Claude Codeでは同じ本文をskill commandへ渡します。
 
 ```text
 skills/hanchou-orchestrator/   core orchestratorとlocal改善メモの記録
+skills/hanchou-kaizen/         任意helper: 明示的なHanchou改善依頼の振り分け
 skills/hanchou-publish-issues/ 任意helper: 改善メモの秘匿化・Issue起票・成功部分の除去
 skills/hanchou-update/         任意helper: 既存Hanchou skillだけをscope維持で更新
 examples/project/             Project Hanchouの例
@@ -100,6 +103,8 @@ docs/                         architecture、導入、運用、移行、検証
 Hanchou用production CLI、Node runtime、DB、scheduler、Dashboard、serviceはありません。
 install/update/removeはAgent Skills installerまたはOrca Skills UIに任せます。
 
+「hanchou kaizen」「Hanchou 改善」の明示的な依頼は`$hanchou-kaizen`
+（Claude Codeでは`/hanchou-kaizen`）で意図に応じて扱います。
 更新はCodexで`$hanchou-update`、Claude Codeで`/hanchou-update`を使います。
 改善メモの記録は外部公開を伴いません。公開したいときだけ
 `$hanchou-publish-issues`または`/hanchou-publish-issues`で対象メモを指定します。
