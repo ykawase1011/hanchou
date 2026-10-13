@@ -1,8 +1,12 @@
 # Validation
 
 Current instruction-policy checks and synthetic/manual scenarios are documented
-in [Policy acceptance](POLICY_ACCEPTANCE.md); they do not claim live behavioral
-qualification from the historical results below.
+in [Policy acceptance](POLICY_ACCEPTANCE.md), including the
+[scheduled-work scenarios](CRON.md) for issue #21. They do not claim live behavioral
+qualification from the historical results below. For #21, repository packaging
+and installer checks, independent policy review, and one manual Orca Automation
+smoke are recorded separately in [Scheduled work](CRON.md). That single run
+does not qualify automatic scheduled execution or the untested acceptance cases.
 
 This is historical v3 migration evidence from 2026-09-02/03, not validation of
 the later helper skills or current installer behavior. See

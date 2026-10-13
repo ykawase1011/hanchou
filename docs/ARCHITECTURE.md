@@ -21,13 +21,17 @@ one Hanchou pane
 Orca owns runtime mechanics and state. Hanchou owns only judgment policy:
 decomposition, routing, review, reporting, and when to ask the user.
 
-The distribution contains one orchestrator and three optional instruction-only
-helpers: `hanchou-kaizen`, `hanchou-publish-issues`, and `hanchou-update`. Helpers do not create a
+The distribution contains one orchestrator and four optional instruction-only
+helpers: `hanchou-kaizen`, `hanchou-publish-issues`, `hanchou-update`, and
+`hanchou-cron`. Configuration-only helper calls do not create a
 Run or activate the orchestrator. Private ignored improvement notes and compact
 publication receipts are user documents, not a Hanchou database or control plane.
 Scoped updates delegate installation to the official skill installer. New
 installations default to global Codex/Claude Code coverage; local installs remain
 available and updates preserve their scope.
+`hanchou-cron` uses the installed Orca Automation contract for scheduling and
+keeps project job definitions as static documents. It adds no scheduler or
+shared registry. A requested manual trial can start the selected job.
 
 ## Multiplicity and ownership
 

@@ -30,13 +30,19 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
 | explicit improvement-intent routing | optional `hanchou-kaizen` |
 | requested sanitized issue publication and verified cleanup | optional `hanchou-publish-issues` |
 | requested scoped skill updates | optional `hanchou-update` + official installer |
+| scheduled-job configuration and management policy | optional `hanchou-cron` + Orca Automations |
 
 HanchouはCodexまたはClaudeで動作し、具体的なprovider/modelはユーザーpolicyと
 実行時にOrcaが提供する選択肢へ従います。
 
-配布は1つのcoreと3つの任意helperから成り、production codeは含みません。
+配布は1つのcoreと4つの任意helperから成り、production codeは含みません。
 新規installはCodex/Claude Codeへのglobal配置を標準とし、local配置も選択できます。
 helperだけの呼び出しはorchestratorをactivateせず、Runやworkerを作りません。
+`hanchou-cron`の設定操作も同様です。独立した定期業務の明示的な手動試行や
+スケジュール実行では、指定されたジョブのためにTemporary Hanchouを起動できます。
+元の対話とRunを対象とする継続点検は別の用途であり、公開wake契約の確認前に
+fresh sessionで代用しません。PJの静的ジョブ定義は業務内容を示す文書で、
+schedule・timezone・有効状態・履歴はOrca Automationsが所有します。
 
 ## Session contract
 

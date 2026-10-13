@@ -191,7 +191,7 @@ class DistributionContracts(unittest.TestCase):
     def test_exact_optional_skill_inventory_and_no_executable_payload(self):
         skills = ROOT / "skills"
         self.assertEqual({p.parent.name for p in skills.glob("*/SKILL.md")},
-                         {"hanchou-orchestrator", "hanchou-kaizen", "hanchou-publish-issues", "hanchou-update"})
+                         {"hanchou-orchestrator", "hanchou-kaizen", "hanchou-publish-issues", "hanchou-update", "hanchou-cron"})
         for path in skills.rglob("*"):
             if path.is_file():
                 self.assertIn(path.suffix, {".md", ".yaml"}, str(path))
@@ -207,7 +207,8 @@ class DistributionContracts(unittest.TestCase):
 
     def test_current_install_examples_select_only_shipped_names(self):
         shipped = {p.parent.name for p in (ROOT / "skills").glob("*/SKILL.md")}
-        for name in ("README.md", "docs/INSTALLATION.md", "docs/ONBOARDING.md"):
+        for name in ("README.md", "docs/INSTALLATION.md", "docs/ONBOARDING.md",
+                     "docs/MIGRATION_V2_TO_V3.md"):
             content = (ROOT / name).read_text().replace("\\\n", " ")
             commands = [line for line in content.splitlines()
                         if line.startswith("npx skills add https://github.com/ykawase1011/hanchou")]
@@ -218,6 +219,12 @@ class DistributionContracts(unittest.TestCase):
                 self.assertEqual(set(names), shipped, name)
                 self.assertIn("--agent codex claude-code", command)
                 self.assertNotIn("--local", command)
+
+    def test_cron_provider_invocations_are_documented(self):
+        # Discoverability only; prose behavior is reviewed with manual cases.
+        docs = (ROOT / "README.md").read_text() + (ROOT / "docs/CRON.md").read_text()
+        self.assertIn("$hanchou-cron", docs)
+        self.assertIn("/hanchou-cron", docs)
 
 
 if __name__ == "__main__":

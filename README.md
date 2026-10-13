@@ -22,11 +22,11 @@ npx skills add https://github.com/stablyai/orca \
 ```
 
 HanchouはCodexとClaude Codeの両方へglobal installするのが標準です。
-coreと3つの任意helperを明示して入れます。
+coreと4つの任意helperを明示して入れます。
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
   --agent codex claude-code --global
 ```
 
@@ -95,6 +95,7 @@ skills/hanchou-orchestrator/   core orchestratorとlocal改善メモの記録
 skills/hanchou-kaizen/         任意helper: 明示的なHanchou改善依頼の振り分け
 skills/hanchou-publish-issues/ 任意helper: 改善メモの秘匿化・Issue起票・成功部分の除去
 skills/hanchou-update/         任意helper: 既存Hanchou skillだけをscope維持で更新
+skills/hanchou-cron/           任意helper: Orca Automationsによる定期業務の設定・管理
 examples/project/             Project Hanchouの例
 examples/cross-project/       専用workspaceの例
 docs/                         architecture、導入、運用、移行、検証
@@ -110,6 +111,11 @@ install/update/removeはAgent Skills installerまたはOrca Skills UIに任せ�
 `$hanchou-publish-issues`または`/hanchou-publish-issues`で対象メモを指定します。
 helperはそれだけでRunやworkerを作りません。具体例と失敗時の扱いは
 [Improvement workflow](docs/IMPROVEMENTS.md)を参照してください。
+
+定期点検・定期業務は明示的に`$hanchou-cron`（Claude Codeでは`/hanchou-cron`）を
+呼び出します。PJ固有のジョブ定義は標準候補の`.hanchou/cron/<job>.md`、または
+指定した別の静的Markdownに置きます。設定例、定義の参照元と権限の扱いは
+[Scheduled work](docs/CRON.md)を参照してください。
 
 初回利用は[Onboarding](docs/ONBOARDING.md)、詳しい導入は
 [Installation](docs/INSTALLATION.md)、prompt例と運用は[Usage](docs/USAGE.md)を

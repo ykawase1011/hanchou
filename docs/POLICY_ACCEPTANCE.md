@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, and #20.
+#16–#18, #20, and #21.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -22,6 +22,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #12 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md): current authority, necessary next steps, role hooks | A1–A3 |
 | #13 (design) | [Continuation](../skills/hanchou-orchestrator/references/continuation.md): original-conversation/Run reconciliation and wake gate | T1–T5 |
 | #16 | `hanchou-kaizen` intent routing, with installed publisher/updater and local recorder boundaries | K1–K5 |
+| #21 | [`hanchou-cron` scheduled work](CRON.md): project/job source, independent runs, and continuation qualification | Cron scenarios in `CRON.md` |
 | #14 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): postconditions, tool recovery, baseline cleanup | B1–B3 |
 | #17 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): explicit choice, capable isolated browser preference, effect reconciliation | B4–B6 |
 | #18 | [Improvement notes](../skills/hanchou-orchestrator/references/improvement-notes.md): local language selection, stable IDs, separate publication decision | L1–L3 |
