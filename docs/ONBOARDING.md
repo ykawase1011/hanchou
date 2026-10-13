@@ -16,21 +16,22 @@ Orcaを起動し、Settings → Orchestrationで公式skillのcoverageとworker 
 
 ```bash
 npx skills add https://github.com/stablyai/orca \
-  --skill orca-cli orchestration --agent universal claude-code --global
+  --skill orca-cli orchestration --agent codex claude-code --global
 ```
 
-## 3. Hanchouをprojectへ入れる
+## 3. Hanchouをglobal installする
 
-Hanchouは対象projectへlocal installするのが標準です。
+HanchouはCodexとClaude Codeへglobal installするのが標準です。
 
 ```bash
-cd /absolute/path/to/project
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator --agent universal claude-code --local
+  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --agent codex claude-code --global
 ```
 
-installerの結果で、標準の`.agents/skills/hanchou-orchestrator`とClaude Code用の
-`.claude/skills/hanchou-orchestrator`が対象になったことを確認します。既に開いていた
+installerの結果と`npx skills list --global --agent codex claude-code`で両方の
+配置を確認します。project限定なら対象projectで`--global`を外して実行します。
+coreだけ必要ならskill名も絞れます。既に開いていた
 paneがskillを認識しない場合は、新しいCodexまたはClaude Code paneを開きます。
 
 ## 4. skill名を指定して開始する
@@ -67,3 +68,6 @@ worker、Automationが作られることはありません。
 Project以外のprompt例、full handoffとの違い、複数paneの扱いは
 [Usage](USAGE.md)を参照してください。install先や更新・削除は
 [Installation](INSTALLATION.md)にまとめています。
+
+更新は`$hanchou-update`（Claude Codeでは`/hanchou-update`）を指定します。
+改善メモからの公開は[Improvement workflow](IMPROVEMENTS.md)を参照してください。

@@ -1,6 +1,7 @@
 # Hanchou repository instructions
 
-This repository distributes one optional Orca skill. Do not add a Hanchou CLI,
+This repository distributes optional Orca skills: the Hanchou orchestrator and
+its improvement-issue publishing and scoped update helpers. Do not add a Hanchou CLI,
 runtime, daemon, database, scheduler, dashboard, agent launcher, project registry,
 or copied Orca command reference.
 

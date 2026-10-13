@@ -1,5 +1,10 @@
 # Hanchou v3 migration report
 
+This is historical v3 migration evidence from 2026-09-02/03, not validation of
+the later helper skills or current installer behavior. See
+[maintenance validation](MAINTENANCE_VALIDATION.md) for those additions and
+[Installation](INSTALLATION.md) for the current global default.
+
 ## Final architecture
 
 Hanchou v3は、既存Orca workspaceへlocal installできる1つのoptional

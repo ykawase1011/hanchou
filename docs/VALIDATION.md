@@ -1,5 +1,10 @@
 # Validation
 
+This is historical v3 migration evidence from 2026-09-02/03, not validation of
+the later helper skills or current installer behavior. See
+[maintenance validation](MAINTENANCE_VALIDATION.md) for those additions and
+[Installation](INSTALLATION.md) for the current global default.
+
 Run repository checks with:
 
 ```bash

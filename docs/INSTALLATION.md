@@ -2,55 +2,78 @@
 
 ## Prerequisites
 
-Install Orca and its official `orca-cli` and `orchestration` skills. Current
-Orca releases expose a dedicated Settings → Orchestration page; use it to
-confirm the skill coverage and worker-depth policy. If an older installed build
-explicitly reports that Experimental Orchestration is disabled, enable it
-manually at the Settings location named by that build. Hanchou never changes
-Orca settings.
+Install Orca and its official `orca-cli` and `orchestration` skills. Use the
+installed version's Settings → Orchestration page for coverage/depth policy.
+Only if an older build explicitly reports a disabled Experimental feature,
+follow that build's manual guidance. Hanchou never changes Orca settings.
 
 ```bash
 npx skills add https://github.com/stablyai/orca \
-  --skill orca-cli orchestration --agent universal claude-code --global
+  --skill orca-cli orchestration --agent codex claude-code --global
 ```
 
-## Project-local install (default)
+## Global install (default)
+
+Install for both Codex and Claude Code on Orca, without relying on provider
+auto-detection. All three skills are optional; the two helpers can also be
+installed or removed separately by their names.
+
+```bash
+npx skills add https://github.com/ykawase1011/hanchou \
+  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --agent codex claude-code --global
+npx skills list --global --agent codex claude-code
+```
+
+Inspect actual target paths and links in the installer output. With the verified
+`skills` 1.7.2 defaults, Codex uses `~/.agents/skills` and Claude Code has its
+placement at `~/.claude/skills`; environment overrides and versions can alter
+paths. Global Universal placement is not a substitute for explicitly selecting
+Codex. Installation creates skill files/aliases and installer metadata, not
+Hanchou runtime state. It does not activate orchestration or edit existing
+`AGENTS.md`, `CLAUDE.md`, Orca settings, sessions, or Automations.
+
+## Project-local install (optional)
+
+To restrict availability to a project or dedicated workspace, run the same
+selection there without `--global` (the installer's project default):
 
 ```bash
 cd /absolute/path/to/project-or-workspace
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator --agent universal claude-code --local
+  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --agent codex claude-code
+npx skills list --agent codex claude-code
 ```
 
-Review the installer's reported target. A local install should place the skill
-under the current workspace's supported local skill directory. It must not edit
-existing project instructions. Keep both `universal` and `claude-code` targets:
-the first creates the standard `.agents/skills` copy used by Codex and other
-Agent Skills consumers, while the second creates Claude Code's provider alias.
-Relying only on auto-detected agents can omit the other provider.
+Expected default placements are `.agents/skills` plus `.claude/skills` aliases.
+For a core-only installation, select only `hanchou-orchestrator`. If both local
+and global copies exist, inspect which one the agent loads; a local copy may
+shadow the global update. Never remove a local customized copy automatically.
 
-初めて使う場合は、install後の起動までをまとめた[Onboarding](ONBOARDING.md)へ
-進んでください。
+## Invoke, update and remove
 
-## Global install (optional)
+Codex uses `$hanchou-orchestrator`, `$hanchou-update`, and
+`$hanchou-publish-issues`; Claude Code uses the same names prefixed with `/`.
+See [Onboarding](ONBOARDING.md) and [Improvement workflow](IMPROVEMENTS.md).
+Install alone never activates Hanchou, and helper-only requests create no Run.
 
-Global install is permitted for users who want Hanchou available everywhere,
-but it is not the default:
+Ask `hanchou-update` to update the installed Hanchou subset. It verifies source,
+local modifications, scope, provider targets, and the resulting files, using the
+official installer. It does not install absent helpers or update Orca. Avoid
+bare `npx skills update`, which can update unrelated skills. Manual updates
+should follow the same targeted reinstall procedure after checking local edits;
+there is no Hanchou updater executable, managed checkout or rollback database.
+
+Remove through the installer/UI that created the copy, with explicit skill
+names, matching agents and scope. For example, for an unmodified global core:
 
 ```bash
-npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator --agent universal claude-code --global
+npx skills remove hanchou-orchestrator --agent codex claude-code --global
 ```
 
-The skill description is intentionally narrow and excludes ordinary work and
-generic requests for another agent. The recommended entrypoint names the skill:
-Codex uses `$hanchou-orchestrator`, while Claude Code uses
-`/hanchou-orchestrator`. Natural-language selection remains supported, but it is
-not the standard prompt in user-facing examples. A dedicated workspace can put
-the corresponding explicit invocation in its local instruction.
-
-## Update and removal
-
-Use `npx skills update`, the standard skills installer, or Orca Skills UI.
-Delete with the installer/UI mechanism that created the copy. There is no
-Hanchou updater, managed checkout, profile launcher, or rollback database.
+The contract was checked against `npx skills --help` version 1.7.2 and the
+[official CLI docs](https://skills.sh/docs/cli) and
+[official installer repository](https://github.com/vercel-labs/skills).
+Read the installed version's help before acting; do not assume older `--local`
+examples or newer named-update options apply to every installed version.

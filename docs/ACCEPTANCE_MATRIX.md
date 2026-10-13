@@ -1,5 +1,10 @@
 # Acceptance matrix
 
+This is historical v3 migration evidence from 2026-09-02/03, not validation of
+the later helper skills or current installer behavior. See
+[maintenance validation](MAINTENANCE_VALIDATION.md) for those additions and
+[Installation](INSTALLATION.md) for the current global default.
+
 Checked through 2026-09-03 against the migration request. `PASS` means current
 evidence proves the stated scope. `PENDING` is not treated as success.
 

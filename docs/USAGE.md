@@ -34,6 +34,15 @@ $hanchou-orchestrator を使って、このmigration専用のTemporary Hanchou�
 開始してください。完了まで複数workerと必要なreviewを管理し、結果をまとめてください。
 ```
 
+## 改善メモとhelper
+
+有効なHanchou sessionは作業の区切りで改善点をignore確認済みのlocalメモへ
+記録できます。指定がなければ`tmp/hanchou_update.md`を候補にします。
+記録は公開を意味しません。Issueへ移す依頼は`$hanchou-publish-issues`、
+既存Hanchou skillの更新依頼は`$hanchou-update`を指定します。
+Claude Codeでは同名の`/` commandを使います。helperだけの依頼でRunは作りません。
+入力例、公開先確認、秘匿化、timeoutや部分成功は[Improvement workflow](IMPROVEMENTS.md)へ。
+
 ## 通常のOrca session
 
 Hanchouを指定しなければ、CodexとClaudeは通常どおり動作し、Hanchou Runは

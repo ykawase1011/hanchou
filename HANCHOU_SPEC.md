@@ -10,7 +10,8 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
 2. 1 coordinator paneが同時に所有するcurrent Runは1つ。Run takeoverは明示的な
    recoveryだけに使う。
 3. 各Taskのowner Runは1つ。workerの実行repositoryとは別の概念である。
-4. Hanchouが所有する永続状態、process、port、registry、launcherはない。
+4. Hanchouが所有するruntime永続状態、process、port、registry、launcherはない。
+   任意のignore済み改善メモと最小限の公開receiptは利用者のlocal文書である。
 5. Orca-managed stateはpublic CLIと公式skill contractだけで操作する。
 6. Hanchouは名前付きskill呼び出し、明示的な依頼、または専用workspace local
    instructionでだけactivateする。利用者向けpromptは名前付き呼び出しを標準とする。
@@ -25,9 +26,16 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
 | schedule/timezone/history/rerun | Orca Automations |
 | VM/cloud/per-workspace environment | `orca-per-workspace-env` |
 | task decomposition/routing/review/reporting policy | `hanchou-orchestrator` |
+| local improvement capture | `hanchou-orchestrator` reference |
+| requested sanitized issue publication and verified cleanup | optional `hanchou-publish-issues` |
+| requested scoped skill updates | optional `hanchou-update` + official installer |
 
 HanchouはCodexまたはClaudeで動作し、具体的なprovider/modelはユーザーpolicyと
 実行時にOrcaが提供する選択肢へ従います。
+
+配布は1つのcoreと2つの任意helperから成り、production codeは含みません。
+新規installはCodex/Claude Codeへのglobal配置を標準とし、local配置も選択できます。
+helperだけの呼び出しはorchestratorをactivateせず、Runやworkerを作りません。
 
 ## Session contract
 

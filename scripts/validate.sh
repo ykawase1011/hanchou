@@ -8,9 +8,12 @@ test "$(tr -d '\n' < VERSION)" = "3.0.0"
 test -f skills/hanchou-orchestrator/SKILL.md
 
 skill_count=$(find skills -name SKILL.md -type f | wc -l | tr -d ' ')
-test "$skill_count" = "1"
+test "$skill_count" = "3"
+for helper in hanchou-publish-issues hanchou-update; do
+  test -f "skills/$helper/SKILL.md"
+done
 
-for ref in role routing task-design review reporting cross-project automations; do
+for ref in role routing task-design review reporting cross-project automations improvement-notes; do
   test -f "skills/hanchou-orchestrator/references/$ref.md"
 done
 

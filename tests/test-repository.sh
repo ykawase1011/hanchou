@@ -21,16 +21,18 @@ grep -q 'Project Hanchou' README.md
 grep -q 'Cross-project Hanchou' README.md
 grep -q 'Temporary Hanchou' README.md
 grep -q 'without changing ordinary Orca behavior' README.md
-grep -q -- '--agent universal claude-code --local' README.md
-grep -q -- '--agent universal claude-code --local' docs/INSTALLATION.md
+grep -q -- '--agent codex claude-code --global' README.md
+grep -q -- '--agent codex claude-code --global' docs/INSTALLATION.md
 grep -Fq '$hanchou-orchestrator' README.md
 grep -Fq '/hanchou-orchestrator' README.md
 grep -Fq '$hanchou-orchestrator' docs/ONBOARDING.md
 grep -Fq '/hanchou-orchestrator' docs/ONBOARDING.md
 
-if find . -path ./.git -prune -o -type f \( -name '*.ts' -o -name '*.js' -o -name '*.json' -o -name '*.toml' \) -print | grep -q .; then
+if find . -path ./.git -prune -o -path ./tests -prune -o -type f \( -name '*.ts' -o -name '*.js' -o -name '*.py' -o -name '*.json' -o -name '*.toml' \) -print | grep -q .; then
   echo 'production/runtime code or state-shaped files remain' >&2
   exit 1
 fi
+
+python3 -B -m unittest discover -s tests -p 'test_*.py'
 
 echo "repository contract tests: ok"
