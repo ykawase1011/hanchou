@@ -9,7 +9,9 @@ not itself prove user acceptance or successful integration.
 Accepted work is not fully handed back until every task-created resource has a
 disposition. Reconcile all launch attempts, including rejected/failed starts,
 retries, investigation, and review, against creation receipts and current public
-workspace lineage and terminal/session inventory. Include residual resources
+workspace lineage and terminal/agent-session inventory, including structured
+sessions with no PTY. Zero terminals cannot prove absence of another agent owner.
+Include residual resources
 even when no successful Dispatch was created. A settled Dispatch list or an
 empty reclaimable-worker list alone cannot account for workspaces, Setup tabs,
 or services. Check inventory host coverage and truncation; an omitted host or
