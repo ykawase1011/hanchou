@@ -1,5 +1,13 @@
 # Improvement notes, publication and updates
 
+For explicit “hanchou kaizen” or “Hanchou 改善” requests, the optional
+`hanchou-kaizen` skill routes the action by intent. Record and read requests
+stay local; implementation follows the authorized source/task scope; publication
+and installed updates each need their own explicit request. A quoted phrase or
+general discussion does not trigger a write or a Hanchou Run. If the action is
+unclear, clarify it. This router can use the recorder reference without
+activating the orchestrator.
+
 The core skill records Hanchou improvements at ordinary task checkpoints.
 `tmp/hanchou_update.md` is a candidate, not a presumed safe path: a user-selected
 path takes priority and must still pass tracked/ignore checks. Existing local
@@ -85,6 +93,12 @@ default does not migrate existing installs. Unknown provenance, custom changes,
 conflicting edits and unsupported layouts remain untouched for a decision.
 It verifies the resulting content against an upstream revision and checks that
 unrelated skills remain unchanged. See [Installation](INSTALLATION.md).
+
+When an update request also contains a new operating-policy proposal, update
+only the verified installed subset from the official revision and record the
+proposal as a separate local improvement note. The update request does not
+authorize editing source `main` or installed files to implement the proposal.
+An absent `hanchou-kaizen` helper is not added silently by an update.
 
 ## Validation boundaries
 

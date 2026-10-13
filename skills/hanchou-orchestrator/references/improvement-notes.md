@@ -38,11 +38,21 @@ Ignore prevents accidental Git addition, not access by other users or sync tools
 
 ## Item format and content
 
-Preserve the memo's existing text and headings. Give each new item a stable,
+Use the user's explicit language for the note's title, headings, status,
+observations, desired behavior, evidence, and unknowns. Without a language
+request, follow the target project's developer documentation language; if that
+does not establish one, follow the working conversation. Product and command
+names may retain their original spelling. When editing an existing unpublished
+item, preserve its stable ID and unrelated text, and translate only the fields
+in scope under the editing guard below. The language of a later public issue
+is decided separately from that publication request and destination practice.
+
+Preserve the memo's unrelated text and headings. Give each new item a stable,
 locally unique ID unrelated to runtime or account identifiers. Reuse an existing
 item for the same improvement; do not renumber it or overwrite unresolved facts.
 Split independently publishable concerns into separately identifiable parts.
-This generalized example contains no real project information:
+This English example is illustrative; localize its field labels and values under
+the rule above. It contains no real project information:
 
 ```markdown
 ## HN-001: Retain a note when remote confirmation fails

@@ -1,26 +1,31 @@
 # Continuation design and qualification
 
-This is a requested design for reviewing unfinished work after a conversation
-turn ends. It creates no schedule and promises no wake. Orca owns periodic/event
-wake, delivery, session reuse, and overlap control; Hanchou owns the decisions
-made when a supported wake actually reaches the same coordinator.
+This design reviews unfinished requests after a turn ends, including after Orca
+restarts. It creates no schedule and promises no wake. Orca owns periodic/event
+wake, delivery, restoration of the original interactive conversation, and
+overlap control. Hanchou owns decisions when a supported wake reaches that same
+conversation and its original Run.
 
-Before configuration, require a qualified public contract for resuming that
-coordinator and its existing Run with preserved authority and no duplicate
-invocation. Native events and periodic checks may complement each other only
-through that contract. The public Automation `reuse-session` option can fall
-back to a fresh session when the prior terminal is gone; it does **not** prove
-interactive coordinator/Run continuity. Never bridge a new Automation into an
-interactive Run, take over implicitly, or create a fresh Run/worker swarm to
-simulate continuation. An unexpected fresh fallback reports missing continuity
-and stops before dispatch; use explicit recovery under the live guide instead.
-If the required wake/continuity contract is unavailable, report this as
-unsupported/unverified and leave periodic continuation unconfigured.
+Before configuration, require a qualified public contract that wakes the
+original interactive conversation with its existing Run and authority, including
+after a restart, without concurrent coordinator turns. Native events and
+periodic checks may complement each other only through that contract. The
+public Automation `reuse-session` option may fall back to a fresh Automation
+session when its prior terminal is gone; it does **not** establish interactive
+conversation/Run continuity. Do not bridge an Automation, create another Run,
+or use takeover to simulate continuation. If the original conversation cannot
+be restored, report that limit and stop this path; replacement and takeover are
+outside this design. Without qualified wake, leave periodic continuation
+unconfigured and report it as unsupported or unverified.
 
-At a qualified wake, reconcile the latest [request scope](request-scope.md) with
-public Task/Dispatch progress, worker liveness, external waits such as CI, the
-last observed evidence/time, and the next action/owner. Keep these in existing
-conversation/Task context; do not add a registry. Distinguish:
+At a qualified wake, first verify this is the original conversation and Run and
+that it is the sole active coordinator. Reconcile **all unfinished requests owned
+by this conversation**, their latest [scope and authority](request-scope.md),
+public Tasks/Dispatches, workers, external waits such as CI, last observed
+evidence/time, and next action/owner. Keep these in existing conversation/Task
+context; do not add a registry. Another Run's work in the same project is not
+this Hanchou's work. Missing observations alone prove neither idle/dead status
+nor ownership transfer. Distinguish:
 
 - **Active:** positive work evidence; continue supervision, without duplicating it.
 - **External wait:** inspect the actual CI/job result and its identity; pending
@@ -30,7 +35,8 @@ conversation/Task context; do not add a registry. Distinguish:
   proceed with merge/deployment or other withheld authority.
 - **Unfinished with no proven owner:** inspect original attempts and residual
   resources before resuming authorized work. Positive worker exit can lead to
-  official recovery; `unverifiable` cannot authorize duplicate dispatch.
+  official recovery; `unverifiable` or absent evidence cannot authorize
+  duplicate dispatch.
 - **Complete:** verify request-specific evidence and cleanup, then stop the
   task's unnecessary wake/monitoring through the authorized public mechanism.
 

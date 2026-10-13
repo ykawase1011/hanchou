@@ -4,6 +4,15 @@ This covers issues [#1](https://github.com/ykawase1011/hanchou/issues/1) and
 [#2](https://github.com/ykawase1011/hanchou/issues/2), the update helper, and the
 new global installation default. The older migration reports remain historical.
 
+For issue #16, the current distribution has four instruction-only skills,
+including optional `hanchou-kaizen`. `make check` now runs 14 Python tests and
+the shell checks; `make check-installer` passed in a disposable container with
+all four skills and a core-only subset that stayed core-only after targeted
+reinstall. Skill-creator validation passed for the changed/new skill entrypoints
+in a temporary PyYAML environment. These checks establish packaging and
+installer isolation, not automatic intent selection by a model. The 13-test and
+three-skill results below are historical evidence from the earlier change.
+
 Executed on 2026-10-13: `make check` passed all 13 Python tests and both shell
 checks; `make check-installer` passed against `skills` 1.7.2 and Node 22.23.3;
 skill-creator's `quick_validate.py` passed for all three skills using a temporary
@@ -13,7 +22,7 @@ includes empty Codex/Claude configuration directories, with no credentials.
 
 ## Evidence and limitations
 
-`make check` validates the exact three-skill distribution, absence of production
+The earlier `make check` validated the then-current three-skill distribution, absence of production
 code/runtime paths, relative reference links, and current install selections.
 Python repository tests use actual disposable Git repositories for unignored,
 ignored, tracked, negated-ignore and existing-memo cases, and actual exclusive
@@ -32,7 +41,7 @@ idempotency. No new GitHub issue/comment is created by these tests.
 
 `make check-installer` is an opt-in network test using the official `skills`
 1.7.2 package in a disposable Node 22 Docker container with a read-only source
-mount and no host credentials or home mount. It installs all three skills and
+mount and no host credentials or home mount. It installed all three then-shipped skills and
 an unrelated fixture in global and project scopes, verifies Codex/Claude
 placements and listing, then changes the fixture source and reinstalls only the
 global update helper. It checks byte-for-byte that other global skills, local
@@ -45,7 +54,7 @@ The official contract was inspected through `skills --version`/`--help` and
 [CLI documentation](https://skills.sh/docs/cli) as a second official entrypoint.
 `skills` 1.7.2 accepts named updates but may rediscover provider targets; the
 helper therefore prefers explicit targeted `add` and preserves existing layout.
-All three skill frontmatters must also pass skill-creator's `quick_validate.py`.
+Each shipped skill frontmatter must also pass skill-creator's `quick_validate.py`.
 That validator checks packaging, not model behavior.
 
 ## Acceptance mapping
@@ -65,7 +74,7 @@ That validator checks packaging, not model behavior.
 | #2 retained reason and generalized sample | `docs/IMPROVEMENTS.md` and final reporting contract |
 | Update helper | Official installer, provenance/baseline checks, preserve subset/scope/targets/ref/method, backups, read-back and unrelated-content verification |
 | Global default with optional local | README, onboarding, installation and migration guide; real container placement test |
-| No runtime/control plane/manual copy | Three instruction-only skills; repository structure guard |
+| No runtime/control plane/manual copy | Instruction-only skills; repository structure guard |
 
 ## Independent synthetic execution
 

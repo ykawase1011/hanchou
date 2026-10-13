@@ -25,7 +25,7 @@ HanchouはCodexとClaude Codeへglobal installするのが標準です。
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update \
   --agent codex claude-code --global
 ```
 
@@ -69,5 +69,7 @@ Project以外のprompt例、full handoffとの違い、複数paneの扱いは
 [Usage](USAGE.md)を参照してください。install先や更新・削除は
 [Installation](INSTALLATION.md)にまとめています。
 
-更新は`$hanchou-update`（Claude Codeでは`/hanchou-update`）を指定します。
+改善依頼の意図を振り分けるには`$hanchou-kaizen`（Claude Codeでは
+`/hanchou-kaizen`）を使います。更新は`$hanchou-update`（Claude Codeでは
+`/hanchou-update`）を指定します。
 改善メモからの公開は[Improvement workflow](IMPROVEMENTS.md)を参照してください。

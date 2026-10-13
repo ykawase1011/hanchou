@@ -25,6 +25,38 @@ falls back to a fresh session when the old terminal is gone. This does not quali
 periodic wake of the original interactive coordinator and Run. No schedule was
 created or changed; same-coordinator post-turn continuation remains unqualified.
 
+### Issue #13 exact-conversation wake qualification
+
+A 2026-10-13 read-only check of installed Orca 1.4.224 CLI help and live guides
+found no public route that targets an existing **interactive** conversation and
+its Run for periodic, completion-event, and post-restart wake. Automation
+`--reuse-session` refers to the previous live Automation session and may fall
+back fresh. Orchestration mail is durable, but wake/nudge is best effort and
+`check --wait` requires an active waiting turn. `terminal send` can submit to a
+live handle only when another caller invokes it; handles change after restart.
+Session search and `run-use` support discovery/binding, not automatic wake of
+the original conversation. These are bounded public-contract findings, not a
+claim that Orca has no possible implementation or that a runtime failure was
+reproduced on 1.4.224.
+
+To qualify #13, a public Orca mechanism must observably target the restorable
+original interactive conversation and existing Run, wake it on agreed periodic
+checks and relevant events after turns and restart, preserve one active
+coordinator and deduplicate overlapping delivery, expose enough outcome and
+receipt evidence to reconcile before dispatch, preserve the conversation's
+authority and user gates, and stop future wake on completion or user stop.
+It must not silently substitute a new conversation or Run. The API's exact
+field names or shape are not prescribed here. If the original conversation is
+unrestorable, replacement/takeover is outside this issue's agreed scope.
+Hanchou can implement the in-turn reconciliation policy now; unattended wake
+and stop remain unqualified, so no schedule or setting was changed.
+
+Related upstream reports include [structured-message wake/subscription
+#18206](https://github.com/stablyai/orca/issues/18206), [Run-mailbox idle
+wake #11787](https://github.com/stablyai/orca/issues/11787), and [restart
+identity #10702](https://github.com/stablyai/orca/issues/10702). They document
+adjacent gaps, not a validated complete #13 contract.
+
 ## Historical migration versions verified
 
 - Checked: 2026-09-03

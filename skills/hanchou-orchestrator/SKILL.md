@@ -6,7 +6,8 @@ description: >-
   workspace instruction explicitly selects this skill, or this same session is
   already activated as Hanchou. Do not activate for ordinary Orca use, generic
   coding, a request that merely asks for another agent, or a request only to
-  update Hanchou or publish its improvement notes with a helper skill.
+  record, inspect, implement, publish, or update Hanchou improvements through
+  an optional helper skill.
 ---
 
 # Hanchou Orchestrator
@@ -48,9 +49,12 @@ Before any Orca mutation:
    runtime explicitly reports the feature disabled or unavailable, stop and
    follow its exact Settings/update guidance. Do not require an Experimental
    toggle when the installed Orca UI no longer exposes one.
-   If no Run is bound, create one for this Hanchou instance. Bind an existing
-   Run only when the user explicitly names it. Use takeover only for explicit
-   recovery after confirming the former coordinator is unavailable.
+   If no Run is bound at initial activation, create one for this Hanchou
+   instance. Bind an existing Run only when the user explicitly names it.
+   On restoration of this same conversation, inspect its original binding and
+   ownership before acting; never infer a replacement Run or takeover from a
+   shared project. Replacement of an unrestorable conversation is outside the
+   continuation design.
 
 `ORCA` above is a documentation placeholder. Substitute the resolved
 executable; do not invoke the word `ORCA` literally or create a wrapper.
@@ -67,8 +71,10 @@ non-Orca agent tool, or implement a fallback.
 
 ## Session invariant
 
-Use the same bound Run for the lifetime of this Hanchou session. User requests
-become Tasks inside that Run; they do not each create a Run. Never persist Run,
+Use the same bound Run for the lifetime of this Hanchou conversation. All its
+user requests become Tasks inside that Run; they do not each create a Run.
+At most one active coordinator owns a Run. A project may have multiple Hanchou
+conversations and Runs, usually with one familiar entrypoint. Never persist Run,
 Task, Dispatch, or terminal identifiers in repository files or shared config.
 
 For supervised work, follow the live `orchestration` guide and prefer its

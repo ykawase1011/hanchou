@@ -22,3 +22,6 @@ Fresh session is the default. Use native session reuse only when prior context i
 required. Installation never creates an Automation.
 
 There is no bridge from an Automation into an existing interactive Run in v3.
+The separate [continuation design](../skills/hanchou-orchestrator/references/continuation.md)
+requires a qualified native wake of the original interactive conversation and
+Run, including after restart. Automation session reuse does not qualify it.
