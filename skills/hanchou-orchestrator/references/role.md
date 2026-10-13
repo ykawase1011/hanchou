@@ -22,3 +22,7 @@ Task spec, not a Hanchou runtime or separate installed skill.
 
 The coordinator owns the user's acceptance decision. Orca owns worker lifecycle
 and task settlement mechanics.
+
+At intake and whenever the user changes direction, apply
+[request-scope.md](request-scope.md). Keep the current completion conditions and
+authorization in conversation/Task context, without creating a Hanchou registry.

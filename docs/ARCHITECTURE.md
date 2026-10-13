@@ -54,9 +54,11 @@ No official skill is vendored, copied, forked, or reimplemented.
 
 ## Event and recovery model
 
-The normal flow is Task creation, supervised worker start, end the coordinator
-turn, native Orca delivery to the idle coordinator, then a new turn that handles
-question/review/completion. Synchronous work uses a bounded official wait only.
+The normal supervised flow is Task creation, worker start, then complete Inbox
+processing through the installed guide's loop. Native idle delivery is usable
+only when advertised or qualified for that release. Otherwise continue official
+bounded waits while expected Dispatches remain; a timeout is a checkpoint.
+Hanchou provides no background watcher or guarantee of work after a turn ends.
 
 After restart, use public Run/Task/message inspection and the live guide's
 recovery contract. Explicit takeover is allowed only when replacing an

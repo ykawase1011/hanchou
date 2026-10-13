@@ -18,3 +18,7 @@ Claude Code target. Treat that run as a Temporary Hanchou.
 Default to a fresh session. Use Orca's native reuse-session only when continuity
 is required. Do not bridge an Automation into an existing interactive Hanchou
 Run, mirror run history, or implement catch-up/overlap logic.
+
+For a request to periodically resume the same interactive Hanchou, read
+[continuation.md](continuation.md) first. Reuse-session availability alone does
+not qualify coordinator/Run continuity or authorize schedule creation.

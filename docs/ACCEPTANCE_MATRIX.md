@@ -1,5 +1,9 @@
 # Acceptance matrix
 
+For the current evidence/authority policy work, see
+[Policy acceptance](POLICY_ACCEPTANCE.md). Its manual scenarios are separate
+from the historical PASS results below and must not inherit those results.
+
 This is historical v3 migration evidence from 2026-09-02/03, not validation of
 the later helper skills or current installer behavior. See
 [maintenance validation](MAINTENANCE_VALIDATION.md) for those additions and

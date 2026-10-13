@@ -59,3 +59,18 @@ skill名を繰り返す必要はありません。新しいpaneでは再度明�
 
 ユーザーが作業の完全な引き渡しを明示した場合は、公式full-handoffを使い、Hanchouは
 そのworkerを監督・待機しません。
+
+## 依頼ごとの方針と検証
+
+配置・権限・完了条件は依頼ごとに保持し、途中の変更をworkerへ反映します。
+例えば「workerとreviewは専用workspaceへ配置、PR作成まで許可、mergeと環境反映は
+判断待ち」と指定できます。この場合、同じRunのまま専用配置を使い、許可済みのPR作成
+まで進め、mergeを待ちます。指定のない利用者にはOrcaの公式配置既定を使います。
+
+起動やsendのreceiptだけで開始・受領・完了を断定しません。DB照合とブラウザ検証、
+成果の受け入れとresource回収も区別します。判断規則と合成受入例は
+[Policy acceptance](POLICY_ACCEPTANCE.md)を参照してください。
+
+通知集約と会話終了後の定期継続は現在policy/design案です。通知設定やscheduleは
+変更していません。同じcoordinator/Runへの復帰や不在時の通知fallbackはOrcaの
+公開機能による検証が必要であり、Automationのsession再利用だけでは保証しません。
