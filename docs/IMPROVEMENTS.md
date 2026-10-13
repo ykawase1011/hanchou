@@ -46,7 +46,10 @@ focused comment or create a new issue. Unsafe or ambiguous items remain local.
 
 Before writing remotely, it saves a minimal local attempt receipt and a safe
 draft, with a random public deduplication token unrelated to the source item or
-project. This makes a timeout recoverable without reposting blindly. Only a
+project and a private fingerprint of each original source part. The fingerprint
+stays local and supports unchanged-source comparison after a restart; missing
+comparison evidence defers cleanup. This makes a timeout recoverable without
+reposting blindly. Only a
 verified remote repository, URL and matching content authorize source cleanup.
 
 | Observation | Action |

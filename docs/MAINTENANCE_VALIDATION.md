@@ -4,7 +4,7 @@ This covers issues [#1](https://github.com/ykawase1011/hanchou/issues/1) and
 [#2](https://github.com/ykawase1011/hanchou/issues/2), the update helper, and the
 new global installation default. The older migration reports remain historical.
 
-Executed on 2026-10-13: `make check` passed all 12 Python tests and both shell
+Executed on 2026-10-13: `make check` passed all 13 Python tests and both shell
 checks; `make check-installer` passed against `skills` 1.7.2 and Node 22.23.3;
 skill-creator's `quick_validate.py` passed for all three skills using a temporary
 Python environment with PyYAML. `git diff --check` passed. The initial installer
@@ -24,7 +24,9 @@ Publication fixtures contain only synthetic private canaries and a generalized
 public draft. Automated tests check that those canaries are absent from that
 known draft and exercise a test-only outcome oracle for timeout, pending writes,
 read-back failure, existing duplicates, cleanup retries, partial coverage and
-concurrent edits. This is fixture/oracle validation, **not** execution of the
+concurrent edits. A separate-process reload test verifies the private source-
+fingerprint comparison primitive for unchanged, edited and missing-evidence
+cases; it is not a complete publisher restart. This is fixture/oracle validation, **not** execution of the
 skill by a model and **not** proof of semantic confidentiality or live GitHub
 idempotency. No new GitHub issue/comment is created by these tests.
 
@@ -65,6 +67,29 @@ That validator checks packaging, not model behavior.
 | Global default with optional local | README, onboarding, installation and migration guide; real container placement test |
 | No runtime/control plane/manual copy | Three instruction-only skills; repository structure guard |
 
+## Independent synthetic execution
+
+A separate Orca worker exercised the draft recorder/publisher instructions with
+actual temporary Git files and a file-backed fake GitHub sink. Its saved artifacts
+showed generalized recording with zero external calls; rejection of tracked,
+negated-ignore, symlink and occupied-lock paths; one create after a timeout and
+recovery through a second API page; preservation of a concurrent append and an
+edited selected item; and reuse after an injected cleanup write failure. The
+run made three fake create calls for three fake issues and zero live remote
+writes. It inspected exact simulated outgoing requests for synthetic canaries
+and identifying context. This was explicit agent execution with temporary
+helpers, not automatic skill discovery or a shipped publisher implementation.
+
+The evaluator identified that a durable original-source fingerprint was not
+explicitly required. The final contract now requires private per-part comparison
+evidence before the remote write and defers cleanup if that evidence is missing
+or source text changed after restart. A separate-process repository test checks
+that primitive. The evaluator reloaded receipts within its own process; it did
+not test a restarted model, live GitHub, comment/attachment operations, wrong-
+owner/archived routing, or stress-test noncooperating concurrent writers. Its
+execution predates the fingerprint clarification; final independent review must
+assess the resulting diff.
+
 ## Independent forward-test cases
 
 Use temporary private fixtures and a mocked GitHub transport; prohibit live
@@ -89,6 +114,6 @@ column. Record actual actions/artifacts separately from these acceptance rules.
 | Local + global installs, custom local edits, unrelated skills | Preserve scope and modifications; update only provably unmodified authorized targets |
 | Unknown baseline, source symlink, pinned ref, unsupported installer | No destructive overwrite, no broad update fallback |
 
-Independent agent forward tests and live GitHub publication are not claimed by
-repository checks. Runtime behavior must be assessed separately before asserting
-those workflows are fully end-to-end qualified.
+The independent synthetic execution above is separate from repository checks.
+Live GitHub publication, automatic discovery and full process/model restart
+behavior remain unqualified; do not infer them from fixture or static results.

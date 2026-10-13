@@ -6,6 +6,9 @@ execute SKILL.md or prove that a model will sanitize or recover correctly.
 from pathlib import Path
 import re
 import os
+import hashlib
+import json
+import sys
 import subprocess
 import tempfile
 import unittest
@@ -87,6 +90,31 @@ class StorageProbes(unittest.TestCase):
 
 
 class PublicationFixtures(unittest.TestCase):
+    def test_original_source_fingerprint_survives_process_reload(self):
+        # Exercise the durable comparison primitive in distinct processes. This
+        # is not a full publisher restart or a model behavior test.
+        with tempfile.TemporaryDirectory(prefix="hanchou-reload-test-") as root:
+            source = Path(root) / "selected-part.md"
+            receipt = Path(root) / "receipt.json"
+            source.write_bytes(b"Original selected source part.\n")
+            original = hashlib.sha256(source.read_bytes()).hexdigest()
+            receipt.write_text(json.dumps({"source_digest": original}))
+            probe = """
+import hashlib, json, pathlib, sys
+source, receipt = map(pathlib.Path, sys.argv[1:])
+expected = json.loads(receipt.read_text()).get('source_digest')
+print(bool(expected) and expected == hashlib.sha256(source.read_bytes()).hexdigest())
+"""
+            def reload_matches():
+                result = subprocess.run([sys.executable, "-c", probe, str(source), str(receipt)],
+                                        capture_output=True, text=True, check=True)
+                return result.stdout.strip() == "True"
+            self.assertTrue(reload_matches())
+            source.write_bytes(b"Original selected source part.\nNew unresolved evidence.\n")
+            self.assertFalse(reload_matches())
+            receipt.write_text("{}")
+            self.assertFalse(reload_matches())
+
     def test_public_fixture_contains_no_synthetic_private_canaries(self):
         private = (ROOT / "tests/fixtures/private-note.md").read_text()
         public = (ROOT / "tests/fixtures/public-issue.md").read_text()

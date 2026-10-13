@@ -58,11 +58,19 @@ earlier write failed, especially after a timeout or with incomplete pagination.
   Read installed `gh` help for available flags; do not guess write/retry flags.
 
 Before the first remote mutation, take the memo editing guard below, reread,
-and reserve the exact item/part with a minimal secret-free receipt. Include:
+and confirm selected source still matches preparation; otherwise reprepare.
+Reserve the exact item/part with a minimal secret-free receipt. Use the same
+source-comparison evidence for an existing-issue reuse path before cleanup,
+even when no remote mutation is needed. Include:
 `pending` status, destination, create/comment action, an opaque random
 publication token unrelated to the project or runtime, a digest of the approved
-public payload, and any known issue/comment URL. Store no raw source in the
-receipt. Add the token as a harmless HTML comment to the approved outgoing body,
+public payload, and any known issue/comment URL. Also persist each selected
+source part's local ID/boundary and cryptographic byte fingerprint (for example,
+SHA-256 of its exact UTF-8 bytes before publication). Keep receipt metadata
+outside the fingerprinted source span. This private comparison evidence must
+survive restart; store no raw private snapshot. Never send source fingerprints,
+boundaries or local IDs in public payloads, search queries or remote metadata.
+Add the token as a harmless HTML comment to the approved outgoing body,
 for example `<!-- hanchou-publication: <random-token> -->`; it is public metadata
 and must contain no local item ID, path, account, or runtime ID. Reinspect and
 hash that final body. Keep the exact safe draft in the same ignored area so a
@@ -112,7 +120,13 @@ established. A reread or atomic rename alone does not prevent a lost update.
 Under that guard, recheck ignore/untracked status, file identity and symlinks,
 then reread the current memo. Remove only an exact unchanged source part whose
 meaning is covered by the verified remote content. If an item changed in place,
-leave it and report cleanup pending; if only another item was appended, remove
+leave it and report cleanup pending. After restart, compare the selected span
+against the original persisted fingerprint, never a fingerprint newly taken
+from the current file. Missing/ambiguous original comparison evidence defers
+cleanup even if the public issue is verified. Re-evaluate any remaining edits
+as separate scope; reserve a new attempt only for independently identified,
+authorized requirements not already covered by the verified issue. If only
+another item was appended, remove
 the unchanged covered item and preserve the append. For partial coverage, remove
 only independently identifiable unchanged covered parts; retain uncertain or
 interleaved material. Do not delete the entire file or restore an old snapshot.
@@ -123,5 +137,6 @@ After cleanup, retain at most a compact secret-free receipt (local item/part ID,
 verified URL, token, digest and status) in an ignored receipts section/location.
 Remove resolved source prose and no-longer-needed safe drafts; do not leave a
 second backlog of resolved bodies. Keep the minimal recovery evidence for any
-unknown or cleanup-pending attempt. Report destination/URL, moved parts, retained
+unknown or cleanup-pending attempt, including original source fingerprints.
+Report destination/URL, moved parts, retained
 parts, uncertainties and cleanup failures without revealing private context.
