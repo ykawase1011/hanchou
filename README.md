@@ -12,6 +12,9 @@ Hanchou v3はruntimeやdaemonではありません。Orca上のCodexまたはCla
 ## Install
 
 Orcaを先に導入し、公式のcore skillを準備します。Orca Skills UIを使っても構いません。
+以下のglobal installは、Node projectの外のdirectoryで実行してください。
+project内ではnpmがそのprojectの`devEngines`を検査し、Node versionの不一致で
+`EBADDEVENGINES`になることがあります。
 
 ```bash
 npx skills add https://github.com/stablyai/orca \
@@ -29,7 +32,16 @@ npx skills add https://github.com/ykawase1011/hanchou \
 
 `--agent codex claude-code`で両providerを明示します。installerが表示する実際の
 保存先とlinkを確認してください。global installだけではHanchouは起動しません。
-project限定のlocal installも選べます。同じcommandを対象projectで実行し、
+
+`Installation method`では、通常のCodex／Claude Code向けglobal installは
+**Symlink (Recommended)**を選びます。installerが配置する共通のskill本体を
+各agentからlinkで参照するため、更新をまとめて管理できます。
+link先はinstall済みの共通本体で、repository checkoutではありません。
+upstreamの変更が自動取得されるわけではなく、更新操作は別途必要です。
+agentごとの独立したcopyが必要な環境では**Copy to all agents**を選びます
+（commandに`--copy`を追加しても指定できます）。
+
+project限定のlocal installも選べます。同じcommandを対象projectのrootで実行し、
 `--global`を外します。coreだけ必要なら`--skill hanchou-orchestrator`に絞れます。
 
 installはOrca本体、userData、既存session、default agent、Automation、
