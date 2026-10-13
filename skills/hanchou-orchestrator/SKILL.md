@@ -5,7 +5,8 @@ description: >-
   start or use Hanchou, asks to manage work as Hanchou/班長, a dedicated Hanchou
   workspace instruction explicitly selects this skill, or this same session is
   already activated as Hanchou. Do not activate for ordinary Orca use, generic
-  coding, or a request that merely asks for another agent.
+  coding, a request that merely asks for another agent, or a request only to
+  update Hanchou or publish its improvement notes with a helper skill.
 ---
 
 # Hanchou Orchestrator
@@ -77,6 +78,16 @@ live `orca-cli` full-handoff path and stop monitoring. Do not mix the two.
 Load [cross-project.md](references/cross-project.md) for multi-repository work,
 [review.md](references/review.md) when independent acceptance is warranted, and
 [automations.md](references/automations.md) for scheduled work.
+
+## Improvement notes
+
+When an activated Hanchou session observes a reusable Hanchou improvement, record
+it at a natural checkpoint without interrupting the user's task. Before reading
+or writing the memo, follow [improvement-notes.md](references/improvement-notes.md)
+for location checks, minimal input, stable item IDs, and concurrent edits.
+Recording is local only; it never authorizes GitHub publication. On an explicit
+request to publish notes, use the optional `hanchou-publish-issues` skill if
+available; otherwise explain how to install it without publishing automatically.
 
 ## Optional official capabilities
 

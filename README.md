@@ -1,7 +1,7 @@
 # Hanchou
 
-> Hanchou is an optional, opinionated orchestrator skill for Orca. Install it
-> into an existing Orca workspace and start as many project or cross-project
+> Hanchou provides optional, opinionated skills for Orca. Install them globally
+> for Codex and Claude Code and start as many project or cross-project
 > Hanchou sessions as needed, without changing ordinary Orca behavior.
 
 Hanchou v3はruntimeやdaemonではありません。Orca上のCodexまたはClaude sessionへ、
@@ -15,20 +15,22 @@ Orcaを先に導入し、公式のcore skillを準備します。Orca Skills UI�
 
 ```bash
 npx skills add https://github.com/stablyai/orca \
-  --skill orca-cli orchestration --agent universal claude-code --global
+  --skill orca-cli orchestration --agent codex claude-code --global
 ```
 
-対象projectまたは専用workspaceでHanchouだけをlocal installします。
+HanchouはCodexとClaude Codeの両方へglobal installするのが標準です。
+coreと2つの任意helperを明示して入れます。
 
 ```bash
-cd /path/to/project
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator --agent universal claude-code --local
+  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --agent codex claude-code --global
 ```
 
-`--agent universal claude-code`は標準`.agents/skills`配置に加え、Claude Code用の
-provider aliasも作ります。実行中agentの自動検出だけに任せると、別providerへの
-placementが省略されることがあります。
+`--agent codex claude-code`で両providerを明示します。installerが表示する実際の
+保存先とlinkを確認してください。global installだけではHanchouは起動しません。
+project限定のlocal installも選べます。同じcommandを対象projectで実行し、
+`--global`を外します。coreだけ必要なら`--skill hanchou-orchestrator`に絞れます。
 
 installはOrca本体、userData、既存session、default agent、Automation、
 既存の`AGENTS.md`／`CLAUDE.md`を変更しません。現在のOrcaでは専用の
@@ -75,7 +77,9 @@ Claude Codeでは同じ本文をskill commandへ渡します。
 ## Repository
 
 ```text
-skills/hanchou-orchestrator/  配布する唯一のcore skill
+skills/hanchou-orchestrator/   core orchestratorとlocal改善メモの記録
+skills/hanchou-publish-issues/ 任意helper: 改善メモの秘匿化・Issue起票・成功部分の除去
+skills/hanchou-update/         任意helper: 既存Hanchou skillだけをscope維持で更新
 examples/project/             Project Hanchouの例
 examples/cross-project/       専用workspaceの例
 docs/                         architecture、導入、運用、移行、検証
@@ -84,9 +88,16 @@ docs/                         architecture、導入、運用、移行、検証
 Hanchou用production CLI、Node runtime、DB、scheduler、Dashboard、serviceはありません。
 install/update/removeはAgent Skills installerまたはOrca Skills UIに任せます。
 
+更新はCodexで`$hanchou-update`、Claude Codeで`/hanchou-update`を使います。
+改善メモの記録は外部公開を伴いません。公開したいときだけ
+`$hanchou-publish-issues`または`/hanchou-publish-issues`で対象メモを指定します。
+helperはそれだけでRunやworkerを作りません。具体例と失敗時の扱いは
+[Improvement workflow](docs/IMPROVEMENTS.md)を参照してください。
+
 初回利用は[Onboarding](docs/ONBOARDING.md)、詳しい導入は
 [Installation](docs/INSTALLATION.md)、prompt例と運用は[Usage](docs/USAGE.md)を
 参照してください。設計は[Architecture](docs/ARCHITECTURE.md)、旧版からの移行は
-[v2 migration](docs/MIGRATION_V2_TO_V3.md)にあります。今回の実装・検証結果は
+[v2 migration](docs/MIGRATION_V2_TO_V3.md)にあります。helperの検証は
+[maintenance validation](docs/MAINTENANCE_VALIDATION.md)、v3移行時の記録は
 [v3 migration report](docs/V3_MIGRATION_REPORT.md)と
 [acceptance matrix](docs/ACCEPTANCE_MATRIX.md)に記録しています。

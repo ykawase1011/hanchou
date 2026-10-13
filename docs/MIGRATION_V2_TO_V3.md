@@ -1,7 +1,8 @@
 # Migrating from Hanchou v2 to v3
 
 v3 is a breaking change. Hanchou changed from a separately deployed
-orchestration runtime into one optional Orca Agent Skill. There is no v2
+orchestration runtime into an optional Orca orchestrator skill, now accompanied
+by optional issue-publishing and update helpers. There is no v2
 compatibility mode and no automatic Task import.
 
 ## 1. Preserve human-readable records
@@ -68,7 +69,7 @@ Update Orca, then install its official skills:
 
 ```bash
 npx skills add https://github.com/stablyai/orca \
-  --skill orca-cli orchestration --agent universal claude-code --global
+  --skill orca-cli orchestration --agent codex claude-code --global
 ```
 
 Open Orca Settings → Orchestration and confirm the official skill coverage and
@@ -77,14 +78,16 @@ Experimental feature, enable it manually at the Settings location named by that
 build. From an Orca terminal, confirm the official live guides and public
 Orchestration contract are available before Hanchou work begins.
 
-## 5. Install Hanchou locally
+## 5. Install Hanchou globally (default)
 
 ```bash
-cd /path/to/project
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator --agent universal claude-code --local
+  --skill hanchou-orchestrator hanchou-publish-issues hanchou-update \
+  --agent codex claude-code --global
 ```
 
+For an optional local install, run in the target project without `--global`.
+See [Installation](INSTALLATION.md) for scope and update details.
 Do not run an old `hanchou init`, bootstrap, updater, or rollback command.
 
 ## 6. Start a Project Hanchou

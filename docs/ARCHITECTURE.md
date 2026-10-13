@@ -21,6 +21,14 @@ one Hanchou pane
 Orca owns runtime mechanics and state. Hanchou owns only judgment policy:
 decomposition, routing, review, reporting, and when to ask the user.
 
+The distribution contains one orchestrator and two optional instruction-only
+helpers: `hanchou-publish-issues` and `hanchou-update`. Helpers do not create a
+Run or activate the orchestrator. Private ignored improvement notes and compact
+publication receipts are user documents, not a Hanchou database or control plane.
+Scoped updates delegate installation to the official skill installer. New
+installations default to global Codex/Claude Code coverage; local installs remain
+available and updates preserve their scope.
+
 ## Multiplicity and ownership
 
 Orca is normally one runtime per OS user/userData profile. Hanchou has no fixed
