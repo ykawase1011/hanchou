@@ -45,12 +45,18 @@ remaining work are clear. If that cannot be established, report uncertainty
 and stop. The public guides do not establish a general Automation-occurrence-to-
 Run mapping or an atomic overlap lock. Do not infer ownership from matching
 names alone; report that limit when receipts cannot tie an occurrence to its Run.
+Silence, an empty output snapshot, or an idle terminal cannot prove a successful
+no-op occurrence; report an unverified result unless the checks and outcome are
+positively evidenced.
 
 Perform the job's specific checks and authorized next actions. Reconcile
 unfinished requests, Tasks, workers, and external waits only within this
-occurrence's Run. Preserve a genuine user decision wait. Report meaningful
-changes, required decisions, failures, and completion according to the job's
-reporting rule; avoid a notification for every unchanged check. An occurrence
+occurrence's Run. Preserve a genuine user decision wait. Before reporting the
+occurrence complete, account for its task-created resources under
+the installed `hanchou-orchestrator` cleanup policy,
+including failed launches and trial resources; unresolved cleanup remains explicit.
+Report meaningful changes, required decisions, failures, and completion according
+to the job's reporting rule; avoid a notification for every unchanged check. An occurrence
 finishing does not disable an independent schedule. If the original interactive
 conversation or Run has disappeared, do not create a replacement or take over
 its work; report what public state establishes and leave that work untouched.
