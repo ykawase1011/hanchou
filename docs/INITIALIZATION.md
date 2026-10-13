@@ -12,7 +12,8 @@ without a policy remains usable for ordinary explicit requests.
    useful, **permit** (`allow`), **ask** (`ask each time`), or **do not do** for edits, PRs, merges, and
    publication/deployment. Add project conditions and reporting requirements.
    An unset action asks for a decision only if a later task needs it.
-3. Approve writing that static file. The helper writes only the approved policy
+3. Approve the concrete proposal if your earlier request has not already done
+   so. The helper writes only the approved static policy
    and the target repository's local Git `info/exclude` entry when needed. It
    does not edit shared `.gitignore`, `AGENTS.md`, `CLAUDE.md`, global settings,
    or Automations, and it does not activate Hanchou.

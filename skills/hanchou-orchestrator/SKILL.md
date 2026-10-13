@@ -60,8 +60,12 @@ Before any Orca mutation:
 
 After identifying the target project and before task actions, select and read
 its optional responsibility policy under [project-policy.md](references/project-policy.md).
-Repeat source selection for the next explicit task when its target changes.
-An absent default file does not block ordinary requested work.
+Repeat source selection for each new separately assigned task, including tasks
+in the same project; keep an active task's snapshot fixed absent an explicit
+authorized scope change. For a scheduled occurrence, use only the registered
+prompt's pinned policy source or its recorded no-policy decision; do not perform
+this interactive default lookup. An absent interactive default file does not
+block ordinary requested work.
 
 `ORCA` above is a documentation placeholder. Substitute the resolved
 executable; do not invoke the word `ORCA` literally or create a wrapper.

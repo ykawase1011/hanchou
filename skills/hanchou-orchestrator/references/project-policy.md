@@ -3,8 +3,9 @@
 The optional default is `.hanchou/policy.md` at the **exact target project
 root**. A user or applicable project instruction may explicitly select another
 source. Resolve that selection after identifying the target project and before
-task actions, at activation and again for each explicit request that changes
-the target. Do not search sibling worktrees, other projects, or nearby files for
+task actions, at activation and for each new separately assigned task, including
+one in the same project. Do not reread midway through an existing task to grant
+new authority. Do not search sibling worktrees, other projects, or nearby files for
 a substitute. The selected source must be unambiguously tied to the intended
 project and be readable; if it is missing, unreadable, or ambiguous, stop affected work and
 report the source problem. An absent optional default means the project has not
@@ -38,6 +39,9 @@ authorization. Editing the policy text midtask does not expand an existing
 Task or Run's permission; reconcile any requested change with the user and
 affected workers before changing their scope.
 
-For independently scheduled work, follow the separate source and occurrence
-rules in `hanchou-cron`'s setup and execution references. Initializing a policy
-does not update an already registered Automation.
+For an independent scheduled occurrence, the registered prompt's policy-source
+decision replaces this interactive source-selection rule. Read only its pinned
+source, or perform no policy lookup when it records none. Do not discover the
+core default at startup or substitute another file. Follow `hanchou-cron`'s
+separate setup and execution references. Initializing a policy does not update
+an already registered Automation.
