@@ -110,10 +110,11 @@ model or live Automation has passed an end-to-end run.
 | Independent forward review | Six synthetic scenarios assessed: selected project/job, edited definition, continuation, uncertain create, overlapping occurrence, and missing source. | Instruction policy was reviewed against the installed public Orca guides; these scenarios were not executed as live Automations. |
 | Manual Orca smoke | One disabled Claude Automation created a fresh worktree for a manual run and completed. History output contained `HC_CRON_SMOKE_V1`, read from the pinned source workspace; that marker was absent from the saved prompt and execution worktree. The unrelated interactive Run remained untouched. | This verifies one manual independent-job path, not scheduled firing or general occurrence-to-Run correlation. |
 
-While dispatched, the Automation history terminal PTY matched the public Orca
-terminal handle and the Hanchou Run's coordinator handle, establishing exact
-linkage for this occurrence. Completed history cleared the terminal fields,
-and the Hanchou Run has no direct Automation run ID, so that linkage requires
+While dispatched, the Automation history terminal PTY matched the PTY in public
+terminal details; that terminal's handle matched the Hanchou Run's coordinator
+handle, establishing exact linkage for this occurrence. Completed history
+cleared the terminal fields, and the Hanchou Run has no direct Automation run
+ID, so that linkage requires
 the dispatched receipt. The disabled daily schedule was edited by one minute
 and read back, then removed; the trial worktree and source fixture were also
 removed. No recurring schedule remains; the lightweight Hanchou Run record does.
