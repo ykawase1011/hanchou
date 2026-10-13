@@ -41,3 +41,25 @@ and whether the target can be recreated. Prefer correcting an unreleased source
 migration and verifying a fresh restore when feasible. Add a repair command or
 generic backfill only when actual deployment constraints establish its need;
 follow [migration-acceptance.md](migration-acceptance.md) before accepting it.
+
+## PR titles
+
+By default, PR titles Hanchou creates or updates describe the change in Japanese.
+Product names, code identifiers, and necessary technical terms may retain their
+original spelling. An explicit applicable user instruction takes precedence;
+do not infer a different title language from the PR body or project docs.
+This applies whether the coordinator or a delegated worker prepares the PR.
+Carry the effective title-language requirement into implementation and
+PR-preparation Task briefs under [task-design.md](task-design.md).
+
+After creating or updating a PR, read back its actual title from GitHub for the
+exact repository and PR, and compare it with the effective requirement before
+reporting success. A local draft or successful write receipt is not read-back
+evidence; record the PR identity and observed title. If read-back is unavailable
+or the title differs, report that limit and correct it only within the authorized
+scope, then read back again.
+
+This default does not authorize bulk renaming preexisting PRs or translating PR
+bodies. Leave existing titles and bodies untouched unless their update is in
+scope; an authorized update to one title does not authorize changes to other PRs
+or to its body's language.

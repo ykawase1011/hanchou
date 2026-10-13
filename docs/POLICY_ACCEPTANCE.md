@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, and the Hanchou-only portion of #22.
+#16–#18, #20, #21, #25, #28, and the Hanchou-only portion of #22.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -28,6 +28,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #17 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): explicit choice, capable isolated browser preference, effect reconciliation | B4–B6 |
 | #18 | [Improvement notes](../skills/hanchou-orchestrator/references/improvement-notes.md): local language selection, stable IDs, separate publication decision | L1–L3 |
 | #25 | [`hanchou-init`](../skills/hanchou-init/SKILL.md) and [initialization guide](INITIALIZATION.md): response language, separate document preservation, localized choices and actual consent | H1–H8 |
+| #28 | [PR titles](../skills/hanchou-orchestrator/references/request-scope.md#pr-titles) and [Task design](../skills/hanchou-orchestrator/references/task-design.md): Japanese default, delegation, exact GitHub read-back, scoped updates | PR1–PR5 |
 
 `make check` validates distribution boundaries, relative links, and discoverability
 of every shipped reference from its skill entrypoint, alongside existing checks.
@@ -205,3 +206,17 @@ candidate instructions on 2026-10-13. This is **not an agent behavioral pass**:
 agent/runtime acceptance is **NOT RUN**. `make check` validates repository
 contracts and links; it does not execute these conversations or prove model
 adherence, policy preservation, or consent handling at runtime.
+
+## PR title language cases (#28)
+
+| Case | Input / challenge sequence | Required acceptance; reject when |
+| --- | --- | --- |
+| PR1 coordinator creates | Hanchou is authorized to create a PR; no title language is specified, and project docs are English. | Describe the change in Japanese and read back the actual title from the exact GitHub repository/PR before reporting success; a draft or write receipt alone cannot pass. |
+| PR2 delegated preparation | Coordinator delegates implementation and PR preparation, with publication either delegated or retained by the coordinator. | Both worker briefs carry the effective language requirement; the authorized publisher returns the PR identity and observed GitHub title. A draft-only worker does not publish or claim remote verification. |
+| PR3 original terms | A change fixes an Orca API timeout involving `worker-start`. | A title such as “Orca API の worker-start タイムアウトを修正” retains technical terms while describing the change in Japanese; verify the actual GitHub title. |
+| PR4 scoped update | Existing PRs have English titles and bodies; a task changes code only, then an explicit follow-up requests updating one PR title. | Preserve existing titles/bodies in the first task; update only the selected title in the second and read it back. Reject bulk renaming or translating the body from this default. |
+| PR5 override and failed read-back | User explicitly requests an English title; after creation/update, GitHub returns a different title or read-back is unavailable. | Carry the English override into the brief and compare against it. Correct an in-scope mismatch and read back again, or report the unverified limit; do not claim success from the proposed title. |
+
+PR1–PR5 are manual acceptance scenarios, **NOT RUN as agent/runtime acceptance**
+in this implementation. Semantic review and `make check` do not prove GitHub
+postconditions; record any subsequent live PR title read-back separately.

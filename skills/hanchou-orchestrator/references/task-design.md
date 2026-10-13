@@ -28,6 +28,13 @@ name the selected target and the requirement to verify the resulting workspace
 identity. Recheck this for an independent reviewer, retry, or added worker rather
 than copying a previous `worker-start` selector.
 
+For implementation and PR-preparation workers, carry the effective
+[PR title policy](request-scope.md#pr-titles) into the Task brief: Japanese by
+default, any explicit applicable user override, and original technical terms
+allowed. Name who will create/update the PR and return the actual GitHub title
+read-back as acceptance evidence. A draft-only worker returns the proposed title;
+the authorized publisher still owns the remote read-back before completion.
+
 Create Tasks in the currently bound Hanchou Run. One Task has one owner Run even
 when its worker executes in another repository or on a connected Orca server.
 Do not duplicate a Task into another Run.
