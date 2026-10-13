@@ -5,8 +5,8 @@ root**. A user or applicable project instruction may explicitly select another
 source. Resolve that selection after identifying the target project and before
 task actions, at activation and again for each explicit request that changes
 the target. Do not search sibling worktrees, other projects, or nearby files for
-a substitute. A selected source must identify the intended project and be
-readable; if it is missing, unreadable, or ambiguous, stop affected work and
+a substitute. The selected source must be unambiguously tied to the intended
+project and be readable; if it is missing, unreadable, or ambiguous, stop affected work and
 report the source problem. An absent optional default means the project has not
 initialized this policy; ordinary requested work may proceed under the current
 user request and other applicable instructions, without forced initialization

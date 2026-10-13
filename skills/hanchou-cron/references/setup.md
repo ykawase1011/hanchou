@@ -43,14 +43,15 @@ condition of installing this helper.
    responsibility policy if present before resolving its standing permission
    conditions; source selection follows item 4 below.
 2. For an independent job, pin a **definition source**: host, project identity,
-   stable source workspace or checkout path, and relative Markdown path. Read
-   that exact file now and validate its named job, mode, scope, specific
+   stable source workspace or checkout path, and relative Markdown path. For a
+   selected existing file, read it now. For a concrete new job, author the
+   necessary static definition at the selected source, then read it back.
+   Validate its named job, mode, scope, specific
    checks/actions, completion, reporting, and references against the user's
    request. Resolve contradictions before registration. If a **selected existing**
    file is missing, unreadable, or unclear, report the defect; do not choose
-   another project's file or a generic job. For a **new** job, a concrete request
-   authorizes its necessary static definition; an install-only or vague request
-   does not. A future
+   another project's file or a generic job. A concrete new-job request
+   authorizes that definition; an install-only or vague request does not. A future
    qualified continuation may instead use the original conversation and Run's
    recorded request and policy; a selected project definition supplements it.
 3. For a selected project definition, decide whether every future run can reach

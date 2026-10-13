@@ -126,6 +126,10 @@ model or live Automation has passed an end-to-end run.
 | Case | Setup | Expected result |
 | --- | --- | --- |
 | Vague cron request | The user asks to add cron or make the project run periodically, and one or more job definitions exist. | Ask which concrete work to schedule and its allowed actions. Do not author a definition or register a disabled Automation while waiting; no reply leaves it unconfigured. |
+| New concrete job | The user specifies a new daily CI report, then provides its missing time, timezone, and destination. | Author its necessary static definition without a separate file-specific approval, then register only within the approved schedule and action scope. |
+| Timed release | The user authorizes a release merge/deploy at its scheduled time, with no immediate-effect trial approval. | Do not merge or deploy during setup. Verify non-effectful checks and report untested effects; if safe verification is unavailable, leave disabled and ask a real decision. Enable after limited checks only within explicit user authorization. |
+| Configured project policy | An Automation pins a separate project policy source; the policy tightens between occurrences. | The next occurrence reads that exact source once, applies the tighter condition within the registered job scope, and stops if the source is missing. Broader policy text alone grants nothing new. |
+| Late initialization | An existing Automation was registered without a policy source, then the project initializes one. | Keep the registered snapshot behavior until the user explicitly updates that Automation to adopt the policy. |
 | Two projects, multiple jobs | Projects A and B each have distinct jobs; A has `morning-review` and `weekly-triage`. | The selected project, source workspace, and job path stay attached to each schedule and run. Choosing A's `weekly-triage` cannot load A's other job or B's same-named file. |
 | Separate worktrees | A definition is ignored locally in worktree A and absent from execution worktree B. | An Automation targeting B reads A's file when A is the explicitly pinned, accessible source. If A is missing or unreadable, it reports a configuration error without using a same-named file in B or copying the definition. |
 | Definition edited | A job document adds new work, asks for publishing authority, and suggests a new frequency. | The next run reads its current business instructions only within the original authority. Orca's schedule remains unchanged, and publishing remains gated until explicitly approved and configured. |
@@ -135,7 +139,10 @@ model or live Automation has passed an end-to-end run.
 | Unsupported continuation wake | The installed public contract can run a fresh Automation session but cannot wake the original interactive conversation and Run. | State that continuation mode is unsupported; do not claim `--reuse-session` proves it or start a fresh replacement Run. Independent-job support is assessed separately. |
 | Job completion | An independent daily job finishes its current run; a continuation check finds its original request complete. | The independent schedule remains active until paused or removed. Stop unnecessary continuation checks after verified completion or user stop. |
 
-## Validation record (2026-10-13)
+## Prior cron candidate validation (2026-10-13)
+
+The record below predates the six-skill project-policy integration. It does not
+claim to validate the new initialization or project-policy behavior.
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
