@@ -46,7 +46,12 @@ $hanchou-orchestrator を使って、このmigration専用のTemporary Hanchou�
 Hanchou起動は行いません。
 
 有効なHanchou sessionは作業の区切りで改善点をignore確認済みのlocalメモへ
-記録できます。指定がなければ`tmp/hanchou_update.md`を候補にします。
+記録できます。新規メモは指定がなければ`.hanchou/hanchou_update.md`を候補にし、
+明示された保存先を優先します。実パス・親やファイルのsymlink・追跡状態・有効な
+ignore規則を確認し、安全なlocal保存先がなければ保留します。
+旧`tmp/hanchou_update.md`とその未解決項目・receiptは自動移動や複製をせず保持します。
+旧メモがある場合、参照元が未指定の公開依頼では対象メモと項目を明示してから処理し、
+新しい既定メモが空でも旧項目を処理済みとはみなしません。
 記録は公開を意味しません。Issueへ移す依頼は`$hanchou-publish-issues`、
 既存Hanchou skillの更新依頼は`$hanchou-update`を指定します。
 Claude Codeでは同名の`/` commandを使います。helperだけの依頼でRunは作りません。

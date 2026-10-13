@@ -9,11 +9,25 @@ unclear, clarify it. This router can use the recorder reference without
 activating the orchestrator.
 
 The core skill records Hanchou improvements at ordinary task checkpoints.
-`tmp/hanchou_update.md` is a candidate, not a presumed safe path: a user-selected
-path takes priority and must still pass tracked/ignore checks. Existing local
+`.hanchou/hanchou_update.md` is the default candidate for new notes, not a
+presumed safe path: a user-selected path takes priority and must still pass
+real-path, parent/symlink, tracked and effective-ignore checks. These checks also
+apply to locks, receipts and drafts before every write. Existing local
 ignore conventions or a narrowly scoped `.git/info/exclude` entry can provide a
 safe location without modifying shared project files. Ignore does not provide
 confidentiality by itself; notes still exclude secrets and runtime identifiers.
+If no authorized safe local destination is available, defer recording; do not
+force an external location, untrack files, or edit shared `.gitignore`.
+
+The old `tmp/hanchou_update.md` remains in place, including unresolved items and
+publication receipts. Check its existence through parent/file metadata without
+following external symlinks; uncertain discovery stays unresolved. Do not
+automatically move, delete, merge, copy or duplicate the old backlog. An empty
+new default never means old work is complete. With legacy-only or both-path
+sources, an unspecified read/publication request needs explicit memo/item
+selection; a source already named by the user is sufficient. Publication and
+cleanup stay bound to that source and its lock/receipts, leaving unselected
+sources untouched and reporting them as outside scope.
 
 A minimal generalized item looks like this:
 
@@ -36,7 +50,7 @@ reread current content. Uncooperative concurrent editing defers mutation.
 For Codex:
 
 ```text
-$hanchou-publish-issues を使って tmp/hanchou_update.md の改善点を公開可能な
+$hanchou-publish-issues を使って .hanchou/hanchou_update.md の改善点を公開可能な
 GitHub Issueへ移してください。起票先の現状を確認し、秘匿化して内容を検証し、
 成功した部分だけを元メモから除去してください。
 ```

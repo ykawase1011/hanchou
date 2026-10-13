@@ -7,10 +7,11 @@ when recording safely would disrupt the actual task.
 
 ## Choose and verify the destination
 
-Prefer the user's specified path/name; otherwise try `tmp/hanchou_update.md`
-relative to the project/workspace. A directory named `tmp` is not evidence of
-privacy. Before creating anything, inspect the resolved destination and parent
-directories, rejecting unexpected symlinks or paths outside the intended scope.
+Prefer the user's specified path/name; otherwise try `.hanchou/hanchou_update.md`
+relative to the project/workspace for new notes. A directory named `.hanchou`
+is not evidence of privacy. Before creating anything, inspect the resolved
+destination and parent directories, rejecting unexpected symlinks or paths
+outside the intended scope.
 In a Git worktree, run both checks against the exact repository-relative path:
 
 ```bash
@@ -35,6 +36,35 @@ local alternative only when the user's location constraint permits it.
 For a non-Git workspace, use an explicitly private, non-shared location allowed
 by local policy; otherwise defer and report the missing safe destination.
 Ignore prevents accidental Git addition, not access by other users or sync tools.
+An unsafe default does not authorize a new external storage location. Use only
+local storage allowed by the rules above and the user's location constraint;
+if none can be verified, defer recording.
+
+## Preserve legacy notes without migration
+
+When using the new default, also check whether `tmp/hanchou_update.md` exists.
+Limit discovery to these known paths and their parent metadata: inspect parents
+before the final entry with non-following metadata checks (such as `lstat`). Do
+not traverse an external symlink, scan other directories, or read an unsafe
+target just to discover old notes. A symlink, inaccessible parent, or other
+uncertain result means unresolved discovery, not an absent or empty legacy memo.
+Include already-known legacy receipt/draft/lock locations in this limited check;
+an absent memo does not resolve a surviving publication attempt.
+
+If the legacy memo exists, report that it remains a separate source; retain its
+items, locks, drafts and recovery receipts in place. Never automatically move,
+delete, merge or copy it, or duplicate its backlog into the new default. If the
+same observation may already be recorded there, safely inspect the relevant
+item or defer that observation rather than create a duplicate. An explicit
+destination still wins, subject to the same safety checks. Updating a legacy
+item uses that source and its editing guard; it does not migrate the item.
+
+An empty or absent new default says nothing about legacy completion. When a
+read/publication request leaves the source ambiguous (including legacy-only or
+both-path cases), identify the sources and obtain an explicit selection of the
+memo and item scope before acting. A request already naming the source needs no
+extra confirmation. Keep unselected sources and their receipts untouched and
+report them as outside scope, never as processed.
 
 ## Item format and content
 
