@@ -16,7 +16,8 @@ Read the chosen policy and combine it with the current user request and other
 applicable instructions. Its responsibilities describe how to handle requested
 work; they do not create Tasks, schedules, publication, or unsolicited work.
 For edits, PR creation, merge, and publication/deployment, interpret each
-user-defined standing setting as **permit**, **ask**, or **do not do**, subject
+user-defined standing setting as **permit** (`allow`), **ask** (`ask each time`),
+or **do not do**, subject
 to its project-specific conditions and reporting requirements. An unset setting
 requires a decision only when that operation becomes relevant. A permit still
 requires a task that calls for the operation and satisfaction of its conditions;

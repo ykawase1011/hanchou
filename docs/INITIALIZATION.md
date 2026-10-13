@@ -9,7 +9,7 @@ without a policy remains usable for ordinary explicit requests.
    responsibilities and permission conditions. The default source is
    `.hanchou/policy.md` at that root; you may explicitly choose another source.
 2. Review the concrete proposed policy. Set project responsibilities and, when
-   useful, **permit**, **ask**, or **do not do** for edits, PRs, merges, and
+   useful, **permit** (`allow`), **ask** (`ask each time`), or **do not do** for edits, PRs, merges, and
    publication/deployment. Add project conditions and reporting requirements.
    An unset action asks for a decision only if a later task needs it.
 3. Approve writing that static file. The helper writes only the approved policy
