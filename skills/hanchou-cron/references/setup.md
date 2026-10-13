@@ -24,7 +24,7 @@ prior instruction already selected that exact job and granted its scope.
 Use an answer already explicit in the current request or selected project
 policy rather than asking it again; policy permission still does not select a
 job or create a schedule.
-After the user clarifies, present the concrete target and work, frequency and
+After the user clarifies, present the concrete target and work, display name, frequency and
 timezone, allowed actions and excluded or gated actions, reporting conditions,
 and stop condition. Obtain a go-ahead for that summary unless the user's
 existing request already explicitly covers it. No reply is no approval; do
@@ -32,6 +32,28 @@ not register defaults. A fully specified, approved request can proceed without
 asking for the same approval again. A pure install or "later" request leaves
 the job unconfigured and may offer onboarding; full onboarding is not a
 condition of installing this helper.
+
+## Automation display name
+
+When the user has not specified a display name, propose `[hanchou] <business name>`
+using the selected job's business name. If that name already starts with
+`[hanchou]`, keep it without adding a second prefix. Preserve an explicit user
+name exactly, including one without the prefix. This is a display convention,
+never evidence of identity, ownership, activation, or permission; continue to
+identify the exact Automation through Orca's public receipts and target/job.
+
+The default applies to new proposals, not automatic migration of existing
+Automations. Rename an existing Automation only within an explicitly requested
+target and scope; bulk renaming requires an explicitly selected set. Never
+infer rename scope from a prefix, project membership, or an inspection request.
+Before an authorized rename, read the exact Automation and retain its current
+settings for comparison. Change only the name unless other changes were also
+authorized. After any authorized name change, read back that same Automation
+by its exact ID and verify the saved name, frequency, timezone, session mode,
+prompt and permission scope, target, provider, enabled state, and all other
+settings against the pre-change values and authorized changes. Report any
+mismatch or unavailable read-back as unverified; do not assume success or
+silently repair unrelated settings.
 
 ## Before creation or edit
 

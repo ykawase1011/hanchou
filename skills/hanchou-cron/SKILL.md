@@ -49,6 +49,12 @@ before an Automation operation; use current help for flags the guide omits.
 Use only public Orca surfaces. Do not build a scheduler, state ledger, parser,
 hook, credential store, or agent launcher.
 
+For new Automation proposals, default the display name to `[hanchou] <business name>`
+only when the user has not specified one; preserve explicit names and never
+duplicate an existing prefix. Names establish neither identity nor ownership.
+Existing renames require explicit target/scope and exact read-back verifying
+unrelated settings are preserved; follow [setup.md](references/setup.md).
+
 For a project job, default to `.hanchou/cron/<job-name>.md`; a selected existing
 path is equally valid. One Markdown file defines one named job, and a project
 may have several. Use [job-template.md](assets/job-template.md) when a concrete

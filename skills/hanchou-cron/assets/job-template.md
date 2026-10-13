@@ -2,6 +2,10 @@
 
 Purpose: <what this recurring job is for>
 
+Proposed Automation display name: <explicit user name unchanged; otherwise
+[hanchou] followed by the business name, without duplicating an existing prefix;
+display only, not identity or ownership, and not an instruction to rename an existing Automation>
+
 Mode: <independent periodic job | original-conversation continuation>
 
 Scope: <project, exact work targets, and boundaries>
