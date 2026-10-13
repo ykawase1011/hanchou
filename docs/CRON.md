@@ -32,9 +32,10 @@ and selected relative definition path. The Automation prompt must carry that
 identity. At each run, read that file from the selected source and use the
 content read at the start of that run. An ignored local definition exists only
 in the workspace that holds it; another worktree of the same repository does not
-inherit it. For such a file, target and verify the specific existing workspace.
-If the chosen run mode creates a fresh worktree, place the definition in source
-that will actually be available there. Never resolve an identically named file
+inherit it. Pin and verify that workspace as the definition source. The
+Automation may execute in another workspace or a fresh worktree if it can read
+the pinned source on the selected host. If it cannot, choose a source accessible
+to the run before registration. Never resolve an identically named file
 from whichever worktree happens to be active. Missing, unreadable, or ambiguous
 definitions are configuration errors to report, not permission to use another
 project's file or a generic job.
@@ -81,7 +82,7 @@ model or live Automation has passed an end-to-end run.
 | Case | Setup | Expected result |
 | --- | --- | --- |
 | Two projects, multiple jobs | Projects A and B each have distinct jobs; A has `morning-review` and `weekly-triage`. | The selected project, source workspace, and job path stay attached to each schedule and run. Choosing A's `weekly-triage` cannot load A's other job or B's same-named file. |
-| Separate worktrees | A definition is ignored locally in worktree A and absent from worktree B. | An Automation targeting B reports a missing definition; it neither reads A's file nor silently copies it. An existing-workspace target must point to A to use A's local file. |
+| Separate worktrees | A definition is ignored locally in worktree A and absent from execution worktree B. | An Automation targeting B reads A's file when A is the explicitly pinned, accessible source. If A is missing or unreadable, it reports a configuration error without using a same-named file in B or copying the definition. |
 | Definition edited | A job document adds new work, asks for publishing authority, and suggests a new frequency. | The next run reads its current business instructions only within the original authority. Orca's schedule remains unchanged, and publishing remains gated until explicitly approved and configured. |
 | Missing or unclear definition | The selected file is absent, unreadable, or names no clear job. | Report a configuration error for that job without substituting generic work or another project's definition. |
 | Ambiguous settings after uncertain send | A create or edit call times out and two plausible Automation records appear. | Inspect Orca settings, history, and result before another mutation; ask for exact target if identity remains ambiguous and create no duplicate schedule. |
