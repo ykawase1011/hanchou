@@ -107,7 +107,17 @@ model or live Automation has passed an end-to-end run.
 | `make check` | Passed: structure validation and 15 repository contract tests. | The five-skill distribution and repository policy checks pass. |
 | `make check-installer` | Passed in a disposable Node 22 Docker container with `skills@1.7.2`. | Codex and Claude Code global and project installs include `hanchou-cron`; a targeted reinstall preserves other skills and a core-only sibling stays core-only. |
 | `skill-creator/scripts/quick_validate.py skills/hanchou-cron` | Passed with PyYAML in a disposable `uv` environment. | Skill naming, frontmatter, and scaffold validation pass. |
+| Independent forward review | Six synthetic scenarios assessed: selected project/job, edited definition, continuation, uncertain create, overlapping occurrence, and missing source. | Instruction policy was reviewed against the installed public Orca guides; these scenarios were not executed as live Automations. |
+| Manual Orca smoke | One disabled Claude Automation created a fresh worktree for a manual run and completed. History output contained `HC_CRON_SMOKE_V1`, read from the pinned source workspace; that marker was absent from the saved prompt and execution worktree. The unrelated interactive Run remained untouched. | This verifies one manual independent-job path, not scheduled firing or general occurrence-to-Run correlation. |
 
-These are policy, packaging, and distribution checks. No live Orca Automation
-was created or changed for this validation, so manual execution, history
-read-back, result inspection, and scheduled runtime behavior remain untested.
+While dispatched, the Automation history terminal PTY matched the public Orca
+terminal handle and the Hanchou Run's coordinator handle, establishing exact
+linkage for this occurrence. Completed history cleared the terminal fields,
+and the Hanchou Run has no direct Automation run ID, so that linkage requires
+the dispatched receipt. The disabled daily schedule was edited by one minute
+and read back, then removed; the trial worktree and source fixture were also
+removed. No recurring schedule remains; the lightweight Hanchou Run record does.
+
+Two-project routing, both providers, original-conversation continuation,
+overlap exclusion, and automatic scheduled execution have not been verified end
+to end. Public inspection is not an atomic overlap lock.
