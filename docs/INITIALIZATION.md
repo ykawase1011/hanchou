@@ -17,6 +17,10 @@ without a policy remains usable for ordinary explicit requests.
    does not edit shared `.gitignore`, `AGENTS.md`, `CLAUDE.md`, global settings,
    or Automations, and it does not activate Hanchou.
 
+The helper resolves the selected destination, including symlinks at the default
+path, before writing. It reports an external or shared destination for a
+specific decision instead of silently overwriting it.
+
 Codex example: `$hanchou-init を使って、このprojectのHanchou責任方針を初期化してください。`
 For Claude Code, use `/hanchou-init`. Starting Project Hanchou remains a
 separate explicit `$hanchou-orchestrator` or `/hanchou-orchestrator` request.
