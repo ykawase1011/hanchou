@@ -17,6 +17,12 @@ Every Task spec should state:
 - constraints and explicit non-goals;
 - expected result or artifact.
 
+Include the request's current authorization, placement, role-specific completion
+conditions, and the applicable acceptance references. In supervised worker
+briefs, include the checkpoint/drain obligations from [inbox.md](inbox.md) and
+the worker-side IPC check from [worker-evidence.md](worker-evidence.md), keeping
+the live injected preamble authoritative for handles and lifecycle commands.
+
 Create Tasks in the currently bound Hanchou Run. One Task has one owner Run even
 when its worker executes in another repository or on a connected Orca server.
 Do not duplicate a Task into another Run.

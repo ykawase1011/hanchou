@@ -163,6 +163,31 @@ print(bool(expected) and expected == hashlib.sha256(source.read_bytes()).hexdige
 
 
 class DistributionContracts(unittest.TestCase):
+    def test_all_skill_references_are_reachable_from_entrypoint(self):
+        # Packaging invariant, not a test of model compliance: an orphaned
+        # topic policy cannot be discovered by a freshly installed skill.
+        for entrypoint in (ROOT / "skills").glob("*/SKILL.md"):
+            skill_root = entrypoint.parent.resolve()
+            pending = [entrypoint.resolve()]
+            visited = set()
+            while pending:
+                path = pending.pop()
+                if path in visited:
+                    continue
+                visited.add(path)
+                for target in re.findall(r"\]\(([^)]+)\)", path.read_text()):
+                    if "://" in target or target.startswith("#"):
+                        continue
+                    linked = (path.parent / target.split("#")[0]).resolve()
+                    self.assertTrue(linked.is_relative_to(skill_root),
+                                    f"installed skill link escapes package: {path} -> {target}")
+                    self.assertTrue(linked.is_file(), f"missing reference: {linked}")
+                    if linked.suffix == ".md":
+                        pending.append(linked)
+            expected = {p.resolve() for p in (skill_root / "references").rglob("*.md")}
+            self.assertFalse(expected - visited,
+                             f"unreachable references: {sorted(expected - visited)}")
+
     def test_exact_optional_skill_inventory_and_no_executable_payload(self):
         skills = ROOT / "skills"
         self.assertEqual({p.parent.name for p in skills.glob("*/SKILL.md")},

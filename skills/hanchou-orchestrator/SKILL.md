@@ -79,6 +79,19 @@ Load [cross-project.md](references/cross-project.md) for multi-repository work,
 [review.md](references/review.md) when independent acceptance is warranted, and
 [automations.md](references/automations.md) for scheduled work.
 
+Use these topic gates; do not load every reference for every request:
+
+| When | Policy reference |
+| --- | --- |
+| Intake, changed authorization, or a delivery decision | [request-scope.md](references/request-scope.md) |
+| Starting, reusing, or recovering a worker; IPC trouble | [worker-evidence.md](references/worker-evidence.md) |
+| Dispatching worker instructions, steering, or consuming Inbox mail | [inbox.md](references/inbox.md) |
+| Accepting results or removing task resources | [cleanup.md](references/cleanup.md) |
+| Investigating, repairing, or reviewing a data migration | [migration-acceptance.md](references/migration-acceptance.md) |
+| Browser/API QA or transient browser tool errors | [browser-qa.md](references/browser-qa.md) |
+| Requested notification aggregation design | [notifications.md](references/notifications.md) |
+| Requested continuation after a turn ends | [continuation.md](references/continuation.md) |
+
 ## Improvement notes
 
 When an activated Hanchou session observes a reusable Hanchou improvement, record

@@ -9,10 +9,16 @@ artifact, acceptance criteria, and verification evidence. Ask the reviewer to
 check correctness, regressions, security, scope, and missing tests without
 assuming the implementer's reasoning is correct.
 
+Carry the latest scope/authority and verify the review input includes uncommitted
+results when relevant. For data work, use
+[migration-acceptance.md](migration-acceptance.md); for browser/API acceptance,
+use [browser-qa.md](browser-qa.md). Require evidence independent of the claim being
+reviewed. A read-only review does not inherit implementation publication hooks.
+
 Worker completion means the assigned Task attempt settled; it is not
 automatically user acceptance. Express separate acceptance with the review Task
 or a real parent Task. Route fixes to a worker unless the user explicitly
 authorized the coordinator to implement them.
 
-After an accepted completion, follow the live guide exactly for worker reuse,
-retain, or release. Never substitute a raw terminal close.
+After an accepted completion, apply [cleanup.md](cleanup.md) and the live guide
+for reuse/release and remaining resources. Never substitute a raw terminal close.

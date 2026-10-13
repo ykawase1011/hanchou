@@ -1,5 +1,9 @@
 # Validation
 
+Current instruction-policy checks and synthetic/manual scenarios are documented
+in [Policy acceptance](POLICY_ACCEPTANCE.md); they do not claim live behavioral
+qualification from the historical results below.
+
 This is historical v3 migration evidence from 2026-09-02/03, not validation of
 the later helper skills or current installer behavior. See
 [maintenance validation](MAINTENANCE_VALIDATION.md) for those additions and

@@ -1,6 +1,31 @@
 # Orca compatibility
 
-## Versions verified
+## Policy review on 2026-10-13
+
+The installed `/Applications/Orca.app/Contents/Resources/bin/orca` reported
+1.4.224. Its live core guides and messaging, worker, placement, recovery,
+browser, and Automation references informed the current
+[policy acceptance cases](POLICY_ACCEPTANCE.md). This is contract inspection,
+not E2E qualification of all cases or a runtime bug fix.
+
+The live contract separates enqueue/input acceptance from recipient action and
+positive liveness from absent observations. Public worker checks support FIFO
+Delivery acknowledgment. Per-instruction read/application proof and safe
+interruption of every structured session remain unverified; use explicit worker
+confirmation and report unsupported paths rather than inventing terminal control.
+
+`worktree set --help` exposes metadata and unread controls but no notification
+switch. This bounded inspection does not prove that Orca has no notification UI
+or other API; no notification configuration or mobile-delivery test was performed.
+Notification restoration on handoff and absent-coordinator fallback remain
+unverified prerequisites for suppression.
+
+The live Automation guide supports existing-workspace session reuse and explicitly
+falls back to a fresh session when the old terminal is gone. This does not qualify
+periodic wake of the original interactive coordinator and Run. No schedule was
+created or changed; same-coordinator post-turn continuation remains unqualified.
+
+## Historical migration versions verified
 
 - Checked: 2026-09-03
 - Migration-request baseline: Orca v1.4.195
