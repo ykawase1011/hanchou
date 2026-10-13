@@ -57,6 +57,33 @@ wake #11787](https://github.com/stablyai/orca/issues/11787), and [restart
 identity #10702](https://github.com/stablyai/orca/issues/10702). They document
 adjacent gaps, not a validated complete #13 contract.
 
+### Issue #22 internal-event and no-op completion qualification
+
+A 2026-10-13 read-only inspection of installed Orca 1.4.224 `orca-cli` and full
+`orchestration` live guides did not qualify a trusted internal-origin contract
+for an Inbox-triggered agent turn or a host no-op completion contract permitting
+that turn to finish without visible narration. Durable mail and best-effort
+wake/nudge do not establish either contract. Notification text, quoted notices,
+and a generic turn-completion capability name are not substitutes for documented
+semantics and observed behavior. This is a bounded public-guide finding, not
+proof that the host has no implementation or attribution of the session's
+higher-priority output instructions to Orca or any particular provider.
+
+Hanchou's [reporting policy](../skills/hanchou-orchestrator/references/reporting.md)
+can condition optional narration on verifiable provenance, completed Inbox
+processing, higher-priority instructions, and the host completion contract.
+It cannot override system/developer requirements or fix host launch/display.
+Qualification needs public origin semantics that distinguish internal events
+from human requests, a supported no-op completion path, and observed repeated
+empty notices followed by genuine mail without loss or unwanted empty narration.
+The [E1–E6 scenarios](POLICY_ACCEPTANCE.md#internal-inbox-event-reporting-cases-22)
+also require human requests, unknown origin, mandatory visible responses, and
+multiple Deliveries to retain their correct behavior.
+
+Real Orca launch/display E2E for #22 is **UNVERIFIED**; #22 remains **OPEN after
+the policy PR**. No host notification setting, installed skill, or runtime was
+changed. The policy does not promise blanket silence or add a poller.
+
 ## Historical migration versions verified
 
 - Checked: 2026-09-03
