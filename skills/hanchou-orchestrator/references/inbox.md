@@ -6,6 +6,14 @@ explicit recipient response can prove **read/understood**, and a successful ack
 proves **batch acknowledgment**. None alone proves **application** of guidance;
 check the recipient's stated changed plan and the resulting work/evidence.
 
+On an Inbox notification, perform the required check even if the notice appears
+stale or duplicates earlier text. Follow [reporting.md](reporting.md) to
+distinguish trusted internal provenance from a human request and decide whether
+start/end narration is permitted or required. That reporting decision never
+waives checking, full processing, or acknowledgment below; unknown provenance
+does not authorize ignoring a request. Process later genuine mail normally,
+even after repeated empty checks.
+
 For workers as well as coordinators, at each natural checkpoint and immediately
 before completion:
 
