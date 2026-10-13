@@ -88,5 +88,14 @@ model or live Automation has passed an end-to-end run.
 | Unsupported continuation wake | The installed public contract can run a fresh Automation session but cannot wake the original interactive conversation and Run. | State that continuation mode is unsupported; do not claim `--reuse-session` proves it or start a fresh replacement Run. Independent-job support is assessed separately. |
 | Job completion | An independent daily job finishes its current run; a continuation check finds its original request complete. | The independent schedule remains active until paused or removed. Stop unnecessary continuation checks after verified completion or user stop. |
 
-Repository packaging checks run under `make check`. A live manual trial, history
-read-back, and result inspection must be recorded separately when performed.
+## Validation record (2026-10-13)
+
+| Check | Result | What it establishes |
+| --- | --- | --- |
+| `make check` | Passed: structure validation and 15 repository contract tests. | The five-skill distribution and repository policy checks pass. |
+| `make check-installer` | Passed in a disposable Node 22 Docker container with `skills@1.7.2`. | Codex and Claude Code global and project installs include `hanchou-cron`; a targeted reinstall preserves other skills and a core-only sibling stays core-only. |
+| `skill-creator/scripts/quick_validate.py skills/hanchou-cron` | Passed with PyYAML in a disposable `uv` environment. | Skill naming, frontmatter, and scaffold validation pass. |
+
+These are policy, packaging, and distribution checks. No live Orca Automation
+was created or changed for this validation, so manual execution, history
+read-back, result inspection, and scheduled runtime behavior remain untested.
