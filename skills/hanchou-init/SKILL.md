@@ -17,6 +17,23 @@ standing user-directed scope, not a work assignment: `allow` means Hanchou may
 do an action **when a separate request or registered job calls for it**. It
 starts nothing by itself.
 
+## Choose the user-facing language
+
+Use the user's explicitly requested response language for questions, proposals,
+permission choices, and the final report. Without that request, use the user's
+current conversation language; use the project's documentation language only
+when the conversation gives no clear signal. English tool output, quoted text,
+and this skill's English instructions are not evidence of the user's language.
+If neither source is clear, use the best available language signal as a
+reversible display default and allow correction; do not block setup on a
+language approval question.
+
+Choose policy document language separately. Preserve an existing policy's
+language and custom sections unless the user requests their change; a response
+language choice does not authorize translation. For a new policy, follow any
+explicit document-language request, otherwise the project's documentation
+language when clear, falling back to the response language.
+
 ## Establish the scope
 
 Identify the exact project root and requested policy path. Default to that
@@ -36,18 +53,30 @@ Ask concise questions only for material missing decisions: what work Hanchou is
 responsible for, and how far the user delegates actions such as editing, creating
 PRs, merging, publishing, or deploying. Reuse explicit answers and authority
 already given in this conversation or project instructions. For each relevant
-action, record natural-language `allow`, `ask each time`, or `do not do`, with
-scope and conditions; do not invent a universal allow or no-merge rule. Omit
-unsettled actions or mark them unsettled, and ask when a real task needs that
-decision. A fully specified request can proceed. Otherwise, show a concrete
-summary of the proposed responsibilities and target path and get a go-ahead
-before writing; silence is not approval.
+unsettled action, offer concise choices in the response language: **Allow**,
+**Ask each time**, **Do not do** (Japanese: **許可**, **毎回確認**, **行わない**),
+with room for freeform scope and conditions. These are natural-language
+decisions, not mandatory English policy tokens. Do not ask a fixed questionnaire
+or invent a universal allow or no-merge rule. Leave irrelevant or deferred
+actions, including publication/deployment, omitted or explicitly unspecified;
+never force a choice or turn an unspecified action into permission or prohibition.
+Ask about it only when a real task needs that decision.
+
+Before requesting any necessary approval, show the concrete proposed work scope,
+selected project root and policy path, settled permissions and conditions, and
+the material decisions still open. Make approval or correction easy to express.
+Displayed, recommended, or preselected options are proposals only: an affirmative
+user response must actually select or authorize the decision. Silence, an
+unsubmitted selection, or an answer to a different item grants no consent.
+Keep dependent changes pending without blocking already authorized independent
+work. A fully specified, authorized request proceeds without another approval;
+once answers settle the material gaps, do not require a redundant confirmation.
 
 Use [policy-template.md](assets/policy-template.md) as an output guide, not a
 mandatory form. Capture delegated work boundaries, authority for edits, PRs,
-merges, publishing/deploying and any project-specific actions, required checks
-and conditions, decisions to return to the user, reporting rules, and relevant
-knowledge references. Write one readable Markdown policy without credentials,
+merges, publishing/deploying and any project-specific actions when settled,
+required checks and conditions, decisions to return to the user, reporting rules,
+and relevant knowledge references. Write one readable Markdown policy without credentials,
 runtime identifiers, or run history. On rerun, preserve existing language and
 custom sections, change only the agreed scope, and show a meaningful diff. If
 the user directs a one-task override, apply it to that task without silently

@@ -10,8 +10,10 @@ user or registered as a Hanchou job. It does not start work or change a schedule
 
 ## Action authority
 
-Use `allow`, `ask each time`, or `do not do` for each action settled by the user.
-Add precise conditions and omit actions that have not been decided.
+Record the meaning of `allow`, `ask each time`, or `do not do` in the policy's
+document language for each action settled by the user. Add precise conditions
+and omit actions that have not been decided, including unused publication or
+deployment. The example rows below are not a required questionnaire or defaults.
 
 - Edit project files: <decision; paths or limits; conditions>
 - Create or update pull requests: <decision; branches or targets; conditions>
