@@ -4,8 +4,8 @@ This covers issues [#1](https://github.com/ykawase1011/hanchou/issues/1) and
 [#2](https://github.com/ykawase1011/hanchou/issues/2), the update helper, and the
 new global installation default. The older migration reports remain historical.
 
-For issue #16, the current distribution has four instruction-only skills,
-including optional `hanchou-kaizen`. `make check` now runs 14 Python tests and
+For issue #16, the distribution at that point had four instruction-only skills,
+including optional `hanchou-kaizen`. `make check` then ran 14 Python tests and
 the shell checks; `make check-installer` passed in a disposable container with
 all four skills and a core-only subset that stayed core-only after targeted
 reinstall. Skill-creator validation passed for the changed/new skill entrypoints

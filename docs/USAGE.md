@@ -48,6 +48,16 @@ Hanchou起動は行いません。
 Claude Codeでは同名の`/` commandを使います。helperだけの依頼でRunは作りません。
 入力例、公開先確認、秘匿化、timeoutや部分成功は[Improvement workflow](IMPROVEMENTS.md)へ。
 
+## 定期実行の設定
+
+定期業務の登録・確認・変更・停止・削除は`$hanchou-cron`（Claude Codeでは
+`/hanchou-cron`）で明示的に依頼します。PJごとの静的ジョブ定義は
+`.hanchou/cron/<job>.md`を標準候補とし、別の場所も明示できます。
+同じPJに複数のジョブを置く場合は対象の一つを指定します。
+設定だけではHanchou Runを作りません。独立した業務の手動試行・定期実行は
+指定されたTemporary Hanchouを起動できます。手順と制約は
+[Scheduled work](CRON.md)にあります。
+
 ## 通常のOrca session
 
 Hanchouを指定しなければ、CodexとClaudeは通常どおり動作し、Hanchou Runは
@@ -83,8 +93,8 @@ skill名を繰り返す必要はありません。新しいpaneでは再度明�
 成果の受け入れとresource回収も区別します。判断規則と合成受入例は
 [Policy acceptance](POLICY_ACCEPTANCE.md)を参照してください。
 
-通知集約と会話終了後の定期継続は現在policy/design案です。通知設定やscheduleは
-変更していません。継続の対象は元の対話とそのRunです。1つの対話の全依頼を同じRunで
+通知集約と会話終了後の定期継続は現在policy/design案です。この文書で通知設定や
+scheduleは変更していません。継続の対象は元の対話とそのRunです。1つの対話の全依頼を同じRunで
 管理し、再起動後はその依頼・Task・worker・CI・権限を照合します。Orcaの公開機能で
 元の対話を定期的に起こせるかは未検証です。Automationのsession再利用だけでは
 保証しません。元の対話を復元できない場合の後任・takeoverは今回の対象外です。

@@ -8,8 +8,8 @@ test "$(tr -d '\n' < VERSION)" = "3.0.0"
 test -f skills/hanchou-orchestrator/SKILL.md
 
 skill_count=$(find skills -name SKILL.md -type f | wc -l | tr -d ' ')
-test "$skill_count" = "4"
-for helper in hanchou-kaizen hanchou-publish-issues hanchou-update; do
+test "$skill_count" = "5"
+for helper in hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron; do
   test -f "skills/$helper/SKILL.md"
 done
 

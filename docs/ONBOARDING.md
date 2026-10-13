@@ -25,7 +25,7 @@ HanchouはCodexとClaude Codeへglobal installするのが標準です。
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
   --agent codex claude-code --global
 ```
 
@@ -73,3 +73,6 @@ Project以外のprompt例、full handoffとの違い、複数paneの扱いは
 `/hanchou-kaizen`）を使います。更新は`$hanchou-update`（Claude Codeでは
 `/hanchou-update`）を指定します。
 改善メモからの公開は[Improvement workflow](IMPROVEMENTS.md)を参照してください。
+定期実行を明示的に設定するときは`$hanchou-cron`（Claude Codeでは
+`/hanchou-cron`）を使います。[Scheduled work](CRON.md)に定義例と確認手順が
+あります。installだけで定期実行は作られません。
