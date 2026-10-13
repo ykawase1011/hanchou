@@ -29,7 +29,7 @@ node "$skills_cli" --version
 for scope in global project; do
   scope_args=()
   if [ "$scope" = global ]; then scope_args=(--global); fi
-  node "$skills_cli" add /fixture --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron unrelated-fixture \
+  node "$skills_cli" add /fixture --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init unrelated-fixture \
     --agent codex claude-code "${scope_args[@]}" -y < /dev/null > "/$scope-install.log"
   node "$skills_cli" list "${scope_args[@]}" --agent codex claude-code --json < /dev/null > "/$scope-list.json"
 done
@@ -39,7 +39,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 for (const root of [os.homedir(), '/project']) {
-  for (const name of ['hanchou-orchestrator', 'hanchou-kaizen', 'hanchou-publish-issues', 'hanchou-update', 'hanchou-cron', 'unrelated-fixture']) {
+  for (const name of ['hanchou-orchestrator', 'hanchou-kaizen', 'hanchou-publish-issues', 'hanchou-update', 'hanchou-cron', 'hanchou-init', 'unrelated-fixture']) {
     const canonical = path.join(root, '.agents/skills', name);
     const claude = path.join(root, '.claude/skills', name);
     assert.equal(fs.realpathSync(claude), fs.realpathSync(canonical));
@@ -50,7 +50,7 @@ for (const root of [os.homedir(), '/project']) {
 assert(!fs.existsSync('/sibling/.agents'));
 for (const scope of ['global', 'project']) {
   const entries = JSON.parse(fs.readFileSync(`/${scope}-list.json`, 'utf8'));
-  assert.equal(entries.length, 6);
+  assert.equal(entries.length, 7);
   for (const entry of entries) {
     assert(entry.agents.includes('Codex'), JSON.stringify(entry));
     assert(entry.agents.includes('Claude Code'), JSON.stringify(entry));
@@ -63,7 +63,7 @@ printf '\nSynthetic new upstream update-helper content.\n' >> /fixture/skills/ha
 printf '\nSynthetic unrelated upstream change; must not install.\n' >> /fixture/skills/unrelated-fixture/SKILL.md
 node "$skills_cli" add /fixture --skill hanchou-update --agent codex claude-code --global -y < /dev/null > /targeted-update.log
 diff -r /root/.agents/skills/hanchou-update /fixture/skills/hanchou-update
-for name in hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-cron unrelated-fixture; do
+for name in hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-cron hanchou-init unrelated-fixture; do
   diff -r "/before-global/$name" "/root/.agents/skills/$name"
 done
 diff -r /before-project /project/.agents/skills
@@ -73,10 +73,12 @@ node "$skills_cli" add /fixture --skill hanchou-orchestrator --agent codex claud
 test -f /sibling/.agents/skills/hanchou-orchestrator/SKILL.md
 test ! -e /sibling/.agents/skills/hanchou-kaizen
 test ! -e /sibling/.agents/skills/hanchou-cron
+test ! -e /sibling/.agents/skills/hanchou-init
 node "$skills_cli" add /fixture --skill hanchou-orchestrator --agent codex claude-code -y < /dev/null > /subset-update.log
 test ! -e /sibling/.agents/skills/hanchou-kaizen
 test ! -e /sibling/.agents/skills/hanchou-publish-issues
 test ! -e /sibling/.agents/skills/hanchou-update
 test ! -e /sibling/.agents/skills/hanchou-cron
+test ! -e /sibling/.agents/skills/hanchou-init
 printf 'installer integration: global/local placement and targeted reinstall isolation passed\n'
 CONTAINER

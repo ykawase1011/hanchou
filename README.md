@@ -22,11 +22,11 @@ npx skills add https://github.com/stablyai/orca \
 ```
 
 HanchouはCodexとClaude Codeの両方へglobal installするのが標準です。
-coreと4つの任意helperを明示して入れます。
+coreと5つの任意helperを明示して入れます。
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
   --agent codex claude-code --global
 ```
 
@@ -96,6 +96,7 @@ skills/hanchou-kaizen/         任意helper: 明示的なHanchou改善依頼の�
 skills/hanchou-publish-issues/ 任意helper: 改善メモの秘匿化・Issue起票・成功部分の除去
 skills/hanchou-update/         任意helper: 既存Hanchou skillだけをscope維持で更新
 skills/hanchou-cron/           任意helper: Orca Automationsによる定期業務の設定・管理
+skills/hanchou-init/           任意helper: PJ責任方針の静的初期化
 examples/project/             Project Hanchouの例
 examples/cross-project/       専用workspaceの例
 docs/                         architecture、導入、運用、移行、検証
@@ -116,6 +117,11 @@ helperはそれだけでRunやworkerを作りません。具体例と失敗時�
 呼び出します。PJ固有のジョブ定義は標準候補の`.hanchou/cron/<job>.md`、または
 指定した別の静的Markdownに置きます。設定例、定義の参照元と権限の扱いは
 [Scheduled work](docs/CRON.md)を参照してください。
+
+PJごとの任意の責任方針は`$hanchou-init`（Claude Codeでは`/hanchou-init`）で
+明示的に初期化できます。既定は対象PJ rootの`.hanchou/policy.md`です。
+許可条件は依頼された作業にだけ適用され、方針やinstallだけで仕事を開始しません。
+手順は[Initialization](docs/INITIALIZATION.md)を参照してください。
 
 初回利用は[Onboarding](docs/ONBOARDING.md)、詳しい導入は
 [Installation](docs/INSTALLATION.md)、prompt例と運用は[Usage](docs/USAGE.md)を

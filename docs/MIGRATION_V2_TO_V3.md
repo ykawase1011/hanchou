@@ -82,7 +82,7 @@ Orchestration contract are available before Hanchou work begins.
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
   --agent codex claude-code --global
 ```
 

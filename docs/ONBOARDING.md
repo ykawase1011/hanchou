@@ -25,7 +25,7 @@ HanchouはCodexとClaude Codeへglobal installするのが標準です。
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
   --agent codex claude-code --global
 ```
 
@@ -33,6 +33,9 @@ installerの結果と`npx skills list --global --agent codex claude-code`で両�
 配置を確認します。project限定なら対象projectで`--global`を外して実行します。
 coreだけ必要ならskill名も絞れます。既に開いていた
 paneがskillを認識しない場合は、新しいCodexまたはClaude Code paneを開きます。
+PJ責任方針を作る場合は、起動とは別に`$hanchou-init`（Claude Codeでは
+`/hanchou-init`）を依頼します。[Initialization](INITIALIZATION.md)を参照してください。
+方針がなくても通常の依頼でHanchouを起動できます。
 
 ## 4. skill名を指定して開始する
 

@@ -7,6 +7,15 @@ configuration. Orca owns the schedule, timezone, enabled state, run history,
 delivery, and session lifecycle; the helper uses the installed Orca CLI's live
 guide. A requested manual trial may start the selected Hanchou job.
 
+Installing the helper or asking only to "add cron" does not select work or
+authorize a definition, disabled Automation, trial, or enabled schedule. For
+`cronを追加して` or `このPJをいい感じに定期実行して`, first ask the user which
+concrete job they want and whether it may only inspect and report, edit and
+open a PR, or perform explicitly granted merge or publish actions. A project
+definition or document can suggest a job, but does not select it even when it
+is the only candidate. An install-only or "later" request leaves the job
+unconfigured; onboarding can be offered without blocking installation.
+
 ## Choose the purpose and job
 
 | Purpose | Target and completion |
@@ -25,9 +34,12 @@ definitions, but must not cause ordinary conversations to schedule or start
 Hanchou automatically.
 If original-conversation continuation becomes publicly supported, its original
 request and Run policy can define that check without a new project job file.
-Start from the shipped [job template](../skills/hanchou-cron/assets/job-template.md)
-and fill in the project-specific content; this repository does not maintain a
-second copy of that template.
+An approved concrete request for a new recurring job authorizes its necessary
+static definition; it does not need a second file-specific approval. A vague
+or install-only request does not authorize a definition. Start from the shipped
+[job template](../skills/hanchou-cron/assets/job-template.md) and fill in the
+project-specific content; this repository does not maintain a second copy of
+that template.
 
 At setup, identify the exact project, host, Orca workspace or repository source,
 and selected relative definition path. The Automation prompt must carry that
@@ -42,18 +54,40 @@ from whichever worktree happens to be active. Missing, unreadable, or ambiguous
 definitions are configuration errors to report, not permission to use another
 project's file or a generic job.
 
+At configuration, select any project responsibility policy explicitly named by
+the user or applicable project instructions. Otherwise check only the exact
+target project's root `.hanchou/policy.md`. An absent optional default leaves
+the job on its approved snapshot; a missing selected source is an error. When
+present, pin its host, project, stable source workspace/checkout and relative
+path separately in the Automation prompt. Each occurrence reads that policy
+once along with the job definition and applies the intersection of current
+policy conditions and the approved registered job scope. Policy tightening
+applies on the next occurrence; broadening alone adds no permission. A missing
+or unreadable configured policy stops that occurrence. Initializing a policy
+later does not retrofit an existing Automation; request an explicit configuration
+update to adopt it.
+
 ## Configure and verify
 
-Before saving, agree on the purpose, job, target, frequency, timezone, allowed
-actions, reporting conditions, and stop condition. Inspect Orca's existing
-Automations and the selected target so a retry or uncertain result does not
-create a duplicate. Create a new schedule disabled, read it back, run a manual
-trial, inspect history and the actual result, then enable it when requested.
-An ordinary request to register a scheduled job includes a bounded trial
-within the approved scope and enablement after a verified result. A request for
-a draft or disabled schedule ends before activation. If a representative trial
-is unavailable or its ownership or result remains uncertain, leave it disabled
-and explain the limit; testing does not grant extra authority for job effects.
+After the user chooses the work, present the exact purpose, job and target,
+frequency and timezone, allowed actions, excluded or gated actions, reporting
+conditions, and stop condition. Obtain a go-ahead unless the user's request
+already explicitly approves that scope. Silence does not approve defaults.
+Inspect Orca's existing Automations and the selected target so a retry or
+uncertain result does not create a duplicate. Create a new schedule disabled,
+read it back, run a bounded manual check, inspect history and the actual result,
+then enable it within the approved decision.
+An approved concrete request to register a scheduled job includes a bounded
+trial within the approved timing and effect scope and enablement after verified
+limited checks. A scheduled merge or deployment approval does not authorize
+doing it immediately for setup. Honor a separate explicit approval for an
+immediate consequential trial. Otherwise use non-effectful checks and state
+exactly which effects were untested. If no useful check can be verified, leave
+disabled and ask how to proceed. The user may explicitly authorize enabling
+after verified limited checks while those effects remain untested. A request
+for a draft or disabled schedule ends before activation. If the check's
+ownership or result remains uncertain, leave it disabled and explain the
+limit; testing does not grant extra authority for job effects.
 Changes, pause, and removal use Orca's public Automation operations and
 read-back. Distinguish the check frequency from notifications: report changes,
 user decisions, failures, and completion according to the agreed conditions.
@@ -91,6 +125,11 @@ model or live Automation has passed an end-to-end run.
 
 | Case | Setup | Expected result |
 | --- | --- | --- |
+| Vague cron request | The user asks to add cron or make the project run periodically, and one or more job definitions exist. | Ask which concrete work to schedule and its allowed actions. Do not author a definition or register a disabled Automation while waiting; no reply leaves it unconfigured. |
+| New concrete job | The user specifies a new daily CI report, then provides its missing time, timezone, and destination. | Author its necessary static definition without a separate file-specific approval, then register only within the approved schedule and action scope. |
+| Timed release | The user authorizes a release merge/deploy at its scheduled time, with no immediate-effect trial approval. | Do not merge or deploy during setup. Verify non-effectful checks and report untested effects; if safe verification is unavailable, leave disabled and ask a real decision. Enable after limited checks only within explicit user authorization. |
+| Configured project policy | An Automation pins a separate project policy source; the policy tightens between occurrences. | The next occurrence reads that exact source once, applies the tighter condition within the registered job scope, and stops if the source is missing. Broader policy text alone grants nothing new. |
+| Late initialization | An existing Automation was registered without a policy source, then the project initializes one. | Keep the registered snapshot behavior until the user explicitly updates that Automation to adopt the policy. |
 | Two projects, multiple jobs | Projects A and B each have distinct jobs; A has `morning-review` and `weekly-triage`. | The selected project, source workspace, and job path stay attached to each schedule and run. Choosing A's `weekly-triage` cannot load A's other job or B's same-named file. |
 | Separate worktrees | A definition is ignored locally in worktree A and absent from execution worktree B. | An Automation targeting B reads A's file when A is the explicitly pinned, accessible source. If A is missing or unreadable, it reports a configuration error without using a same-named file in B or copying the definition. |
 | Definition edited | A job document adds new work, asks for publishing authority, and suggests a new frequency. | The next run reads its current business instructions only within the original authority. Orca's schedule remains unchanged, and publishing remains gated until explicitly approved and configured. |
@@ -100,7 +139,10 @@ model or live Automation has passed an end-to-end run.
 | Unsupported continuation wake | The installed public contract can run a fresh Automation session but cannot wake the original interactive conversation and Run. | State that continuation mode is unsupported; do not claim `--reuse-session` proves it or start a fresh replacement Run. Independent-job support is assessed separately. |
 | Job completion | An independent daily job finishes its current run; a continuation check finds its original request complete. | The independent schedule remains active until paused or removed. Stop unnecessary continuation checks after verified completion or user stop. |
 
-## Validation record (2026-10-13)
+## Prior cron candidate validation (2026-10-13)
+
+The record below predates the six-skill project-policy integration. It does not
+claim to validate the new initialization or project-policy behavior.
 
 | Check | Result | What it establishes |
 | --- | --- | --- |

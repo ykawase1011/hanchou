@@ -31,7 +31,7 @@ canonical paths, resolved symlinks, provider aliases/copies, install method and
 installer source/ref metadata. Confirm each candidate comes from
 `https://github.com/ykawase1011/hanchou`; a matching name alone is insufficient.
 The shipped names are `hanchou-orchestrator`, `hanchou-kaizen`,
-`hanchou-publish-issues`, `hanchou-update`, and `hanchou-cron`. Preserve the
+`hanchou-publish-issues`, `hanchou-update`, `hanchou-cron`, and `hanchou-init`. Preserve the
 installed subset, each local/global scope, and each agent target. Do not migrate
 a local copy to global because global is the
 new-install default. If both scopes exist, handle them separately and report

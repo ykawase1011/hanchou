@@ -16,6 +16,17 @@ If the source is missing, unreadable, from a different host/project, or the
 definition is ambiguous, stop that job and report configuration failure. Do
 not search other worktrees, copy secret material, or fall back to generic work.
 
+If the registered prompt pins a separate project responsibility policy source,
+read that exact source once at occurrence start and keep its snapshot for this
+run. If it is missing, unreadable, or belongs to a different host/project,
+stop and report; never substitute another file or sibling worktree. Apply the
+intersection of the current project policy conditions and the approved
+registered job scope. A tightening takes effect on this occurrence; a broader
+policy cannot add actions beyond the registered scope. A policy edit mid-run
+does not expand authority. If the prompt registered no policy source, preserve
+the existing snapshot-based job behavior; an initialized policy is adopted only
+through an explicit Automation configuration update.
+
 Compare the snapshot to the permission scope embedded in the registered
 prompt. Execute only within that scope, preserving user decision gates. If the
 definition requests broader edits, publication, merge, deployment, spending,

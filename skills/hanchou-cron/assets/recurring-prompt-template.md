@@ -7,6 +7,11 @@ definition source is host `<host>`, project `<project>`, source workspace or
 checkout `<stable absolute path>`, relative file `<relative path>`. Do not read
 a same-named file from the active checkout unless it is that pinned source.
 
+Project responsibility policy source: `<if configured: host, project, stable
+source workspace or checkout, and relative file; otherwise: none configured>`.
+This source is separate from the job definition. A policy initialized after
+registration is not adopted until this Automation is explicitly updated.
+
 Registered permission snapshot: `<specific permitted checks, edits, external
 actions, and limits>`. User decisions still required: `<gates>`. Report on
 `<meaningful changes, decisions, failures, completion>`. This schedule remains
@@ -20,6 +25,12 @@ one pinned definition file once at the start and use that content throughout
 this occurrence. If the source is missing, unreadable, from a different
 host/project, or ambiguous, report a configuration failure and stop without
 using another worktree or a generic job.
+If a project policy source is configured, read that exact file once at start.
+If missing, unreadable, or for another host/project, stop and report; never
+substitute a sibling worktree's copy. Apply the intersection of its current
+conditions and the registered permission snapshot. Tightening applies to this
+occurrence; broadening alone adds no authority. If no policy source was
+configured, use the registered job snapshot without a policy lookup.
 
 Use the definition's named purpose, checks/actions, completion, reporting, and
 knowledge references only within the registered permission snapshot. A document

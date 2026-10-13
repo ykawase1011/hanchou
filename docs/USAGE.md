@@ -13,6 +13,10 @@
 
 ## Project Hanchou
 
+任意のPJ責任方針は対象rootの`.hanchou/policy.md`から読みます。別sourceを
+明示できます。初期化は`$hanchou-init`（Claude Codeでは`/hanchou-init`）で
+依頼し、[Initialization](INITIALIZATION.md)の手順で内容を確認します。
+
 ```text
 $hanchou-orchestrator を使って、Project Hanchouとして開始してください。
 対象はこのrepositoryです。必要な実作業はOrca Orchestrationでworkerへ委譲し、
@@ -78,6 +82,11 @@ skill名を繰り返す必要はありません。新しいpaneでは再度明�
 ## 依頼ごとの方針と検証
 
 配置・権限・完了条件は依頼ごとに保持し、途中の変更をworkerへ反映します。
+PJ方針の責任と許可条件は現在の依頼に合わせて適用し、workerのTaskへsnapshotを
+渡します。同じPJで新しく依頼されたTaskでも方針を読み直し、進行中Taskの
+scopeは方針の編集だけでは拡大しません。方針に許可があっても自動で仕事を
+作りません。明示的な後続指示はその
+Taskの条件を変更できますが、1回限りの変更を既定方針へ保存しません。
 例えば「workerとreviewは専用workspaceへ配置、PR作成まで許可、mergeと環境反映は
 判断待ち」と指定できます。この場合、同じRunのまま専用配置を使い、許可済みのPR作成
 まで進め、mergeを待ちます。指定のない利用者にはOrcaの公式配置既定を使います。
