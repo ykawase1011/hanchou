@@ -25,6 +25,19 @@ Workspace separation does not create another Run. Discover and verify the exact
 target before launch; if that placement is unsupported, report the constraint
 instead of silently placing the worker in the coordinator workspace.
 
+For each launch, compare the effective placement in the Task spec with the
+actual `worker-start` worktree selector before invoking it. A dedicated request
+requires a new or exact existing workspace whose resolved path differs from
+the coordinator's; `--worktree current` does not satisfy it. Read the start
+receipt and public workspace identity afterward to verify the chosen path,
+host, and Run. A mismatched or uncertain receipt means the first Task may
+already have reached the worker: steer it to a safe checkpoint, preserve its
+results, and reconcile ownership before further work, dispatch, or retry. Do not
+start a duplicate editor. Apply the same check to implementation, investigation,
+review, follow-up, and retry Tasks. An explicit `current` choice and an
+unspecified choice remain distinct: honor the former and use the live guide's
+default for the latter.
+
 Before moving review or implementation elsewhere, preserve the existing work
 and transfer the actual base, diff, and any uncommitted/untracked artifacts needed
 for acceptance through an authorized commit or verified patch/artifact. A new

@@ -22,6 +22,11 @@ conditions, and the applicable acceptance references. In supervised worker
 briefs, include the checkpoint/drain obligations from [inbox.md](inbox.md) and
 the worker-side IPC check from [worker-evidence.md](worker-evidence.md), keeping
 the live injected preamble authoritative for handles and lifecycle commands.
+Before dispatch, record in the Task spec whether placement was explicitly
+requested, inherited from a stated conversation/project policy, or unspecified;
+name the selected target and the requirement to verify the resulting workspace
+identity. Recheck this for an independent reviewer, retry, or added worker rather
+than copying a previous `worker-start` selector.
 
 Create Tasks in the currently bound Hanchou Run. One Task has one owner Run even
 when its worker executes in another repository or on a connected Orca server.

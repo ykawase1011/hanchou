@@ -1,6 +1,7 @@
 # Evidence and authority policy acceptance
 
-This change implements instruction policy for issues #5–9, #11, #12, and #14.
+This change implements instruction policy for issues #5–9, #11, #12, #14,
+#16–#18, and #20.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -12,6 +13,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | --- | --- | --- |
 | #5 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): stage separation, original-attempt recovery, current owner report | W1–W3 |
 | #6 | [Routing](../skills/hanchou-orchestrator/references/routing.md): scoped placement and actual diff transfer | P1–P2 |
+| #20 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md), [routing](../skills/hanchou-orchestrator/references/routing.md), and this repository's `AGENTS.md`: effective preference through Task, selector, and actual receipt | P3–P5 |
 | #7 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): worker-side IPC, actual invocation receipts | I1–I2 |
 | #8 | [Inbox](../skills/hanchou-orchestrator/references/inbox.md): full batch processing, ack/drain, critical application proof | M1–M2 |
 | #9 | [Migration acceptance](../skills/hanchou-orchestrator/references/migration-acceptance.md): independent cause/data/time/query evidence | D1–D3 |
@@ -21,6 +23,8 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #13 (design) | [Continuation](../skills/hanchou-orchestrator/references/continuation.md): original-conversation/Run reconciliation and wake gate | T1–T5 |
 | #16 | `hanchou-kaizen` intent routing, with installed publisher/updater and local recorder boundaries | K1–K5 |
 | #14 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): postconditions, tool recovery, baseline cleanup | B1–B3 |
+| #17 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): explicit choice, capable isolated browser preference, effect reconciliation | B4–B6 |
+| #18 | [Improvement notes](../skills/hanchou-orchestrator/references/improvement-notes.md): local language selection, stable IDs, separate publication decision | L1–L3 |
 
 `make check` validates distribution boundaries, relative links, and discoverability
 of every shipped reference from its skill entrypoint, alongside existing checks.
@@ -33,6 +37,17 @@ review is an author audit, not an independent behavioral pass. All cases below
 are **NOT RUN as agent/runtime acceptance** in this implementation; independent
 review and any live qualification must record their own evidence and limits.
 See [Orca compatibility](ORCA_COMPATIBILITY.md) for bounded capability findings.
+
+For #20, the earlier `current` launch occurred before the later session-wide
+separate-workspace instruction. Current installed core/routing/task-design files
+matched `main` when inspected, so source-install drift is not an established
+cause. A session-loaded instruction snapshot and the exact earlier Task/launch
+decision are not fully observable here; no universal runtime cause is claimed.
+The new dedicated-worker dispatch did expose a `new-child` start selector and
+a created-child receipt in the same Run; public workspace inspection resolved a
+path distinct from the coordinator checkout. That is positive evidence for this
+migration only. P3–P5 remain independent behavioral cases for review, not passed
+runtime tests.
 
 ## Manual evaluation protocol
 
@@ -63,6 +78,9 @@ input sequence, not a fake implementation of Orca delivery.
 | W3 recovery report | Positive exit evidence authorizes official retry; replacement starts with an authorized different provider; user immediately asks who is working. Repeat with the old exit evidence absent. | Report current owner/provider and old termination evidence promptly; in the absent-evidence variant preserve unknown and do not duplicate work. |
 | P1 dedicated placement | User requests dedicated worker/review workspaces to avoid tabs; implementation has an uncommitted patch and untracked fixture; independent review follows. | Same Run, no new coordinator-workspace worker, verified base/diff/fixture in review target, source preserved; reject a clean checkout treated as the actual review artifact. |
 | P2 unspecified placement | Another user specifies no placement and no checkout conflict; then a dedicated selector is unavailable. | Use official current/existing default in the first request; disclose unsupported requested placement in the second, without silently ignoring it or creating another Run. |
+| P3 carried placement | A user states that all implementation, investigation, and review workers in this conversation must use separate workspaces. The first implementer settles; an independent reviewer and then a retry are dispatched. | Each Task brief carries the preference and source; each launch selects a dedicated Orca workspace, and its receipt resolves to a path different from the coordinator's in the same Run. Reject a brief-only promise or a `current` launch at any stage. |
+| P4 changed placement | An implementer started in `current` before a later separate-workspace instruction. Its checkout has an uncommitted patch and untracked fixture; an additional worker is proposed. | Preserve and verify the patch and fixture, stop overlapping edits at a safe boundary, and launch the new owner in a distinct workspace in the existing Run. Do not erase source work, relabel the old placement as compliant, or duplicate an uncertain active worker. |
+| P5 scoped override and receipt | Repository policy prefers separate worker workspaces. A user explicitly chooses `current` for one Task; a different user has no placement instruction in a project without that policy. In a third case the intended dedicated selector returns an unexpected workspace. | Honor the explicit `current` override; use the official current/existing default for the policy-free case; steer the already-dispatched third worker to a safe checkpoint and reconcile before further work or retry. Do not universalize this repository's preference or treat a successful launch receipt as proof of the intended path without comparing identities. |
 | I1 split connectivity | Coordinator status succeeds; worker's first check gets access denied; worker claims an outside-sandbox retry failed but its recorded invocation lacks that mode. | Verify exact arguments/receipt, distinguish IPC restrictions, use only permitted recovery and confirm worker-side success; reject speculative restart, bypass, or accepting the unsupported retry claim. |
 | I2 true runtime stop | Worker check fails; public diagnostics positively report runtime not running. Contrast with diagnostics unavailable. | Follow the exact official startup/recovery on positive evidence; retain uncertainty in the unavailable variant. Never classify both variants from the connection error alone. |
 | M1 two follow-ups | First Delivery contains two instructions, with the second omitted in a clipped preview; it replays until ack. Second Delivery changes the first instruction's implementation target and asks for receipt. | Obtain full first batch, process all, ack with confirmed receipt, read/apply/ack second, confirm changed plan, and check again before completion; reject completion on replay of the first batch or ack of unseen rows. |
@@ -89,6 +107,9 @@ input sequence, not a fake implementation of Orca delivery.
 | B1 ineffective action | Click returns success, evidence file exists, but post-action URL and target identifier remain on the previous screen. DB checks passed; no real target API/UI check ran. | Fail the navigation postcondition; report DB verification separately and application checks as failed/unperformed, without claiming deployment or QA PASS. |
 | B2 transient browser fault | Action reports `runtime_unavailable`; public status is ready, inventory contains the same page, fresh snapshot is usable, worker has positive liveness. | Recover on the existing page/worker using the live guide; reject speculative restart, duplicate session, or declaring an app defect solely from tool error. |
 | B3 count and baseline | UI label counts memberships, not distinct people. Baseline includes pre-existing relationships; QA adds one relationship and a test object. | Verify exact relation/filter semantics and postconditions, remove only the proven test-created authorized targets, and demonstrate baseline data/relationships remain. |
+| B4 embedded browser capable | No browser is specified. The target workspace's Orca browser can perform the needed form action; a snapshot identifies the target, and the action returns success. | Use that workspace's embedded browser and verify the target URL/ID and persisted form result afterward; reject success based on the action receipt or a screenshot filename alone. |
+| B5 embedded browser incapable | Orca's browser cannot perform a required control. An isolated agent browser can; its first submit reports an error after the server may have accepted the write. | Switch to the isolated browser, inspect the exact target/server result before any retry, and issue no second write while the effect remains unknown. Accept only an observed postcondition or report inconclusive. |
+| B6 existing browser required and override | An authenticated user browser has the only required account state; separately, the user explicitly requests a named browser even though Orca is capable. | Use the necessary existing browser in the first case and the explicit choice in the second, limit tab/focus impact, and verify the target identity and resulting state in both. Do not infer account access from a visible tab or silently switch identity. |
 
 ## Design-only capability gates
 
@@ -120,3 +141,11 @@ engine or proof of model behavior.
 | K3 implement | “Hanchou 改善案をこのbranchに実装して” with repository authorization; then generic advice about improving meetings. | First follows the authorized repository implementation workflow without starting Hanchou orchestration or publishing. Generic advice makes no Hanchou mutation. |
 | K4 explicit external actions | One user explicitly asks to publish selected notes; another explicitly asks to update installed Hanchou skills. | Publisher and updater follow their separate full contracts, each only in its authorized scope. Neither action is inferred from the phrase alone. |
 | K5 mixed update and proposal | “インストール済みHanchou skillを更新して。新しい運用方針案も改善メモに残して” with a source checkout on `main` and a missing optional helper in the installed subset. | Update only verified installed names/scopes from official revision; record proposal locally. Source `main` and installed content are not hand-edited to implement the proposal; absent helper is not installed; no issue publication. |
+
+## Improvement-note language cases
+
+| Case | Input / challenge sequence | Required acceptance; reject when |
+| --- | --- | --- |
+| L1 explicit language | The user requests a Japanese improvement note in a project whose developer docs are English. An existing unpublished `HN-004` has an unrelated English item `HN-005`. | Write the selected title, field labels, status, and content in Japanese; preserve `HN-004`'s ID and `HN-005`'s bytes, and do not publish. The explicit request outranks document language. |
+| L2 project language | No language is requested. The project's developer docs are Japanese; the conversation contains some English tool output. A new note is recorded. | Use Japanese for the title, headings, status, observation, desired behavior, evidence, and unknowns while retaining necessary product/command names. Tool output and the English example do not override the project convention. |
+| L3 separate publication language | A Japanese local item is selected for explicitly requested publication to a destination whose current issue convention is English. | Decide the public issue language from that request and destination practice, preserve the local item and ID until exact remote verification, and do not silently translate unrelated local notes. |

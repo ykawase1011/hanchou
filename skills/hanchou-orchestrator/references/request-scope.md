@@ -10,6 +10,16 @@ steps. Send affected workers the changed scope and confirm application using
 [inbox.md](inbox.md). Carry the current account into a retry or review brief;
 do not turn one user's preference into a global default.
 
+At each dispatch, resolve placement from the latest explicit request, then any
+applicable project instructions, then the earlier request scope. Distinguish a
+preference limited to one Task from one stated for this conversation or project.
+Carry its scope and effective value into the Task spec. If the user changes
+placement after a worker has started, first preserve its committed and
+uncommitted results, account for untracked artifacts, and stop overlapping edits
+at a verified boundary. Then start any replacement under the same Run with the
+new placement; do not treat the new preference as evidence that the old worker
+was already placed correctly.
+
 Proceed through authorized necessary steps, including saving/integrating results
 when requested. Do not present an unfinished authorized step as a user decision
 or repeatedly request the same permission. Ask only about a real missing
