@@ -69,10 +69,24 @@ update to adopt it.
 
 ## Configure and verify
 
-After the user chooses the work, present the exact purpose, job and target,
+After the user chooses the work, present the exact purpose, job, display name and target,
 frequency and timezone, allowed actions, excluded or gated actions, reporting
 conditions, and stop condition. Obtain a go-ahead unless the user's request
 already explicitly approves that scope. Silence does not approve defaults.
+
+For a new Automation, propose `[hanchou] <business name>` if the user has not
+specified a name; for example, `朝のレビュー` becomes `[hanchou] 朝のレビュー`.
+Keep an explicit user name exactly as given, and do not add a second `[hanchou]`
+when the selected business name already has it. The display name is never
+identity or ownership evidence. Existing Automations are not migrated by this
+default: rename only explicitly requested targets, including an explicit set
+for bulk renaming. Read the exact Automation before an authorized rename and
+read back the same ID afterward to verify its name and preserve frequency,
+timezone, session mode, prompt/permission scope, target, provider, enabled state,
+and all other settings unless separately authorized. Report mismatches or
+unavailable verification instead of assuming success or silently repairing
+unrelated settings. See the [setup rules](../skills/hanchou-cron/references/setup.md#automation-display-name).
+
 Inspect Orca's existing Automations and the selected target so a retry or
 uncertain result does not create a duplicate. Create a new schedule disabled,
 read it back, run a bounded manual check, inspect history and the actual result,
@@ -125,6 +139,11 @@ model or live Automation has passed an end-to-end run.
 
 | Case | Setup | Expected result |
 | --- | --- | --- |
+| Default display name | A new approved job is called `朝のレビュー`; the user supplies no Automation name. | Propose `[hanchou] 朝のレビュー`; the naming default grants no registration authority by itself. |
+| Explicit display name | The user specifies `朝チェック` or `[hanchou] 朝チェック` as the Automation name. | Preserve that exact name, with no forced prefix or duplicate prefix. |
+| Existing prefix | No explicit Automation name is supplied, and the selected business name is `[hanchou] 朝のレビュー`. | Propose `[hanchou] 朝のレビュー` once, not `[hanchou] [hanchou] 朝のレビュー`. |
+| Scoped rename | Several Automations exist, including same-named jobs; the user selects one exact Automation to rename. | Rename only that target after reading its current settings. A list request, shared project, or prefix does not authorize renaming others; bulk rename needs an explicitly selected set. Names never prove identity or ownership. |
+| Rename read-back | An authorized rename returns success; the same ID is read back. | Verify the saved name and compare frequency, timezone, session mode, prompt/permission scope, target, provider, enabled state, and all other settings with the pre-change values and authorized changes. If any unrelated value differs or read-back is unavailable, report it as unverified instead of claiming success or silently repairing it. |
 | Vague cron request | The user asks to add cron or make the project run periodically, and one or more job definitions exist. | Ask which concrete work to schedule and its allowed actions. Do not author a definition or register a disabled Automation while waiting; no reply leaves it unconfigured. |
 | New concrete job | The user specifies a new daily CI report, then provides its missing time, timezone, and destination. | Author its necessary static definition without a separate file-specific approval, then register only within the approved schedule and action scope. |
 | Timed release | The user authorizes a release merge/deploy at its scheduled time, with no immediate-effect trial approval. | Do not merge or deploy during setup. Verify non-effectful checks and report untested effects; if safe verification is unavailable, leave disabled and ask a real decision. Enable after limited checks only within explicit user authorization. |

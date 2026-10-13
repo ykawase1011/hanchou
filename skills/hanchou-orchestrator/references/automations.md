@@ -12,6 +12,16 @@ consequential permission does not authorize an immediate effectful trial.
 Never create
 or enable an Automation during Hanchou installation.
 
+For a new Hanchou Automation, propose `[hanchou] <business name>` only when the
+user has not specified a name. Preserve explicit names exactly, never duplicate
+an existing prefix, and never infer identity or ownership from names. Existing
+renames need an explicit target/scope, including an explicit set for bulk rename.
+Read the exact Automation before an authorized name change and read back the
+same ID afterward: verify its name and preservation of frequency, timezone,
+session mode, prompt/permission scope, and all other settings except separately
+authorized changes. Report mismatches or unavailable verification instead of
+assuming success or silently repairing unrelated settings.
+
 For simple scheduled work, target Codex or Claude directly without Hanchou. For
 work that needs multiple workers or review, target a Hanchou-enabled workspace
 and name `hanchou-orchestrator` in the Automation prompt. Use
