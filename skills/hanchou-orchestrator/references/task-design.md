@@ -17,7 +17,7 @@ Every Task spec should state:
 - constraints and explicit non-goals;
 - expected result or artifact.
 
-Include the request's current authorization, placement, role-specific completion
+Include the effective project policy snapshot and source, request's current authorization, placement, role-specific completion
 conditions, and the applicable acceptance references. In supervised worker
 briefs, include the checkpoint/drain obligations from [inbox.md](inbox.md) and
 the worker-side IPC check from [worker-evidence.md](worker-evidence.md), keeping

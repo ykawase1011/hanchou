@@ -21,6 +21,9 @@ Existing `.hanchou` definitions and project documents are context or
 suggestions, not authority to choose, author, register, trial, or enable a job.
 Require the user's selection even when there is only one candidate, unless a
 prior instruction already selected that exact job and granted its scope.
+Use an answer already explicit in the current request or selected project
+policy rather than asking it again; policy permission still does not select a
+job or create a schedule.
 After the user clarifies, present the concrete target and work, frequency and
 timezone, allowed actions and excluded or gated actions, reporting conditions,
 and stop condition. Obtain a go-ahead for that summary unless the user's
@@ -36,14 +39,18 @@ condition of installing this helper.
    selected Hanchou, job name, provider, desired frequency and timezone, allowed
    actions, report triggers, and ending condition. Distinguish inspection
    frequency from notification frequency. For continuation, use
-   [continuation.md](continuation.md) first.
+   [continuation.md](continuation.md) first. Select and read the project's
+   responsibility policy if present before resolving its standing permission
+   conditions; source selection follows item 4 below.
 2. For an independent job, pin a **definition source**: host, project identity,
    stable source workspace or checkout path, and relative Markdown path. Read
    that exact file now and validate its named job, mode, scope, specific
    checks/actions, completion, reporting, and references against the user's
-   request. Resolve contradictions before registration. If the file is missing,
-   unreadable, or unclear, report the defect; do not choose another project's
-   file or a generic job. Author a new file only if requested. A future
+   request. Resolve contradictions before registration. If a **selected existing**
+   file is missing, unreadable, or unclear, report the defect; do not choose
+   another project's file or a generic job. For a **new** job, a concrete request
+   authorizes its necessary static definition; an install-only or vague request
+   does not. A future
    qualified continuation may instead use the original conversation and Run's
    recorded request and policy; a selected project definition supplements it.
 3. For a selected project definition, decide whether every future run can reach
@@ -53,7 +60,18 @@ condition of installing this helper.
    choose an existing workspace when appropriate. A remote host must have its
    own verified source; never copy credentials or silently switch to a local
    file. If stable access is unverified, leave the job unconfigured.
-4. Inspect Orca's public Automation list, exact target/job candidates, their
+4. Select the target project's optional responsibility policy: an explicitly
+   selected source from the user or applicable project instructions, otherwise
+   `.hanchou/policy.md` at that exact project's root. Read it at configuration
+   if present. A missing explicitly selected source is an error; an absent
+   optional default means no policy is configured. Never discover a substitute
+   in sibling worktrees or another project. For a configured policy, verify a
+   stable, readable host/project/source workspace or checkout and relative path
+   for future occurrences. Pin this **separately** from the job definition in
+   the Automation prompt. If access cannot be verified, do not register. An
+   existing Automation does not adopt a newly initialized policy automatically;
+   it needs an explicit configuration update.
+5. Inspect Orca's public Automation list, exact target/job candidates, their
    details, and relevant run history. If an intended mutation's receipt is
    missing or ambiguous, inspect again before retrying. Match the exact target,
    job, mode, and schedule; names alone are insufficient. Edit an existing
@@ -69,20 +87,29 @@ Replace every template field and use only the selected provider's activation
 marker; the template is an output asset, not an instruction loaded at runtime.
 It must explicitly invoke the correct provider's `hanchou-orchestrator`, name
 the exact target and pinned definition source, embed the registered permission
-snapshot, and contain the run policy. Do not depend on this setup helper being
+snapshot, the optional separately pinned project policy source, and the run
+policy. Current policy conditions intersect the approved job scope; broadening
+the policy alone cannot broaden the registered job. Do not depend on this setup
+helper being
 loaded in the future session or on setup chat memory. Verify that the
 orchestrator skill is available to the chosen provider in the run environment;
 installation alone does not activate it.
 
 An approved, concrete request to register the scheduled job authorizes a bounded
-representative manual trial and enablement after success, unless the user asks
+manual trial and enablement after verified limited checks, unless the user asks
 for a draft or disabled schedule. Create the Automation disabled and inspect
-its saved settings and prompt. Run the trial within the registered permission
-snapshot and decision gates; do not add consequential effects merely to test
-the setup. Review the run receipt, history, and actual result, including the
-source read and target identity, before enabling. If the trial is unavailable,
-its ownership or result cannot be verified, or its representative actions would
-exceed the granted scope, leave the schedule disabled and explain the limit.
+its saved settings and prompt. A scheduled merge, deployment, publication, or
+other consequential permission is bound to its authorized timing and effects;
+it does not authorize performing that effect immediately as a trial. Honor a
+separate explicit authorization for immediate trial effects without asking
+again. Otherwise prefer a non-effectful representative check of source reads,
+target, prompt, permission gates, and reporting. Do not claim that a different
+prompt or reduced check proves the full job. Review the receipt, history, and
+actual limited result. If a useful safe check or its ownership/result cannot be
+verified, leave disabled and ask the user to decide how to proceed. An explicit
+user authorization may permit enablement after verified limited checks while
+some scheduled effects remain untested; enable only within that decision and
+report the untested effects clearly.
 Manual execution may activate a Temporary Hanchou; setup and inspection alone
 must not create its Run.
 
@@ -108,6 +135,12 @@ Build the prompt with concrete values, not placeholders:
 - Exact Orca target, host, project identity, and source workspace or checkout
   plus relative path. State that the source is fixed even when execution uses a
   fresh worktree.
+- If configured, the separately pinned responsibility policy source: host,
+  project identity, stable source workspace or checkout, and relative path.
+  State that a missing/unreadable selected source stops the occurrence and that
+  policy tightening applies on the next occurrence without widening the
+  registered scope. If no policy was configured, say so; the registered job
+  snapshot remains the authority until an explicit configuration update.
 - The registered permission snapshot: allowed checks, edits or external
   actions, decision gates, report triggers, and termination rule. Keep it in
   the Automation prompt, which is the registered request, rather than in a

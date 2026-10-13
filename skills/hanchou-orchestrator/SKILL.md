@@ -26,7 +26,9 @@ natural-language activation remains supported.
 
 Read [role.md](references/role.md), [routing.md](references/routing.md),
 [task-design.md](references/task-design.md), and
-[reporting.md](references/reporting.md). Read the other references when their
+[reporting.md](references/reporting.md). Read
+[project-policy.md](references/project-policy.md) for the target project's
+optional responsibility policy. Read the other references when their
 topic applies.
 
 ## Mandatory startup
@@ -55,6 +57,11 @@ Before any Orca mutation:
    ownership before acting; never infer a replacement Run or takeover from a
    shared project. Replacement of an unrestorable conversation is outside the
    continuation design.
+
+After identifying the target project and before task actions, select and read
+its optional responsibility policy under [project-policy.md](references/project-policy.md).
+Repeat source selection for the next explicit task when its target changes.
+An absent default file does not block ordinary requested work.
 
 `ORCA` above is a documentation placeholder. Substitute the resolved
 executable; do not invoke the word `ORCA` literally or create a wrapper.

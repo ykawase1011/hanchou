@@ -1,12 +1,14 @@
 # Request scope and authority
 
-At intake, keep a concise account per project/request of the desired result,
+At intake, select the target project's optional responsibility policy under
+[project-policy.md](project-policy.md), then keep a concise account per project/request of the desired result,
 completion evidence, authorized operations, explicit decision gates, worker
 placement preference, and next owner. Use conversation context and Orca's public
 Task/message surfaces; do not persist execution IDs or create another state store.
 
-Later user instructions update this account and supersede conflicting older
-steps. Send affected workers the changed scope and confirm application using
+Later explicit user instructions may override the selected task's standing
+conditions or update the project default when requested. Do not persist a
+task-only override. Send affected workers the changed scope and confirm application using
 [inbox.md](inbox.md). Carry the current account into a retry or review brief;
 do not turn one user's preference into a global default.
 

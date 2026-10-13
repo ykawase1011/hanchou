@@ -16,7 +16,7 @@ create a Run. An actual scheduled or explicitly requested manual execution must
 activate the installed `hanchou-orchestrator` in its own session.
 
 Installing or adding this helper alone does not authorize choosing a job,
-writing its definition, creating an Automation (even disabled), running a
+writing a definition, creating an Automation (even disabled), running a
 trial, or enabling a schedule. For a vague request such as `cronを追加して` or
 `このPJをいい感じに定期実行して`, first ask what concrete work the user wants
 scheduled and what actions it may take. Existing `.hanchou` definitions and
@@ -51,8 +51,10 @@ hook, credential store, or agent launcher.
 
 For a project job, default to `.hanchou/cron/<job-name>.md`; a selected existing
 path is equally valid. One Markdown file defines one named job, and a project
-may have several. Use [job-template.md](assets/job-template.md) only when asked
-to author a new definition. Do not overwrite or rewrite an existing definition
+may have several. Use [job-template.md](assets/job-template.md) when a concrete
+request for a new scheduled job calls for its necessary static definition; no
+separate file-specific approval is required. An install-only or vague request
+does not authorize one. Do not overwrite or rewrite an existing definition
 just to register it. Validate an existing definition and resolve any material
 ambiguity before creation. A definition records purpose, mode, scope, checks
 and actions, completion, reporting, and knowledge references. It holds no
@@ -70,10 +72,13 @@ or schedule change needs an explicit configuration update. Honor permission
 already granted in a concrete, scoped request; do not ask for it again merely
 because the creation path includes a disabled stage and a manual trial.
 An approved request to register a scheduled job includes a bounded manual
-trial and enablement after a verified result, unless the user asked for a draft
-or disabled schedule. Keep the trial within the registered authority and
-decision gates; if a representative trial is unavailable or its ownership or
-result is uncertain, leave the schedule disabled and explain the limit.
+trial and enablement after verified limited checks, unless the user asked for a
+draft or disabled schedule. A scheduled permission for consequential actions
+does not authorize performing them early as a setup trial. Honor any separate,
+explicit approval for immediate trial effects and timing. Otherwise use
+non-effectful checks; if these cannot verify safe operation, leave disabled and
+ask a real decision. If the user explicitly authorizes enablement after the
+limited checks, enable after verification and clearly report effects not tested.
 
 Report what was configured or observed, the exact target and job, whether a
 manual run and its result were verified, and any untested path. A successful

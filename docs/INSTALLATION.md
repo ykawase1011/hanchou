@@ -15,12 +15,12 @@ npx skills add https://github.com/stablyai/orca \
 ## Global install (default)
 
 Install for both Codex and Claude Code on Orca, without relying on provider
-auto-detection. All five skills are optional; the four helpers can also be
+auto-detection. All six skills are optional; the five helpers can also be
 installed or removed separately by their names.
 
 ```bash
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
   --agent codex claude-code --global
 npx skills list --global --agent codex claude-code
 ```
@@ -46,7 +46,7 @@ selection there without `--global` (the installer's project default):
 ```bash
 cd /absolute/path/to/project-or-workspace
 npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron \
+  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
   --agent codex claude-code
 npx skills list --agent codex claude-code
 ```
@@ -59,10 +59,10 @@ shadow the global update. Never remove a local customized copy automatically.
 ## Invoke, update and remove
 
 Codex uses `$hanchou-orchestrator`, `$hanchou-kaizen`, `$hanchou-update`,
-`$hanchou-publish-issues`, and `$hanchou-cron`; Claude Code uses the same names
+`$hanchou-publish-issues`, `$hanchou-cron`, and `$hanchou-init`; Claude Code uses the same names
 prefixed with `/`.
 See [Onboarding](ONBOARDING.md), [Improvement workflow](IMPROVEMENTS.md), and
-[Scheduled work](CRON.md). Install alone never activates Hanchou; configuration
+[Scheduled work](CRON.md), and [Initialization](INITIALIZATION.md). Install alone never activates Hanchou; configuration
 requests to helpers create no Run. A manual cron trial of an approved concrete
 job may run that job.
 

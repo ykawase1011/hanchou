@@ -191,7 +191,7 @@ class DistributionContracts(unittest.TestCase):
     def test_exact_optional_skill_inventory_and_no_executable_payload(self):
         skills = ROOT / "skills"
         self.assertEqual({p.parent.name for p in skills.glob("*/SKILL.md")},
-                         {"hanchou-orchestrator", "hanchou-kaizen", "hanchou-publish-issues", "hanchou-update", "hanchou-cron"})
+                         {"hanchou-orchestrator", "hanchou-kaizen", "hanchou-publish-issues", "hanchou-update", "hanchou-cron", "hanchou-init"})
         for path in skills.rglob("*"):
             if path.is_file():
                 self.assertIn(path.suffix, {".md", ".yaml"}, str(path))

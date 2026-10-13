@@ -34,7 +34,9 @@ definitions, but must not cause ordinary conversations to schedule or start
 Hanchou automatically.
 If original-conversation continuation becomes publicly supported, its original
 request and Run policy can define that check without a new project job file.
-When the user asks to author a new definition, start from the shipped
+An approved concrete request for a new recurring job authorizes its necessary
+static definition; it does not need a second file-specific approval. A vague
+or install-only request does not authorize a definition. Start from the shipped
 [job template](../skills/hanchou-cron/assets/job-template.md) and fill in the
 project-specific content; this repository does not maintain a second copy of
 that template.
@@ -52,6 +54,19 @@ from whichever worktree happens to be active. Missing, unreadable, or ambiguous
 definitions are configuration errors to report, not permission to use another
 project's file or a generic job.
 
+At configuration, select any project responsibility policy explicitly named by
+the user or applicable project instructions. Otherwise check only the exact
+target project's root `.hanchou/policy.md`. An absent optional default leaves
+the job on its approved snapshot; a missing selected source is an error. When
+present, pin its host, project, stable source workspace/checkout and relative
+path separately in the Automation prompt. Each occurrence reads that policy
+once along with the job definition and applies the intersection of current
+policy conditions and the approved registered job scope. Policy tightening
+applies on the next occurrence; broadening alone adds no permission. A missing
+or unreadable configured policy stops that occurrence. Initializing a policy
+later does not retrofit an existing Automation; request an explicit configuration
+update to adopt it.
+
 ## Configure and verify
 
 After the user chooses the work, present the exact purpose, job and target,
@@ -60,14 +75,19 @@ conditions, and stop condition. Obtain a go-ahead unless the user's request
 already explicitly approves that scope. Silence does not approve defaults.
 Inspect Orca's existing Automations and the selected target so a retry or
 uncertain result does not create a duplicate. Create a new schedule disabled,
-read it back, run a manual trial, inspect history and the actual result, then
-enable it when requested.
+read it back, run a bounded manual check, inspect history and the actual result,
+then enable it within the approved decision.
 An approved concrete request to register a scheduled job includes a bounded
-trial within the approved scope and enablement after a verified result. A
-request for a draft or disabled schedule ends before activation. If a
-representative trial is unavailable or its ownership or result remains
-uncertain, leave it disabled and explain the limit; testing does not grant
-extra authority for job effects.
+trial within the approved timing and effect scope and enablement after verified
+limited checks. A scheduled merge or deployment approval does not authorize
+doing it immediately for setup. Honor a separate explicit approval for an
+immediate consequential trial. Otherwise use non-effectful checks and state
+exactly which effects were untested. If no useful check can be verified, leave
+disabled and ask how to proceed. The user may explicitly authorize enabling
+after verified limited checks while those effects remain untested. A request
+for a draft or disabled schedule ends before activation. If the check's
+ownership or result remains uncertain, leave it disabled and explain the
+limit; testing does not grant extra authority for job effects.
 Changes, pause, and removal use Orca's public Automation operations and
 read-back. Distinguish the check frequency from notifications: report changes,
 user decisions, failures, and completion according to the agreed conditions.
