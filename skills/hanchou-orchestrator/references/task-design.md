@@ -28,6 +28,14 @@ name the selected target and the requirement to verify the resulting workspace
 identity. Recheck this for an independent reviewer, retry, or added worker rather
 than copying a previous `worker-start` selector.
 
+Before creating transient resources, name their intended disposition and cleanup
+owner in the Task spec: remove after acceptance, reuse for named follow-up work,
+or retain for a stated reason and next action. Reconcile that intent with each
+launch receipt's actual resources, including failed starts and retries, in the
+Run's public Task/report evidence. Apply this to investigation and review workers
+too; keep execution identifiers out of repository files and add no registry.
+Use [cleanup.md](cleanup.md) for the final resource accounting.
+
 For implementation and PR-preparation workers, carry the effective
 [PR title policy](request-scope.md#pr-titles) into the Task brief: Japanese by
 default, any explicit applicable user override, and original technical terms

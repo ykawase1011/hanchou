@@ -95,12 +95,15 @@ silently repair unrelated settings.
    existing Automation does not adopt a newly initialized policy automatically;
    it needs an explicit configuration update.
 5. Inspect Orca's public Automation list, exact target/job candidates, their
-   details, and relevant run history. If an intended mutation's receipt is
-   missing or ambiguous, inspect again before retrying. Match the exact target,
+   details (including disabled entries), and relevant run history. If an intended
+   mutation's receipt is missing or ambiguous, inspect again before retrying. Match the exact target,
    job, mode, and schedule; names alone are insufficient. Edit an existing
    match instead of creating a duplicate. If multiple plausible matches remain,
    stop and ask which one owns the work. Public inspection cannot guarantee
    atomic deduplication against a concurrent creator; disclose that limit.
+   Repeated display names, past occurrences, and historical Hanchou Runs do not
+   establish duplicate registrations or live workers. Classify the exact IDs
+   and current ownership before proposing cleanup.
 
 ## Independent periodic job
 
@@ -135,6 +138,21 @@ some scheduled effects remain untested; enable only within that decision and
 report the untested effects clearly.
 Manual execution may activate a Temporary Hanchou; setup and inspection alone
 must not create its Run.
+
+Before a trial, distinguish the continuing Automation from any separate,
+temporary trial Automation and record the latter's intended disposition and
+cleanup owner in the setup evidence. Prefer testing the intended disabled
+Automation when the approved trial can use it. If a separate trial is needed,
+identify its exact ID from the creation receipt and account for it even if
+disabled or the trial fails. Remove it only when the authorized trial scope
+includes disposal of that Automation and its history; otherwise keep it disabled
+and report the missing deletion decision, owner, and next action. Preserve
+required trial evidence before authorized removal and verify absence afterward.
+Use the installed `hanchou-orchestrator` resource cleanup policy
+for trial workers, workspaces, Setup, and services independently of Automation
+deletion. Completing those resources must not disable or remove the continuing
+schedule or its pinned definition/policy source. Verify the continuing
+Automation's intended enabled state and report any retained trial resources.
 
 For list/show, return Orca's actual schedule, timezone, enabled state, target,
 and recent result. For edits, compare the new registered permission snapshot
