@@ -19,7 +19,17 @@ $hanchou-orchestrator を使って、このAutomation run専用のTemporary Hanc
 For a Claude Code target, replace the first invocation with
 `/hanchou-orchestrator `.
 
-Create a schedule disabled, inspect it, perform a manual run, and then enable it.
+This snippet illustrates activation only. An independent Hanchou job needs the
+approved scope, pinned job definition, and a separately pinned project policy
+source or explicit no-policy decision in its registered prompt; see
+[Scheduled work](CRON.md). The occurrence uses that decision rather than a
+fresh lookup of the interactive default policy.
+
+Create a schedule disabled and inspect it. Perform only a bounded check within
+the approved timing and effects; scheduled merge or deployment permission does
+not authorize doing it immediately for setup. Enable after verified limited
+checks only within the user's decision, and report untested effects. If a safe
+check cannot be verified, leave disabled and ask how to proceed.
 Fresh session is the default for an independent recurring job. Native session
 reuse concerns a previous Automation session and is not a guarantee of waking
 an original interactive Hanchou. Installation never creates an Automation.
