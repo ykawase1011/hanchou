@@ -2,8 +2,28 @@
 
 ## Prepare locally
 
-1. Inspect the exact destination before reading or writing the memo. For a Git
-   workspace, `git ls-files --error-unmatch -- "$memo_path"` must show it is
+Select the explicitly requested memo; otherwise the candidate is
+`.hanchou/hanchou_update.md` relative to the project/workspace. For an unspecified
+source, also check the known legacy path `tmp/hanchou_update.md`. This is limited
+existence detection, not migration or a directory search: inspect parent and
+file metadata without following symlinks (for example with `lstat`), stopping at
+an unsafe or inaccessible parent. Do not read through an external symlink.
+Uncertain discovery is unresolved, not evidence that the old memo is absent.
+Include already-known legacy receipt/draft/lock locations in this limited check;
+an absent memo does not resolve a surviving publication attempt.
+If legacy notes or recovery artifacts exist, or discovery is unresolved, identify the ambiguity and
+obtain explicit source/item selection before publication or cleanup, whether
+only the legacy memo or both paths exist. A request already naming a source is
+sufficient; never silently fall back to, combine, or import the other source.
+If both are explicitly selected, handle each source and its lock/receipts
+separately. An absent/empty new default never marks old items done. Preserve
+unselected memos, locks, drafts and receipts in place and report them as outside
+scope. Never automatically move, delete, merge, copy or duplicate the old backlog.
+
+1. Inspect the exact resolved destination and all parent directories before
+   reading or writing the memo; reject unexpected symlinks and paths outside
+   the intended scope. For a Git workspace,
+   `git ls-files --error-unmatch -- "$memo_path"` must show it is
    untracked and `git check-ignore -v -- "$memo_path"` must confirm an effective
    ignore rule (not a negation). Reject unexpected symlinks. A tracked/unignored
    memo may be read for requested analysis, but do not add receipts or drafts
@@ -11,6 +31,11 @@
    Do not modify shared ignore rules or untrack files without instruction.
    In a non-Git workspace require an allowed private, non-shared location.
    Apply the same checks to all draft, receipt, backup and lock paths.
+   Recheck the exact paths before every write. If the default is unsafe, use
+   only an existing authorized safe local location under current storage rules
+   (including a narrow local `info/exclude` entry where local policy permits),
+   subject to the user's location constraint; otherwise defer. Do not force an
+   external location or change the selected source by copying it elsewhere.
 2. Read existing item IDs, status and recovery receipts first. Assign stable
    local IDs to legacy headings only under the editing guard below. Snapshot
    the selected item parts for comparison, preserving unknown fields and other
@@ -70,6 +95,11 @@ SHA-256 of its exact UTF-8 bytes before publication). Keep receipt metadata
 outside the fingerprinted source span. This private comparison evidence must
 survive restart; store no raw private snapshot. Never send source fingerprints,
 boundaries or local IDs in public payloads, search queries or remote metadata.
+Bind the receipt and safe draft to the selected memo's local path/identity as
+well as the item/part; identical IDs in different memos are not the same source.
+Existing legacy receipts remain associated with their original memo, not the
+new default. If a receipt's source is ambiguous, defer cleanup and reconcile;
+never reinterpret it against an empty or similarly named item in another memo.
 Add the token as a harmless HTML comment to the approved outgoing body,
 for example `<!-- hanchou-publication: <random-token> -->`; it is public metadata
 and must contain no local item ID, path, account, or runtime ID. Reinspect and
@@ -117,8 +147,8 @@ after proving its writer has stopped. Release only a lock you acquired.
 If other editors cannot honor it, defer cleanup until exclusive editing is
 established. A reread or atomic rename alone does not prevent a lost update.
 
-Under that guard, recheck ignore/untracked status, file identity and symlinks,
-then reread the current memo. Remove only an exact unchanged source part whose
+Under that selected memo's guard, recheck ignore/untracked status, file identity
+and symlinks, then reread the current memo. Remove only an exact unchanged source part whose
 meaning is covered by the verified remote content. If an item changed in place,
 leave it and report cleanup pending. After restart, compare the selected span
 against the original persisted fingerprint, never a fingerprint newly taken

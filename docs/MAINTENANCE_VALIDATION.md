@@ -4,6 +4,19 @@ This covers issues [#1](https://github.com/ykawase1011/hanchou/issues/1) and
 [#2](https://github.com/ykawase1011/hanchou/issues/2), the update helper, and the
 new global installation default. The older migration reports remain historical.
 
+For issue #26, `make check` and the verbose maintenance suite passed 23 Python
+tests plus the shell checks. Real disposable Git/filesystem probes cover the
+new `.hanchou/hanchou_update.md` candidate, absent parents, explicit alternative,
+tracked paths, negated ignores, exact auxiliary-path ignores, external parent
+and file symlinks (including dangling links), exclusive locks, and legacy-only
+or both-source files with preserved receipts/drafts/locks. A known legacy receipt
+without its memo also remains detectable. Separate-process comparison rejects
+an empty or byte-identical new memo when the receipt belongs to the legacy
+source. These are storage/comparison primitives and default-document agreement,
+not execution of the instruction-only skills by a model or live publication.
+The initial absent-directory probe was corrected to use the trailing slash
+needed for a directory-only lock ignore rule before creation.
+
 For issue #16, the distribution at that point had four instruction-only skills,
 including optional `hanchou-kaizen`. `make check` then ran 14 Python tests and
 the shell checks; `make check-installer` passed in a disposable container with
@@ -62,6 +75,7 @@ That validator checks packaging, not model behavior.
 | Requirement | Instruction/evidence |
 | --- | --- |
 | #1 destination, trigger, input and update rules | Core skill routes at a task checkpoint to `references/improvement-notes.md`; user path takes precedence over default candidate |
+| #26 default and legacy preservation | New `.hanchou/hanchou_update.md` candidate; limited non-following legacy detection; explicit source scope and source-bound receipts; disposable path probes above |
 | #1 ignored/unignored/tracked/existing memo | Real Git tests plus path/symlink and private non-Git policy; shared ignores are not changed automatically |
 | #1 duplicate/concurrent preservation | Stable IDs, merge same concern, shared editing guard, reread/context checks, defer uncooperative editors |
 | #1 secrets and runtime IDs | Minimize/generalize before persistence; excludes raw artifacts and runtime identifiers even in ignored files |
@@ -108,7 +122,9 @@ column. Record actual actions/artifacts separately from these acceptance rules.
 
 | Setup | Required outcome |
 | --- | --- |
-| `tmp` exists but is not ignored; tracked memo also matches ignore | Do not persist there; select allowed local safe destination without changing shared files |
+| `.hanchou` exists but is not ignored; tracked memo also matches ignore | Do not persist there; use only authorized safe local storage or defer without changing shared files |
+| Legacy-only, both memos, or empty new memo plus known old receipt | Retain old items/artifacts; explicitly select source for publication; no automatic migration, duplicate backlog or false completion |
+| External parent/file symlink at memo or auxiliary path | Stop before following it; unresolved discovery is not an empty legacy source |
 | Existing note and duplicate observation; another writer holds lock | Preserve original, defer mutation until safely serialized |
 | Synthetic secrets plus project identifiers and identifying combinations | No private values in external queries/payloads; publish only generalized material |
 | Unsafe item with no meaningful generalized reproduction | Keep local and explain missing non-sensitive clarification |
