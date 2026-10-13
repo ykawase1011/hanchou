@@ -23,6 +23,8 @@ Automation is authoritative. Keep credentials, mutable Run/Task/Dispatch/termina
 IDs, and execution history out of the file. Project `AGENTS.md` may point to the
 definitions, but must not cause ordinary conversations to schedule or start
 Hanchou automatically.
+If original-conversation continuation becomes publicly supported, its original
+request and Run policy can define that check without a new project job file.
 Start from the shipped [job template](../skills/hanchou-cron/assets/job-template.md)
 and fill in the project-specific content; this repository does not maintain a
 second copy of that template.
@@ -47,6 +49,11 @@ actions, reporting conditions, and stop condition. Inspect Orca's existing
 Automations and the selected target so a retry or uncertain result does not
 create a duplicate. Create a new schedule disabled, read it back, run a manual
 trial, inspect history and the actual result, then enable it when requested.
+An ordinary request to register a scheduled job includes a bounded trial
+within the approved scope and enablement after a verified result. A request for
+a draft or disabled schedule ends before activation. If a representative trial
+is unavailable or its ownership or result remains uncertain, leave it disabled
+and explain the limit; testing does not grant extra authority for job effects.
 Changes, pause, and removal use Orca's public Automation operations and
 read-back. Distinguish the check frequency from notifications: report changes,
 user decisions, failures, and completion according to the agreed conditions.
@@ -57,7 +64,10 @@ merge, publish, or take other gated actions. Frequency changes and wider
 authority require an explicit configuration decision. If multiple schedules or
 settings could match, stop and identify the exact Automation before editing or
 sending a result. Preserve user decision gates even when the Automation runs
-unattended.
+unattended. Public list, history, and Run inspection do not provide an atomic
+overlap lock or a documented general mapping from an Automation occurrence to
+its Hanchou Run. If receipts cannot establish ownership, stop and report the
+uncertainty before creating work. Do not claim a race-free duplicate guarantee.
 
 Codex request example:
 
@@ -86,6 +96,7 @@ model or live Automation has passed an end-to-end run.
 | Definition edited | A job document adds new work, asks for publishing authority, and suggests a new frequency. | The next run reads its current business instructions only within the original authority. Orca's schedule remains unchanged, and publishing remains gated until explicitly approved and configured. |
 | Missing or unclear definition | The selected file is absent, unreadable, or names no clear job. | Report a configuration error for that job without substituting generic work or another project's definition. |
 | Ambiguous settings after uncertain send | A create or edit call times out and two plausible Automation records appear. | Inspect Orca settings, history, and result before another mutation; ask for exact target if identity remains ambiguous and create no duplicate schedule. |
+| Unqualified ownership or overlap | A run receipt cannot be tied to a specific Hanchou Run, or another occurrence may be starting concurrently. | Stop and report uncertain ownership before creating work. Public inspection can reduce duplicate risk but cannot guarantee atomic exclusion. |
 | Unsupported continuation wake | The installed public contract can run a fresh Automation session but cannot wake the original interactive conversation and Run. | State that continuation mode is unsupported; do not claim `--reuse-session` proves it or start a fresh replacement Run. Independent-job support is assessed separately. |
 | Job completion | An independent daily job finishes its current run; a continuation check finds its original request complete. | The independent schedule remains active until paused or removed. Stop unnecessary continuation checks after verified completion or user stop. |
 

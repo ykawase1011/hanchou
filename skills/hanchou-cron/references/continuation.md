@@ -19,12 +19,14 @@ do not enable them or present their runs as successful continuation.
 
 If a contract becomes available, resolve target conversation and Run IDs from
 Orca state at setup and wake time, never from a repository job document. At
-each wake, confirm the original binding and sole active coordinator. Read the
-one pinned definition from the registered host, project, source workspace,
-and relative path once at wake start; use that snapshot for this wake. Missing,
-unreadable, or ambiguous source means report and stop, without a replacement
-file or generic job. Keep actions within the registered permission snapshot;
-definition edits cannot grant new authority or change Orca's saved schedule.
+each wake, confirm the original binding and sole active coordinator. Use the
+original request and Run policy as the authority and work definition. If a
+project definition was selected, read only that pinned file from its registered
+host, project, source workspace, and relative path once at wake start. Missing,
+unreadable, or ambiguous selected source means report and stop, without a
+replacement file or generic job. Keep actions within the registered permission
+snapshot; definition edits cannot grant new authority or change Orca's saved
+schedule.
 Then reconcile the owned unfinished requests, Tasks, Dispatches, workers, external
 waits, last evidence, next action, and authority. Positive active work means
 supervise without redispatch. For an external wait, inspect its actual result.

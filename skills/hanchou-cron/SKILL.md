@@ -46,6 +46,9 @@ just to register it. Validate an existing definition and resolve any material
 ambiguity before creation. A definition records purpose, mode, scope, checks
 and actions, completion, reporting, and knowledge references. It holds no
 credentials, mutable Run/Task/Dispatch/terminal IDs, or run history.
+If a qualified original-conversation continuation path becomes available, its
+original request and Run policy may supply the job instructions without a new
+project definition file.
 
 Orca's registered settings are the source of truth for actual frequency,
 timezone, enabled state, and history. A frequency in the document is only a
@@ -55,6 +58,11 @@ grant new authority or silently change the Automation schedule. An expansion
 or schedule change needs an explicit configuration update. Honor permission
 already granted in the user's request; do not ask for it again merely because
 the creation path includes a disabled stage and a manual trial.
+An ordinary request to register a scheduled job includes a bounded manual
+trial and enablement after a verified result, unless the user asked for a draft
+or disabled schedule. Keep the trial within the registered authority and
+decision gates; if a representative trial is unavailable or its ownership or
+result is uncertain, leave the schedule disabled and explain the limit.
 
 Report what was configured or observed, the exact target and job, whether a
 manual run and its result were verified, and any untested path. A successful

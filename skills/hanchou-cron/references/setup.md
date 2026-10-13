@@ -12,14 +12,17 @@ do not maintain a parallel registry.
    actions, report triggers, and ending condition. Distinguish inspection
    frequency from notification frequency. For continuation, use
    [continuation.md](continuation.md) first.
-2. Pin a **definition source**: host, project identity, stable source workspace
-   or checkout path, and relative Markdown path. Read that exact file now and
-   validate its named job, mode, scope, specific checks/actions, completion,
-   reporting, and references against the user's request. Resolve contradictions
-   before registration. If the file is missing, unreadable, or unclear, report
-   the defect; do not choose another project's file or a generic job. Author a
-   new file only if requested.
-3. Decide whether every future run can reach that source on the pinned host.
+2. For an independent job, pin a **definition source**: host, project identity,
+   stable source workspace or checkout path, and relative Markdown path. Read
+   that exact file now and validate its named job, mode, scope, specific
+   checks/actions, completion, reporting, and references against the user's
+   request. Resolve contradictions before registration. If the file is missing,
+   unreadable, or unclear, report the defect; do not choose another project's
+   file or a generic job. Author a new file only if requested. A future
+   qualified continuation may instead use the original conversation and Run's
+   recorded request and policy; a selected project definition supplements it.
+3. For a selected project definition, decide whether every future run can reach
+   that source on the pinned host.
    `.hanchou` may be ignored and will not appear in new worktrees by itself.
    For a new-per-run target, retain a separately pinned readable source or
    choose an existing workspace when appropriate. A remote host must have its
@@ -46,12 +49,15 @@ loaded in the future session or on setup chat memory. Verify that the
 orchestrator skill is available to the chosen provider in the run environment;
 installation alone does not activate it.
 
-Create the Automation disabled. Inspect the resulting public settings and
-prompt, then perform a manual run when the user requested or authorized a
-trial. Review the run receipt, history, and actual result, including the source
-read and target identity. Enable when that is part of the user's authorized
-request and the trial supports it. If testing is unavailable, report that
-limit and leave it disabled unless the user explicitly directed otherwise.
+An ordinary request to register the scheduled job authorizes a bounded
+representative manual trial and enablement after success, unless the user asks
+for a draft or disabled schedule. Create the Automation disabled and inspect
+its saved settings and prompt. Run the trial within the registered permission
+snapshot and decision gates; do not add consequential effects merely to test
+the setup. Review the run receipt, history, and actual result, including the
+source read and target identity, before enabling. If the trial is unavailable,
+its ownership or result cannot be verified, or its representative actions would
+exceed the granted scope, leave the schedule disabled and explain the limit.
 Manual execution may activate a Temporary Hanchou; setup and inspection alone
 must not create its Run.
 

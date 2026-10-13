@@ -31,7 +31,9 @@ missing owner, and unknown status. A busy or uncertain other owner is not a
 reason to launch duplicate work. A result-unknown retry must reconcile public
 receipts, existing tasks, and effects first; resume only when ownership and
 remaining work are clear. If that cannot be established, report uncertainty
-and stop. Public checks do not promise atomic overlap prevention.
+and stop. The public guides do not establish a general Automation-occurrence-to-
+Run mapping or an atomic overlap lock. Do not infer ownership from matching
+names alone; report that limit when receipts cannot tie an occurrence to its Run.
 
 Perform the job's specific checks and authorized next actions. Reconcile
 unfinished requests, Tasks, workers, and external waits only within this

@@ -31,8 +31,9 @@ Before creating work, inspect public Automation history and the exact job's
 Run/Task/worker state. Distinguish positively idle, positively busy, missing
 owner, and unknown status. Never infer idle from silence. On busy, ambiguous,
 or result-unknown retry, reconcile public receipts and effects first; do not
-duplicate work. Report unresolved uncertainty. Public inspection does not
-guarantee atomic exclusion of concurrent runs.
+duplicate work. Stop and report when public receipts cannot establish which
+Run owns this occurrence; matching names alone are insufficient. Public
+inspection does not guarantee atomic exclusion of concurrent runs.
 
 Carry out the job's authorized next actions. Keep user decision waits in place.
 Reconcile work only within this occurrence's Run. Report according to the
