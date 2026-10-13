@@ -32,6 +32,11 @@ paths. Global Universal placement is not a substitute for explicitly selecting
 Codex. Installation creates skill files/aliases and installer metadata, not
 Hanchou runtime state. It does not activate orchestration or edit existing
 `AGENTS.md`, `CLAUDE.md`, Orca settings, sessions, or Automations.
+Adding `hanchou-cron` does not choose scheduled work or authorize writing a
+job definition, creating even a disabled Automation, running a trial, or
+enabling a schedule. If the user wants to configure a job later, installation
+is complete without cron onboarding; the job stays unconfigured until they
+select concrete work and approve its scope. See [Scheduled work](CRON.md).
 
 ## Project-local install (optional)
 
@@ -58,7 +63,8 @@ Codex uses `$hanchou-orchestrator`, `$hanchou-kaizen`, `$hanchou-update`,
 prefixed with `/`.
 See [Onboarding](ONBOARDING.md), [Improvement workflow](IMPROVEMENTS.md), and
 [Scheduled work](CRON.md). Install alone never activates Hanchou; configuration
-requests to helpers create no Run. A requested cron manual trial may run a job.
+requests to helpers create no Run. A manual cron trial of an approved concrete
+job may run that job.
 
 Ask `hanchou-update` to update the installed Hanchou subset. It verifies source,
 local modifications, scope, provider targets, and the resulting files, using the

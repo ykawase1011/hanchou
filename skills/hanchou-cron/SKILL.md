@@ -15,6 +15,17 @@ file describes the job. Using this helper for setup does not activate Hanchou or
 create a Run. An actual scheduled or explicitly requested manual execution must
 activate the installed `hanchou-orchestrator` in its own session.
 
+Installing or adding this helper alone does not authorize choosing a job,
+writing its definition, creating an Automation (even disabled), running a
+trial, or enabling a schedule. For a vague request such as `cronを追加して` or
+`このPJをいい感じに定期実行して`, first ask what concrete work the user wants
+scheduled and what actions it may take. Existing `.hanchou` definitions and
+project documents can inform suggestions, but even one candidate is not a
+selection or permission to activate it. See [setup.md](references/setup.md)
+for the registration inquiry and authorization boundary. A pure installation
+or a request to configure later leaves the job unconfigured; offer onboarding
+without making it a prerequisite for installing the helper.
+
 ## Route the request
 
 - **Independent periodic job:** each occurrence starts a Temporary Hanchou for
@@ -56,9 +67,9 @@ desired initial value. Capture the user's permission scope at registration;
 document edits may change work *within* that scope on the next run, but cannot
 grant new authority or silently change the Automation schedule. An expansion
 or schedule change needs an explicit configuration update. Honor permission
-already granted in the user's request; do not ask for it again merely because
-the creation path includes a disabled stage and a manual trial.
-An ordinary request to register a scheduled job includes a bounded manual
+already granted in a concrete, scoped request; do not ask for it again merely
+because the creation path includes a disabled stage and a manual trial.
+An approved request to register a scheduled job includes a bounded manual
 trial and enablement after a verified result, unless the user asked for a draft
 or disabled schedule. Keep the trial within the registered authority and
 decision gates; if a representative trial is unavailable or its ownership or

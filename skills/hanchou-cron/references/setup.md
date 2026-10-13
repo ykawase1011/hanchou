@@ -5,6 +5,31 @@ including list, show, create, edit, run, runs, and remove. Keep the chosen
 provider explicit. Work from Orca's public target, schedule, and run receipts;
 do not maintain a parallel registry.
 
+## Establish the user's job and authority
+
+An installation or bare request to "add cron" does not identify a job or
+authorize a runnable configuration. Before drafting a job definition or
+Automation, ask what concrete work to schedule and what actions it may take.
+Do not present an assumed job as a ready-to-run proposal while waiting.
+For example:
+
+> 定期実行したい具体的な作業は何ですか？候補の中から選ぶ場合も指定してください。
+> 許可する範囲は調査・報告のみ、編集・PR作成まで、または明示的に許可する
+> マージ・公開までのどれですか？
+
+Existing `.hanchou` definitions and project documents are context or
+suggestions, not authority to choose, author, register, trial, or enable a job.
+Require the user's selection even when there is only one candidate, unless a
+prior instruction already selected that exact job and granted its scope.
+After the user clarifies, present the concrete target and work, frequency and
+timezone, allowed actions and excluded or gated actions, reporting conditions,
+and stop condition. Obtain a go-ahead for that summary unless the user's
+existing request already explicitly covers it. No reply is no approval; do
+not register defaults. A fully specified, approved request can proceed without
+asking for the same approval again. A pure install or "later" request leaves
+the job unconfigured and may offer onboarding; full onboarding is not a
+condition of installing this helper.
+
 ## Before creation or edit
 
 1. Identify the exact project, host, Automation workspace mode and target,
@@ -49,7 +74,7 @@ loaded in the future session or on setup chat memory. Verify that the
 orchestrator skill is available to the chosen provider in the run environment;
 installation alone does not activate it.
 
-An ordinary request to register the scheduled job authorizes a bounded
+An approved, concrete request to register the scheduled job authorizes a bounded
 representative manual trial and enablement after success, unless the user asks
 for a draft or disabled schedule. Create the Automation disabled and inspect
 its saved settings and prompt. Run the trial within the registered permission
