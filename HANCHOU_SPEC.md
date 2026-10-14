@@ -31,6 +31,7 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
 | explicit improvement-intent routing | optional `hanchou-kaizen` |
 | requested sanitized issue publication and verified cleanup | optional `hanchou-publish-issues` |
 | requested scoped skill updates | optional `hanchou-update` + official installer |
+| activated-session/task update check; authorized fresh-session handoff gates | optional `hanchou-update` + public Orca lifecycle |
 | scheduled-job configuration and management policy | optional `hanchou-cron` + Orca Automations |
 | requested static project responsibility setup | optional `hanchou-init` |
 
@@ -64,6 +65,13 @@ version-matched guideを読み、runtimeの公開Orchestration contractを確認
 初回起動時に既存bindingがなければRunを1つ作り、その対話の全依頼をTaskとして
 同じRunへ入れます。復元後は元の対話・Runが所有する依頼、Task、worker、CI、権限を
 照合します。同一projectというだけで他Runを引き継ぎません。
+
+起動・別依頼の開始時の読み取り専用更新確認は、導入済みの任意helperで依頼ごとに
+一回だけ行います。更新・新会話への交代・旧自分の終了の権限はそれぞれ区別します。
+明示的な更新交代は同一会話の継続ではなく、安全な区切りと新会話の実path・内容・revision・
+受領確認が必要です。current Runの移譲には公開された所有権移譲契約が必要で、
+通常のrun-useやworker-startでは代用しません。未資格なら現行会話とRunを保持し、
+全依頼とresourceのsettle後に将来の仕事用の独立した入口を案内します。
 
 通常はcoordinatorからleaf workerへ直接委譲します。複雑な案件だけTask spec内で
 mission-lead相当の責務を与えます。独立reviewが必要なら後続Taskにします。

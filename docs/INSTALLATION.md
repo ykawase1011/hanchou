@@ -73,6 +73,24 @@ bare `npx skills update`, which can update unrelated skills. Manual updates
 should follow the same targeted reinstall procedure after checking local edits;
 there is no Hanchou updater executable, managed checkout or rollback database.
 
+Activated Hanchou checks for applicable updates at activation and each new user
+task, once per task, through the installed optional helper. Missing helper,
+unknown baseline, local edits or network failure are reported without blocking
+unrelated work; no helper is installed automatically. Only the installed skill
+trees and their pins matter, not unrelated repository commits. Check permission,
+scoped update authority and session rotation/close authority are distinct;
+existing scoped authorization is reused without repeated confirmation.
+
+An explicit request to open a fresh tab, confirm it and close the old self follows
+the helper's public-capability and quiescence gates. It verifies the new
+conversation's actual installed paths/content/revision and handoff acknowledgment
+before exact closure. Orca 1.4.224's inspected public CLI does not qualify
+independent structured-session rotation or current-Run ownership transfer.
+On an unsupported path, retain the current conversation and provide a manual
+fresh-tab recovery after work settles. See [update acceptance and capability
+limits](UPDATE_VALIDATION.md); installing files does not itself refresh a running
+agent, close its session or enable cron.
+
 Remove through the installer/UI that created the copy, with explicit skill
 names, matching agents and scope. For example, for an unmodified global core:
 

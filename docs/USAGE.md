@@ -57,6 +57,32 @@ ignore規則を確認し、安全なlocal保存先がなければ保留します
 Claude Codeでは同名の`/` commandを使います。helperだけの依頼でRunは作りません。
 入力例、公開先確認、秘匿化、timeoutや部分成功は[Improvement workflow](IMPROVEMENTS.md)へ。
 
+## 更新確認と更新後の新しい会話
+
+有効なHanchouは起動時と別の新規依頼の開始時に、導入済みの任意helperで
+読み取り専用の更新確認を一度行います。初回依頼と起動は一回として扱い、同じ依頼の
+追記・worker通知・再開では繰り返しません。helper未導入、通信失敗、baseline不明、
+ローカル変更があっても元の作業は続けます。通常のOrca sessionでは起動せず、
+timerやcronは追加しません。確認対象は既存skillのsubset・scope・agent・pinで、
+関係のないrepository commitだけでは更新ありと通知しません。
+
+```text
+$hanchou-update で既存Hanchou skillの更新を確認してください。
+```
+
+これは確認だけの依頼です。更新や旧会話の終了には別の権限が必要です。例えば
+「既存のscopeとagentのまま更新し、新しいタブで更新内容と引き継ぎの受領を確認してから
+元の自分を閉じて」は、その範囲の更新・交代・closeを許可するため再確認しません。
+ただし公開機能と安全な区切りの検証は省略しません。未完了のTask/worker、Inbox、
+ユーザー判断、CI待ち、成果物・固定参照元を失う状態では閉じません。
+
+更新したファイルと、新しい会話で実際に読んだskillのpath・内容・revisionを照合し、
+引き継ぎを受領した応答を確認します。sendのacceptedだけでは不十分です。
+調査したOrca 1.4.224公開CLIでは、独立structured sessionの自動交代とcurrent Runの
+所有権移譲は未資格です。該当経路では現行会話を保持し、作業がsettleした後に利用者が
+通常操作で新タブを開く回復手順を案内します。旧Runへの二重coordinatorや
+worker-start、通常のrun-useを代用しません。詳細は[更新の受入と制限](UPDATE_VALIDATION.md)へ。
+
 ## 定期実行の設定
 
 定期業務の登録・確認・変更・停止・削除は`$hanchou-cron`（Claude Codeでは

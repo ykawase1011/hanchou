@@ -73,6 +73,20 @@ Before new coordinator or worker launches, read
 current conversation and bound Run in place; the preference governs future
 entrypoints, not an implicit migration.
 
+At explicit activation and each separately assigned new user task, perform one
+read-only Hanchou update check through the installed optional `hanchou-update`
+helper's check-only path. Activation and its first task count as one check.
+Record attempted/skipped/results in existing conversation/Task context;
+follow-ups, worker events, retries and restored turns of that task do not repeat
+it unless the user explicitly requests a recheck. Honor no-check/no-network
+preferences. If the helper is absent, report checking unavailable once and
+continue; do not install it or activate this skill in ordinary sessions merely
+to check. Network/baseline failures must not block unrelated work. No timers,
+polls, schedules or background updater are added. A check grants neither
+installation/update nor session-close authority; honor already granted scoped
+permissions without asking again. For an explicit post-update fresh-session
+handoff, use that helper's capability and preservation gates, not Run rebinding.
+
 `ORCA` above is a documentation placeholder. Substitute the resolved
 executable; do not invoke the word `ORCA` literally or create a wrapper.
 
@@ -103,6 +117,13 @@ through the public Orca Run.
 For supervised work, follow the live `orchestration` guide and prefer its
 `worker-start` path. For a user-requested full ownership transfer, use the
 live `orca-cli` full-handoff path and stop monitoring. Do not mix the two.
+An explicitly authorized update handoff has an additional readiness/content
+acknowledgment gate before old-self close; input acceptance alone cannot satisfy
+it. It is a change of conversation, not an exception allowing two coordinators
+or an unsupported current-Run takeover. Preserving a current Run across owners
+requires a qualified transfer contract; otherwise retain its current owner.
+An authorized independent entrypoint for future work is possible after all old
+requests and resources settle and does not require transferring the old Run.
 
 Load [cross-project.md](references/cross-project.md) for multi-repository work,
 [review.md](references/review.md) when independent acceptance is warranted, and

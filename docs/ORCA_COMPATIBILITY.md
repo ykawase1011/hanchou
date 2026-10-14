@@ -1,5 +1,17 @@
 # Orca compatibility
 
+## Issue #44 update handoff qualification (2026-10-14)
+
+The installed 1.4.224 public CLI/schema distinguishes independent PTY terminal
+operations from supervised structured-worker lifecycle. Independent structured
+session create/read/close and atomic current-Run coordinator transfer were not
+found in that bounded inspection; capability strings do not establish callable
+APIs. Ordinary binding and legacy takeover do not qualify current-Run rotation.
+See [update evidence and acceptance](UPDATE_VALIDATION.md) for the capability
+floor, preserved-state/consent gates, manual recovery, and remaining E2E gaps.
+No installed skill, current conversation/Run, or cron configuration was changed
+to implement this policy. #44 remains open for unqualified automatic paths.
+
 ## Policy review on 2026-10-13
 
 The installed `/Applications/Orca.app/Contents/Resources/bin/orca` reported
