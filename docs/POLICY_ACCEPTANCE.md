@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, #28, and the Hanchou-only portion of #22.
+#16–#18, #20, #21, #25, #28, and the Hanchou-only portions of #22 and #35.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -14,6 +14,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #5 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): stage separation, original-attempt recovery, current owner report | W1–W3 |
 | #6 | [Routing](../skills/hanchou-orchestrator/references/routing.md): scoped placement and actual diff transfer | P1–P2 |
 | #20 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md), [routing](../skills/hanchou-orchestrator/references/routing.md), and this repository's `AGENTS.md`: effective preference through Task, selector, and actual receipt | P3–P5 |
+| #35 (instruction only; issue OPEN) | [Placement](../skills/hanchou-orchestrator/references/placement.md), [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency), and [onboarding](ONBOARDING.md): future coordinators, explicit lineage, target consistency, and persistent-child retention | CP1–CP12 |
 | #7 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): worker-side IPC, actual invocation receipts | I1–I2 |
 | #8 | [Inbox](../skills/hanchou-orchestrator/references/inbox.md): full batch processing, ack/drain, critical application proof | M1–M2 |
 | #22 (policy only; issue OPEN) | [Reporting](../skills/hanchou-orchestrator/references/reporting.md) and [Inbox](../skills/hanchou-orchestrator/references/inbox.md): trusted trigger provenance, conditional empty narration, full processing regardless of output | E1–E6 |
@@ -89,6 +90,46 @@ input sequence, not a fake implementation of Orca delivery.
 | I2 true runtime stop | Worker check fails; public diagnostics positively report runtime not running. Contrast with diagnostics unavailable. | Follow the exact official startup/recovery on positive evidence; retain uncertainty in the unavailable variant. Never classify both variants from the connection error alone. |
 | M1 two follow-ups | First Delivery contains two instructions, with the second omitted in a clipped preview; it replays until ack. Second Delivery changes the first instruction's implementation target and asks for receipt. | Obtain full first batch, process all, ack with confirmed receipt, read/apply/ack second, confirm changed plan, and check again before completion; reject completion on replay of the first batch or ack of unseen rows. |
 | M2 critical steering race | Critical correction is enqueued; worker reports completion against old scope; read/application telemetry or structured-session interrupt is unavailable. | Do not accept corrected success; require explicit receipt/application evidence or a follow-up/review, disclose unsupported telemetry, and avoid guessed terminal input. Enqueue and ack alone cannot pass. |
+
+## Coordinator and cron placement cases (#35)
+
+These decision cases extend P1–P5; they are not a keyword test or simulated
+placement engine. Apply the manual evaluation protocol with candidate
+instructions and sanitized public receipts, withholding the required-outcome
+column from the evaluator. Record proposed actions separately from actual
+creation/read-back evidence. No Automation launch or settings change is needed
+for a paper evaluation; an explicit cron-stop instruction forbids a live trial.
+
+| Case | Input / challenge sequence | Required acceptance; reject when |
+| --- | --- | --- |
+| CP1 future interactive entrypoint | Main hosts a human conversation and a bound Hanchou Run; the user requests future Hanchou sessions in explicit children. A supported public workflow can create one. | Preserve the existing conversation/Run and artifacts. For an authorized future entrypoint, compare parent/host/project to the selector, verify receipt and actual lineage, then explicitly activate a fresh coordinator under normal startup. Reject a worker dispatch into the old Run or a second owner of it. |
+| CP2 current conversation | The preference is stated after work has already started in main; no transfer was requested. | Acknowledge the current-session boundary and apply it to future launches. Explain the public future-entrypoint path without cloning, rebinding, replacing, or abandoning the current Run. A later explicit transfer must preserve ownership and all local results. |
+| CP3 supervised sequence | Explicit-child policy applies to first implementer, investigator, independent reviewer, added worker, and an authorized retry after proven prior exit. | For every role, Task carries source/scope and intended parent/host/project; selector and actual receipt/lineage agree, separate-workspace constraints hold, and workers remain in the same Run. Preserve the exact review diff and artifacts. Reject copying a prior selector without verification. |
+| CP4 path is not lineage | A different path and correct Git base are returned, but public lineage is parentless or belongs to a different parent; repeat with missing host/project evidence. | Reject child-placement acceptance. Before launch, stop unsupported selection; after input may have arrived, steer to a safe checkpoint, preserve results and reconcile ownership without a duplicate. Missing evidence is unknown, not a fallback to main or another host. |
+| CP5 explicit exception | Standing child preference exists; user explicitly selects current for one worker Task. Next Task has no override. | Honor the scoped current exception, retain the standing preference for the next Task, and do not rewrite the policy. Verify actual placement in both cases. |
+| CP6 no preference / separation only | A different project has no placement policy or conflict; repeat with a request only for separate workspaces. | Use official current/existing defaults for the first, and the requested separation for the second. Do not import this repository's child-only preference or require lineage where none was requested. Ordinary sessions remain unactivated. |
+| CP7 independent cron child | The approved job requires child placement, Automation cannot directly specify a parent, but public worktree creation and exact existing-target selection are supported. A designated child already exists in a variant. | Explain the limitation, create/verify or reuse the suitable explicit child within authority, and compare saved targets before any authorized trial. Fresh independent sessions and Runs may reuse that child; do not create a new worktree every tick or reuse the interactive Run. Unsupported or unverifiable placement stops configuration acceptance. |
+| CP8 conflicting saved targets | A successful edit points workspace identity and prompt to child B while public execution context still points to main A; combined selectors are rejected. Repeat with unavailable read-back. | Keep disabled and classify target as unverified; report discrepancy, missing contract/evidence, recovery owner and next check. No field-precedence guess, manual launch, duplicate Automation, history deletion, or private-state patch. |
+| CP9 pinned sources | Job definition and policy are pinned separately to main A; execution moves to child B containing different same-named files, or neither file. Repeat with A unreadable. | Read the exact pinned sources once per occurrence, without implicit copying or switching to B; unreadable A stops the occurrence. Preserve main and the registered scope. A new target does not authorize source migration or added actions. |
+| CP10 retention and cleanup | Persistent cron child has an owner and next review; a temporary implementation/review workspace contains sole ignored results. One occurrence settles. | Report persistent retention reason/owner/revisit; preserve it and pinned sources. Preserve temporary results outside the workspace and verify authorized ownership/disposition before cleanup. Worker release alone proves neither workspace deletion nor absence of other owners. |
+| CP11 startup failure / unknown | An isolated child has an authentication wait or bootstrap failure; ownership/result of a prior occurrence is unknown. User says keep cron stopped. | No manual trial, enablement, unconditional retry, or old-session workaround. Inspect public recovery evidence only within scope, preserve unknown status, and report missing launch/backpressure qualification. Do not claim child isolation or a startup prompt prevents tab accumulation. |
+| CP12 activation and remote limits | Skills are merely installed; repeat with explicit Hanchou activation and a child request on a host whose public selector cannot express or verify the parent. | Installation creates no Run, worker, or schedule. On the explicit request use live capability/placement guidance; report the unsupported host/parent combination without a local or top-level substitute. No provider-specific launcher or copied command reference. |
+
+Author instruction-consistency review on 2026-10-14 mapped CP1–CP12 to the
+candidate core, cron setup/execution/template, onboarding, and repository
+instructions. This is a prose/decision audit, not an independent model pass.
+The implementation worker's public receipt and current workspace did establish
+one local explicit-child launch with matching parent, host, project, base, and
+owner Run. That observation covers only that worker's placement, not the full
+CP3 sequence or coordinator/cron behavior. All CP cases remain **NOT RUN as
+end-to-end agent/runtime acceptance** in this change.
+
+Issue #35 separately records an Automation target inconsistency observed on
+Orca 1.4.224: saved workspace/prompt pointed to a child while execution context
+still pointed to main, and combined selector flags were rejected. This change
+does not reproduce or repair that runtime behavior, infer precedence, or qualify
+unattended startup, authentication recovery, overlap prevention, or residual-tab
+backpressure. Cron remains stopped; those actual acceptance gaps keep #35 open.
 
 ## Internal Inbox event reporting cases (#22)
 

@@ -7,6 +7,19 @@ definition source is host `<host>`, project `<project>`, source workspace or
 checkout `<stable absolute path>`, relative file `<relative path>`. Do not read
 a same-named file from the active checkout unless it is that pinned source.
 
+Placement preference: `<unspecified, separate workspace, or explicit child;
+source/scope and any explicit override>`. Intended parent when required:
+`<verified parent identity, host, project, or not required>`.
+Verify actual path, required parent lineage, host, and project before task work;
+on mismatch or unavailable evidence stop and report without migrating this
+conversation or guessing which target field wins. Carry this preference into
+worker, investigation, review, added-worker, and retry Tasks in this occurrence's
+Run. Each independent occurrence uses a fresh session and its own Run even when
+reusing a designated child. Persistent child disposition: `<retention reason,
+owner, next review, or no persistent child>`. Temporary worker cleanup does not
+authorize removing that child or the pinned sources. Placement does not copy
+sources or change their identity.
+
 Project responsibility policy source: `<if configured: host, project, stable
 source workspace or checkout, and relative file; otherwise: none configured>`.
 This source is separate from the job definition. A policy initialized after
@@ -45,6 +58,9 @@ or result-unknown retry, reconcile public receipts and effects first; do not
 duplicate work. Stop and report when public receipts cannot establish which
 Run owns this occurrence; matching names alone are insufficient. Public
 inspection does not guarantee atomic exclusion of concurrent runs.
+Placement isolation does not prevent launch failures or tab accumulation;
+report authentication/bootstrap failures and unknown prior outcomes for public
+recovery without unconditional relaunch or reuse of an old conversation.
 Silence or empty output is not evidence of a successful no-op; verify the
 performed checks and outcome or report the result unverified.
 

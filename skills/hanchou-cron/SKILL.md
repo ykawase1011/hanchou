@@ -49,6 +49,13 @@ before an Automation operation; use current help for flags the guide omits.
 Use only public Orca surfaces. Do not build a scheduler, state ledger, parser,
 hook, credential store, or agent launcher.
 
+Apply the user's placement preference to scheduled coordinators and their
+workers using [setup.md](references/setup.md#placement-and-target-consistency).
+Verify required child lineage and consistency of saved public targets; do not
+trial or enable an unverified target. Fresh independent sessions may reuse a
+verified persistent child. Keep pinned sources separate, and honor an explicit
+instruction to keep cron stopped without a manual trial.
+
 For new Automation proposals, default the display name to `[hanchou] <business name>`
 only when the user has not specified one; preserve explicit names and never
 duplicate an existing prefix. Names establish neither identity nor ownership.

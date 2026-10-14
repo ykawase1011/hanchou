@@ -107,6 +107,54 @@ silently repair unrelated settings.
 
 ## Independent periodic job
 
+### Placement and target consistency
+
+Resolve the user's current placement instruction and applicable project policy
+before choosing the execution target. Record whether it is unspecified, merely
+separate, or an explicit child of a selected parent. Honor a scoped explicit
+override separately from an absent preference; without a preference retain
+Orca's documented defaults. For “human main, Hanchou child,” apply the preference
+to the scheduled coordinator as well as its future workers, reviews, and retries.
+Compare intended parent, host, project, and target with the public launch/configuration
+selector before mutation. Verify the receipt and actual workspace path, host,
+project, and required parent lineage afterward; a distinct path is not child proof.
+
+If the live Automation contract cannot express the required parent, explain the
+limit. Where supported and authorized, explicitly create and verify a designated
+child with the public worktree workflow, then select that exact existing target.
+Independent occurrences still use fresh sessions and their own Runs; a fresh
+session does not require a new worktree each tick. Do not move, clone, or rebind
+an existing interactive conversation/Run. Record a persistent child's retention
+reason, owner, and next review separately from temporary worker cleanup.
+
+Keep the pinned definition source and separately pinned policy source unchanged
+when only execution placement changes. Verify continued source access; never
+implicitly copy ignored files or substitute the target's same-named files.
+
+Read back the same Automation after configuration. Compare every public target
+representation exposed by that runtime (workspace identity, execution context
+path, host/project, and prompt target) with the intended verified target and any
+required child lineage. Do not
+assume one field overrides another, or that a successful edit proves consistency.
+Conflicting values, insufficient evidence, or a rejected selector combination
+leave the target unverified. Do not trial or enable it: preserve the disabled
+state, report the exact discrepancy and missing public contract/evidence, and
+name the owner and next check needed for recovery. If it is already enabled,
+use existing disable authority or request the necessary decision; do not claim
+it stopped without read-back. Never work around this by creating duplicate
+Automations, deleting history, or changing private state.
+
+Placement isolation is not launch-failure backpressure. Authentication waits,
+bootstrap failures, or unknown prior owners/results require public recovery and
+ownership checks; an occurrence's prompt runs too late to prevent its tab from
+being created. Within the authorized configuration scope, keep the job disabled
+when safe startup/suppression cannot be verified and report recovery conditions.
+Do not retry unconditionally, reuse an old conversation to evade fresh-session
+rules, or build a launcher/scheduler. An explicit instruction to keep cron stopped
+also forbids a manual trial or enablement until the user changes that instruction.
+
+### Registered prompt and trial
+
 Compose a self-contained recurring prompt using [execution.md](execution.md)
 and [recurring-prompt-template.md](../assets/recurring-prompt-template.md).
 Replace every template field and use only the selected provider's activation
@@ -176,6 +224,10 @@ Build the prompt with concrete values, not placeholders:
 - Exact Orca target, host, project identity, and source workspace or checkout
   plus relative path. State that the source is fixed even when execution uses a
   fresh worktree.
+- Effective placement preference and its source/scope, intended parent when
+  required, and actual path/lineage/host/project verification. Carry it into
+  worker, investigation, review, and retry Task briefs. For a persistent child,
+  include its retention reason, owner, and next review.
 - If configured, the separately pinned responsibility policy source: host,
   project identity, stable source workspace or checkout, and relative path.
   State that a missing/unreadable selected source stops the occurrence and that

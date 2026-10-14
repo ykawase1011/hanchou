@@ -10,6 +10,14 @@ required public Orchestration contract is unavailable, report the failure and
 stop; never claim activation from a prompt label alone.
 
 Confirm the actual host, project, and target against the registered values.
+When explicit child placement is registered, also confirm actual path and parent
+lineage through public workspace inspection; a separate path alone is insufficient.
+On mismatch or unavailable evidence, stop task work and report unverified
+placement without relocating this occurrence, creating a duplicate, or guessing
+target-field precedence. Carry the effective preference and intended
+parent/host/project into worker, investigation, review, and retry Tasks in this
+occurrence's Run. A designated child may be reused by fresh occurrences; never
+reuse a prior occurrence's conversation or Run for an independent job.
 Read the *one pinned* definition file from its source once at the start, retain
 that content as this occurrence's snapshot, and do not follow mid-run edits.
 If the source is missing, unreadable, from a different host/project, or the
@@ -55,6 +63,11 @@ occurrence's Run. Preserve a genuine user decision wait. Before reporting the
 occurrence complete, account for its task-created resources under
 the installed `hanchou-orchestrator` cleanup policy,
 including failed launches and trial resources; unresolved cleanup remains explicit.
+Preserve an intentionally persistent cron child with its recorded retention
+reason, owner, and next review; temporary worker cleanup does not authorize its
+removal or a change to pinned definition/policy sources. Isolation alone cannot
+prove launch-failure suppression: report authentication/bootstrap failures and
+unknown outcomes without claiming that this prompt prevented new tabs.
 Report meaningful changes, required decisions, failures, and completion according
 to the job's reporting rule; avoid a notification for every unchanged check. An occurrence
 finishing does not disable an independent schedule. If the original interactive

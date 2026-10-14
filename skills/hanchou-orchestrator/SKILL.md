@@ -67,6 +67,11 @@ prompt's pinned policy source or its recorded no-policy decision; do not perform
 this interactive default lookup. An absent interactive default file does not
 block ordinary requested work.
 
+Resolve any explicit or inherited placement preference under
+[placement.md](references/placement.md) before new coordinator or worker
+launches. Keep the current conversation and bound Run in place; the preference
+governs future entrypoints, not an implicit migration.
+
 `ORCA` above is a documentation placeholder. Substitute the resolved
 executable; do not invoke the word `ORCA` literally or create a wrapper.
 

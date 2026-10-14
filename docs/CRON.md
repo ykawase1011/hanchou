@@ -69,6 +69,28 @@ update to adopt it.
 
 ## Configure and verify
 
+Carry an explicit human-main/Hanchou-child preference into the scheduled
+coordinator, not only its workers. Compare intended parent, host, project, and
+target with the supported selector, then verify the receipt and actual child
+lineage. Where Automation cannot express a parent, a supported alternative is
+an explicitly created and verified persistent child selected as the exact
+existing workspace. Each independent occurrence still starts a fresh session
+and owns its own Run. Retain that child with reason, owner, and next review;
+temporary-worker cleanup does not remove it or the separately pinned sources.
+Unspecified placement retains Orca defaults; explicit scoped overrides remain
+distinct. See [setup placement checks](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency).
+
+Read back all public target representations after configuration. If workspace
+identity, execution context, host/project, or prompt disagree, or the target
+cannot be verified, do not infer precedence from an edit success: leave disabled
+and report the discrepancy and recovery evidence needed before a trial or
+enablement. Do not create a replacement Automation, erase history, or edit
+private state to evade the discrepancy. Placement isolation does not prevent
+authentication waits, bootstrap failure, or new-tab accumulation; startup
+prompts are too late to enforce prelaunch suppression. Honor a request to keep
+cron stopped, including no manual trial. Configuration consistency, actual
+placement, and launch-failure recovery require separate evidence.
+
 After the user chooses the work, present the exact purpose, job, display name and target,
 frequency and timezone, allowed actions, excluded or gated actions, reporting
 conditions, and stop condition. Obtain a go-ahead unless the user's request

@@ -17,7 +17,9 @@ and remote-host selectors. Treat model identifiers as opaque and versionable.
 Never invent a model name or silently downgrade an explicit user choice.
 
 Retain an explicit session placement preference for every new worker, retry,
-and independent review. A request to keep worker tabs out of the coordinator's
+and independent review. Follow [placement.md](placement.md) to distinguish a
+separate workspace from an explicit child and to preserve coordinator boundaries.
+A request to keep worker tabs out of the coordinator's
 workspace is sufficient reason to use a dedicated workspace through the live
 placement guide. Without such a preference, use the official current/existing
 workspace default; a fresh agent alone does not require a new checkout.
@@ -30,8 +32,9 @@ actual `worker-start` worktree selector before invoking it. A dedicated request
 requires a new or exact existing workspace whose resolved path differs from
 the coordinator's; `--worktree current` does not satisfy it. Read the start
 receipt and public workspace identity afterward to verify the chosen path,
-host, and Run. A mismatched or uncertain receipt means the first Task may
-already have reached the worker: steer it to a safe checkpoint, preserve its
+host, project, and Run; for an explicit child preference also verify the intended
+parent lineage, not just a distinct path. A mismatched or uncertain receipt means
+the first Task may already have reached the worker: steer it to a safe checkpoint, preserve its
 results, and reconcile ownership before further work, dispatch, or retry. Do not
 start a duplicate editor. Apply the same check to implementation, investigation,
 review, follow-up, and retry Tasks. An explicit `current` choice and an
