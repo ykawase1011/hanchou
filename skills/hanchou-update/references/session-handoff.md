@@ -1,8 +1,14 @@
 # Authorized fresh-session handoff
 
-This is an explicit change of conversation after a verified scoped update. It
-is separate from restoring/continuing the same conversation and Run. Do not
-replace the current session while merely implementing or testing this policy.
+This changes conversation under the entrypoint's ordinary explicit update
+workflow or a separately authorized fresh-session/reload request. It is separate
+from restoring/continuing the same conversation and Run. Honor files-only,
+keep-open/no-close, scope limits and contrary standing instructions. Default
+rotation needs actual selected content change or evidence that the current
+session loaded older content than the verified installed tree; current content
+alone does not trigger it. Explicit reload is distinct. Reuse prior attempt and
+receipt evidence so repeated task wakes cannot open fresh tabs. Do not replace
+the current session while merely implementing or testing this policy.
 
 ## Capability gate
 
@@ -48,14 +54,18 @@ An empty Inbox or idle TUI alone is not quiescence. Late mail/new user requests
 invalidate the prepared boundary: recheck immediately before commitment/close.
 Settle the update's installation result separately from rotation: report rotation
 as pending until confirmed, rather than treating installation success as closure.
+The handoff/close operation itself may remain pending at this boundary; it must
+not require its own future close result before launching. This exception covers
+only rotation bookkeeping, never unfinished business Tasks/Dispatches, active
+worker ownership, mail, gates or unresolved cleanup from the old work.
 
 Only a documented transfer contract that fences old ownership and preserves
 mail/tasks/gates can transfer a current Run; quiescence alone cannot supply that
 contract. If the request requires preserving that Run, keep the current
 coordinator and Run intact when this contract is absent. An explicitly authorized
 independent session may instead start normally for future work once all old
-requests and resources are settled; it has its own Run if Hanchou is explicitly
-activated. This settled-boundary path does not require current-Run transfer.
+business requests and resources are settled; it has its own Run if Hanchou is
+explicitly activated. This settled-boundary path does not require current-Run transfer.
 It is a new entrypoint, not live Run takeover or same-conversation continuation.
 
 ## Conditional launch, read-back, and close
@@ -67,8 +77,9 @@ and use a short `hanchou-` name for a new worktree absent an explicit name. A
 fresh session alone does not require a checkout. Use the configured agent through
 the official workflow, without provider-specific launch machinery or guessed
 model flags. Record setup-created resources; no unrelated tab may be closed.
-When a fresh visible tab was requested, verify its tab placement through the
-public receipt/inventory; terminal creation may return only a background handle.
+For the default fresh visible tab workflow, or an explicit tab request, verify
+placement through the public receipt/inventory; terminal creation may return
+only a background handle.
 Do not substitute an unseen background session or browser tab for the requested
 agent tab. Unverified visibility keeps the old session open.
 
@@ -98,8 +109,10 @@ or prompt result, reconcile the original receipt; never launch/send again on
 silence. If the live contract provides no way to verify readiness, stop here.
 
 Before closing, revalidate quiescence, exact old endpoint identity/type/host,
-separate close authority, and the preserved evidence. Address only that verified
-old endpoint with its documented close operation, never an active/default
+close authority from the default explicit update workflow or separate permission,
+and the preserved evidence. A keep-open/no-close override ends with adoption and
+the old endpoint retained. Address only that verified old endpoint with its
+documented close operation, never an active/default
 selector, a whole tab containing other panes, or workspace-wide close. Old-self
 close can terminate the caller before a receipt is observed: record close intent
 and yield ownership before the call; let an authorized successor/user confirm

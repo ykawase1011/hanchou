@@ -124,7 +124,10 @@ install/update/removeはAgent Skills installerまたはOrca Skills UIに任せ�
 （Claude Codeでは`/hanchou-kaizen`）で意図に応じて扱います。
 更新はCodexで`$hanchou-update`、Claude Codeで`/hanchou-update`を使います。
 有効なHanchouは任意helperが導入済みなら起動・新規依頼ごとに一度だけ更新を確認します。
-確認と更新・セッション交代の権限は分離し、未対応の自動交代では現行会話を保持します。
+通常の明示的な更新依頼は、対象を限定した更新、新しい可視タブでの内容・引き継ぎ確認、
+旧自分のcloseまでを含み、追加の承認は求めません。確認のみ・files-only・旧会話保持・
+scope制限・適用される反対の継続指示を優先します。変更なしで会話も古くなければ
+新タブは開きません。自動確認は更新や交代の許可にならず、公開契約が未対応なら現行会話を保持します。
 対応範囲と手動回復は[更新の受入と制限](docs/UPDATE_VALIDATION.md)を参照してください。
 改善メモの記録は外部公開を伴いません。公開したいときだけ
 `$hanchou-publish-issues`または`/hanchou-publish-issues`で対象メモを指定します。

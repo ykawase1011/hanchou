@@ -52,4 +52,7 @@ Unless the current request is check-only, if an applicable scoped update was
 already authorized, the entrypoint may proceed
 through its inspection, backup, exact-revision and placement verification gates.
 Otherwise report the concrete update scope and request only the missing update
-permission. Neither outcome grants rotation or old-self-close authority.
+permission. The check itself never grants rotation or old-self-close authority.
+An ordinary explicit update request carries the entrypoint's default workflow;
+standing installation-only permission and check results do not. Respect its
+overrides and content-change/stale-session gate before any fresh-tab adoption.

@@ -1,7 +1,9 @@
 # 更新確認・セッション交代の受入 (#44)
 
-この変更はinstruction-onlyの更新確認と条件付き引き継ぎ手順です。公開契約の
-調査、使い捨てGit fixtureの比較検証、指示のケース評価を区別します。
+この変更はinstruction-onlyの更新確認と、通常の明示的な更新依頼に対する
+scoped install → 新しい可視タブでのadoption確認 → old-self closeの既定手順です。
+追加承認は求めず、利用者の限定・反対の継続指示と各検証gateを優先します。
+公開契約の調査、使い捨てGit fixtureの比較検証、指示のケース評価を区別します。
 独立structured sessionへの自動交代・旧自分のclose・current Run移譲の実機E2Eは
 **UNVERIFIED**です。#44を完全自動交代の完了として閉じません。
 #39・#40・#41の既存未解決範囲も解決扱いにしません。
@@ -27,6 +29,9 @@ contract reference、CLI help、`agent-context --json`（schema 1、249 commands
 同じworkspaceのterminal listは空でした。公開worktree showのpath・明示parent lineage・
 host・projectを配置意図と照合しました。これは監督付きworkerの配置/識別の観測であり、
 独立交代の試験ではありません。runtime/Task/Dispatch等の個別IDはここへ保存しません。
+同日のcoordinator観測でも、settle済みstructured reviewerを`worker-start --terminal`
+で再利用すると`terminal_unsupported_for_agent_session`で拒否されました。
+これはstructured handleのterminal互換性を仮定できない証拠であり、独立交代E2Eではありません。
 
 installerの参照元は[公式README](https://github.com/vercel-labs/skills)と
 [公式CLI docs](https://skills.sh/docs/cli)です。既存の対象限定reinstall・backup・
@@ -41,7 +46,7 @@ reference追加/削除/変更/mode、固定pinと動いたtag、baseline欠落�
 ローカル編集の非破壊比較、scope別copy・shadowing・symlink target差分を検証します。
 これらは比較primitiveの検証であり、更新helperの実行モデルやIPC/closeの模擬実装では
 ありません。既存のinstaller隔離試験は`make check-installer`にありますが、今回の
-チェックのみの追加で実ホスト更新やinstaller全体の再認定は行いません。
+指示変更で実ホスト更新やinstaller全体の再認定は行いません。
 
 変更skillの`quick_validate.py`も実施します。これはfrontmatter等の検証です。
 以下の受入ケースは指示のレビュー/forward-test用であり、通過した自動テストという
@@ -69,11 +74,19 @@ fixture評価と、別途許可された実機試験は分けます。
 | 固定commit/tag、追跡branch、移動tag | 固定pin維持、branchはexact commitへ解決、移動tagは判断保留 |
 | local/global両方、異なるagent targets、copy/symlink | 別々に照合しshadowingを報告。subset/scope/target/method維持 |
 | baselineから追加/削除/変更、custom fork/source symlink | modified/unknownとして保存し、選択と差分を示す。勝手な上書きなし |
-| check-only、update済み権限、rotation済み権限 | 三種を区別。既に明示された範囲を再承認させず、不足する権限だけ確認 |
+| 「Hanchouを更新して」、cleanな選択treeに差分、旧業務settle、公開経路あり | 既存scope/agentのinstallと検証後、可視新タブの実内容/受領を確認し旧自分だけclose。追加承認なし、同じRunの移譲を要求しない |
+| 明示check-only、または別の更新権限がない自動checkpoint | 読み取り専用の結果で止まり、install/rotation/closeなし |
+| 「更新して、files-only」 | scope維持でinstall/検証し終了。新タブもcloseもなし |
+| 「更新して、旧会話を閉じない」、scope限定、反対の継続指示 | 各限定を優先。keep-openならadoption後も旧endpoint保持。限定と矛盾する操作なし |
+| checkpointでavailable、継続許可はscoped installation-only | 許可対象のinstall/検証のみ進め、rotation/closeへ拡張しない |
+| 「更新して」、selected contentはcurrent、旧内容の証拠なし | currentを報告し再install/新タブ/closeなし。別repo commitは理由にならない |
+| currentだが現会話が旧treeを読んだ証拠あり、または別の明示reload依頼 | 再install不要。前者は通常更新のstale gate、後者は独立した依頼範囲でhandoff gateへ進む |
+| 同じ更新依頼のwake/retry、launch receipt不明 | 既存attempt/receiptを照合し、沈黙だけで追加タブを作らない |
 | update途中失敗、併行編集、unexpected target | broad retryせず停止、実際の変更を報告。安全・許可済みの対象だけ復元 |
 | 機能実装依頼中、現在の会話/Run、停止中cron | 現在の交代/skill install/cron enableを実装の前提にしない |
 | 未完了task/worker、unverifiable worker、CI待ち、質問/gate | idle扱いせず現ownerを維持し自動rotation/closeを延期 |
 | 複数Inbox Delivery、最後に新しいmail/user依頼 | 全batch処理後ack。直前再検査で境界を無効化し保持 |
+| 全旧業務と資源がsettleし、交代操作のclose結果だけpending | 交代のpendingを記録してlaunchへ進める。自分の将来のclose結果を前提にしない。他業務/worker/mail/gateの未完了にはこの例外を適用しない |
 | child配置希望、同名workspace、固定policy/ignored成果物 | receiptと実path/親/host/project照合。copy/参照元切替なし、実アクセス確認 |
 | PTYの独立入口、全旧仕事settle、明示rotation/close許可 | live契約で可能な場合だけlaunch、実応答をread。旧Runは移譲せず将来仕事用入口 |
 | 新タブを要求したがcreate結果がbackground handleのみ | 公開receipt/inventoryで可視tabを確認できなければ旧会話を保持 |

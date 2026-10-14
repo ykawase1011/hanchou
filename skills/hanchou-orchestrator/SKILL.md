@@ -84,8 +84,10 @@ continue; do not install it or activate this skill in ordinary sessions merely
 to check. Network/baseline failures must not block unrelated work. No timers,
 polls, schedules or background updater are added. A check grants neither
 installation/update nor session-close authority; honor already granted scoped
-permissions without asking again. For an explicit post-update fresh-session
-handoff, use that helper's capability and preservation gates, not Run rebinding.
+permissions without asking again. An ordinary explicit Hanchou update request
+uses that helper's default scoped update/fresh-tab adoption/old-self-close workflow
+and its overrides, content-change/staleness, capability and preservation gates.
+Standing installation-only permission stays installation-only; never use Run rebinding.
 
 `ORCA` above is a documentation placeholder. Substitute the resolved
 executable; do not invoke the word `ORCA` literally or create a wrapper.

@@ -6,12 +6,16 @@ wake, delivery, restoration of the original interactive conversation, and
 overlap control. Hanchou owns decisions when a supported wake reaches that same
 conversation and its original Run.
 
-An explicitly requested post-update fresh-session handoff is a separate workflow
-of the optional `hanchou-update` helper. It requires its own authorization,
-public lifecycle/ownership support, quiescence, preserved state and fresh-content
+Post-update fresh-session adoption is the optional `hanchou-update` helper's
+default for ordinary explicit update requests, subject to its overrides and
+content-change/staleness gate; a check or standing installation-only permission
+does not authorize it. It requires public lifecycle/ownership support,
+quiescence, preserved state and fresh-content
 acknowledgment before exact old-session closure. It does not qualify wake or
 restoration here. Neither ordinary `run-use` nor a supervised replacement worker
-establishes current-Run transfer; if unsupported, keep this conversation and Run.
+establishes current-Run transfer. That additional contract is required only when
+preserving the same Run is requested; settled old business permits a normal
+independent new conversation/Run under the helper's gates.
 
 Before configuration, require a qualified public contract that wakes the
 original interactive conversation with its existing Run and authority, including

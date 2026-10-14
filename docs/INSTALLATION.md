@@ -77,15 +77,24 @@ Activated Hanchou checks for applicable updates at activation and each new user
 task, once per task, through the installed optional helper. Missing helper,
 unknown baseline, local edits or network failure are reported without blocking
 unrelated work; no helper is installed automatically. Only the installed skill
-trees and their pins matter, not unrelated repository commits. Check permission,
-scoped update authority and session rotation/close authority are distinct;
-existing scoped authorization is reused without repeated confirmation.
+trees and their pins matter, not unrelated repository commits. A check grants
+no update or rotation authority; standing installation-only permission stays
+installation-only.
 
-An explicit request to open a fresh tab, confirm it and close the old self follows
-the helper's public-capability and quiescence gates. It verifies the new
+An ordinary explicit Hanchou update request includes scoped installation,
+verified adoption in a fresh visible agent tab, then old-self close without
+another permission question. Check-only, files-only, keep-open/no-close, scope
+limits and applicable contrary standing instructions override this default.
+Unchanged selected content without demonstrated stale session content needs
+neither reinstall nor a fresh tab; an explicit reload is a separate request.
+Repeated task wakes reuse prior attempt/receipt evidence instead of opening tabs.
+The workflow follows the helper's public-capability and quiescence gates and verifies the new
 conversation's actual installed paths/content/revision and handoff acknowledgment
 before exact closure. Orca 1.4.224's inspected public CLI does not qualify
 independent structured-session rotation or current-Run ownership transfer.
+Settled old business permits an independent new conversation/Run; same-Run
+transfer is an additional requirement only when requested. The rotation operation
+can remain pending without requiring its own close result before launch.
 On an unsupported path, retain the current conversation and provide a manual
 fresh-tab recovery after work settles. See [update acceptance and capability
 limits](UPDATE_VALIDATION.md); installing files does not itself refresh a running

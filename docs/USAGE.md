@@ -70,18 +70,27 @@ timerやcronは追加しません。確認対象は既存skillのsubset・scope�
 $hanchou-update で既存Hanchou skillの更新を確認してください。
 ```
 
-これは確認だけの依頼です。更新や旧会話の終了には別の権限が必要です。例えば
-「既存のscopeとagentのまま更新し、新しいタブで更新内容と引き継ぎの受領を確認してから
-元の自分を閉じて」は、その範囲の更新・交代・closeを許可するため再確認しません。
-ただし公開機能と安全な区切りの検証は省略しません。未完了のTask/worker、Inbox、
-ユーザー判断、CI待ち、成果物・固定参照元を失う状態では閉じません。
+これは確認だけの依頼で、更新や交代の許可にはなりません。一方、通常の
+「`$hanchou-update`でHanchouを更新して」は、既存scope/agentの更新、新しい可視タブで
+更新内容と引き継ぎの受領を確認、旧自分のcloseまでを含み、追加承認は求めません。
+「files-only」は起動・closeなし、「旧会話を閉じない」は旧endpoint保持、対象scopeの
+限定や適用される反対の継続指示も優先します。起動時checkに適用するinstallation-onlyの
+継続許可は交代権限に広げません。選択skillの内容が変わらず、現行会話が古い内容を
+読んでいる証拠もなければ再install・新タブ作成は不要です。明示的なreload依頼は別扱いです。
+
+公開機能と安全な区切りの検証は省略しません。未完了の業務Task/worker、Inbox、
+ユーザー判断、CI待ち、成果物・固定参照元を失う状態では交代しません。交代操作自体の
+完了はpendingのまま進められ、自分のclose結果を起動前提にはしません。同一依頼の
+wakeや再試行では既存receiptを確認し、新タブを増やしません。
 
 更新したファイルと、新しい会話で実際に読んだskillのpath・内容・revisionを照合し、
 引き継ぎを受領した応答を確認します。sendのacceptedだけでは不十分です。
 調査したOrca 1.4.224公開CLIでは、独立structured sessionの自動交代とcurrent Runの
 所有権移譲は未資格です。該当経路では現行会話を保持し、作業がsettleした後に利用者が
 通常操作で新タブを開く回復手順を案内します。旧Runへの二重coordinatorや
-worker-start、通常のrun-useを代用しません。詳細は[更新の受入と制限](UPDATE_VALIDATION.md)へ。
+worker-start、通常のrun-useを代用しません。旧業務がsettleした新会話/新Runには
+current Run移譲を要求せず、同じRunの維持を別途求める場合だけ移譲契約が必要です。
+詳細は[更新の受入と制限](UPDATE_VALIDATION.md)へ。
 
 ## 定期実行の設定
 
