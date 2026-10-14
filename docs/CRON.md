@@ -69,6 +69,17 @@ update to adopt it.
 
 ## Configure and verify
 
+When creating a persistent periodic-work worktree, use `hanchou-cron` by default,
+or `hanchou-cron-<job-name>` when jobs need isolation. Explicit user names win;
+never double a `hanchou-` prefix. This names a worktree, separately from the
+Automation's `[hanchou] <business name>` display convention. It does not require
+a new worktree, rename/move existing ones, or change an Automation. Before reuse,
+verify exact identity, project, host, required parent lineage, purpose, and owner.
+A default-name collision can use a meaningful suffix or another verified target;
+resolve an explicit-name conflict with the user and reconcile unknown creation
+results before retrying. A fixed name or workspace does not ensure safe concurrent
+edits or overlapping launches; retain the ownership checks below.
+
 Carry an explicit human-main/Hanchou-child preference into the scheduled
 coordinator, not only its workers. Compare intended parent, host, project, and
 target with the supported selector, then verify the receipt and actual child

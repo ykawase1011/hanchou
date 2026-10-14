@@ -14,6 +14,28 @@ added workers, and retries. Select the intended parent, host, project, and Git
 base separately. A different path, Git branch/base, UI grouping, or common Run
 does not establish Orca parent lineage.
 
+## Names for newly created worktrees
+
+When Hanchou creates a worktree without an explicit user name, use a short,
+purposeful name starting with `hanchou-`, such as `hanchou-fix-login`,
+`hanchou-coordinator`, `hanchou-review-login`, or `hanchou-retry-login`.
+Apply this to normal work, investigation, interactive coordinators, reviews,
+additional workers, and retries. Preserve an explicit user name exactly;
+if the chosen name already starts with `hanchou-`, do not add it again.
+For a newly created persistent periodic-work workspace, default to
+`hanchou-cron`, or `hanchou-cron-<job-name>` when job isolation is needed.
+
+Naming does not require creating a worktree or renaming/moving an existing one.
+Keep the placement decision, current conversation/Run, and pinned sources
+unchanged. A matching name is not identity, ownership, or permission to reuse:
+verify the exact workspace's project, host, required parent lineage, purpose,
+and current owner before reuse. On a name collision, choose a short meaningful
+suffix for a default name or another verified suitable target; if an explicit
+name cannot be honored, report the conflict and resolve the choice with the
+user. Never overwrite, rename, or remove another workspace to free the name.
+After an uncertain creation result, reconcile the original receipt before
+trying another name; a suffix is not permission to duplicate unknown work.
+
 ## Future interactive entrypoints
 
 Before opening a new coordinator, use the installed public `orca-cli` worktree
@@ -67,6 +89,8 @@ target is unverified; do not guess which field wins. A startup prompt cannot
 prevent the wrong tab from already having been created.
 
 An intentionally persistent cron child may host fresh, independent occurrences.
+The fixed name or workspace does not make concurrent edits or overlapping
+launches safe; retain the cron execution policy's ownership and overlap checks.
 Record its retention reason, owner, and next review; distinguish it from
 temporary worker workspaces covered by [cleanup.md](cleanup.md). Releasing one
 worker or completing an occurrence does not authorize deleting the persistent

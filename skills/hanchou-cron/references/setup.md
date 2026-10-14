@@ -109,6 +109,19 @@ silently repair unrelated settings.
 
 ### Placement and target consistency
 
+For a newly created worktree intended for persistent periodic work, default its
+name to `hanchou-cron`, or `hanchou-cron-<job-name>` when jobs need isolation.
+Other newly created Hanchou worktrees use short purpose-based `hanchou-` names.
+Preserve explicit user names and never double an existing `hanchou-` prefix.
+These defaults do not require creation, rename/move existing workspaces, or
+change Automations; the `[hanchou]` Automation display convention is separate.
+Before reusing a candidate, verify its exact identity, project, host, required
+parent lineage, purpose, and current owner rather than matching its name.
+For a default-name collision, choose a meaningful suffix or another verified
+suitable target; resolve a conflicting explicit name with the user instead of
+silently changing it or displacing another workspace. Reconcile an uncertain
+creation receipt before retrying under a different name.
+
 Resolve the user's current placement instruction and applicable project policy
 before choosing the execution target. Record whether it is unspecified, merely
 separate, or an explicit child of a selected parent. Honor a scoped explicit
@@ -126,6 +139,9 @@ Independent occurrences still use fresh sessions and their own Runs; a fresh
 session does not require a new worktree each tick. Do not move, clone, or rebind
 an existing interactive conversation/Run. Record a persistent child's retention
 reason, owner, and next review separately from temporary worker cleanup.
+Neither a fixed name nor a persistent workspace guarantees safe concurrent
+edits or launches; preserve [execution.md](execution.md)'s ownership and overlap
+checks, including stopping when earlier ownership or results are uncertain.
 
 Keep the pinned definition source and separately pinned policy source unchanged
 when only execution placement changes. Verify continued source access; never
