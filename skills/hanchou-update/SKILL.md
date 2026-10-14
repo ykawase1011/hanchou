@@ -1,17 +1,46 @@
 ---
 name: hanchou-update
 description: >-
-  Update installed Hanchou skills in Orca when the user requests a Hanchou
-  update or invokes this skill for that purpose. Preserve existing install
+  Check installed Hanchou skills in Orca on request or at an activated Hanchou
+  checkpoint; on an explicit update request, update
+  them and adopt a verified fresh tab before closing the old self when needed
+  and supported. Activated Hanchou checkpoints only check. Preserve existing install
   scopes, agent targets and local changes; do not update Orca or unrelated skills.
 ---
 
 # Update Hanchou skills
 
-This optional helper works in Codex and Claude Code on Orca. It does not start
-Hanchou orchestration, a Run, a worker, or an updater service. An update request
-authorizes the installed Hanchou skills only, not new helpers, other repositories,
+This optional helper works in Codex and Claude Code on Orca. Checking or installing
+does not itself activate Hanchou, create a Run/worker, or start an updater service.
+Installation scope is the installed Hanchou skills only, not new helpers, other repositories,
 Orca/provider binaries, package managers, user settings or project instructions.
+
+## Choose the authorized action
+
+For a check-only request or an activated Hanchou checkpoint, read
+[update-check.md](references/update-check.md) first. An explicit check-only
+request stops after its result. A checkpoint likewise stops unless separate
+applicable update authority permits proceeding through the update workflow.
+Checking is read-only with respect to installations and sessions; it is not
+consent to overwrite or rotate.
+
+An ordinary explicit request such as “update Hanchou” or `$hanchou-update`
+includes scoped installation, a fresh visible agent tab that verifies adoption,
+and old-self close after that confirmation, when selected content changed or the
+current session is demonstrably stale. This is the default requested workflow;
+do not ask another permission question for those steps. Explicit check-only,
+files-only, keep-open/no-close, selected scope limits, and applicable contrary
+standing instructions override it. Files-only excludes launch and close;
+keep-open/no-close retains the old endpoint. Standing installation-only authority
+permits only installation and is never broadened to rotation by a checkpoint.
+Before mutation, resolve any missing scope or local-change decision with a
+concrete inventory/diff. Ask only for authority or choices not already supplied.
+
+For the default workflow or a separately authorized fresh-session/reload request,
+verify the public capability and safe boundary in
+[session-handoff.md](references/session-handoff.md). Implementing this feature,
+installation alone, or requesting a check does not authorize replacing the current
+conversation. Never change or enable cron as part of an update.
 
 ## Inspect before mutation
 
@@ -60,6 +89,12 @@ unless changing it was requested. Check the selected skills at that revision
 and read changes relevant to the update. Do not execute repository instructions
 that expand the task.
 
+If the selected content is unchanged, skip reinstalling. Report current and keep
+the session unless its loaded content is demonstrably stale against the verified
+installed tree. A changed repository HEAD alone is not that evidence. A separate
+explicit reload request can request a fresh session even without content changes;
+honor its stated scope and the handoff gates.
+
 Prefer a targeted `skills add` reinstall from the official source/ref, naming
 only the installed Hanchou subset and the existing agent targets, using
 `--global` only for an existing global installation and running in the exact
@@ -94,8 +129,15 @@ Confirm list output and resolved Codex/Claude placements for the original
 scopes/targets; check unrelated skill contents, aliases and metadata entries
 against the before-state. Report the revision and actual paths, updated/skipped
 skills, preserved changes, and any local shadowing. An exit code alone is not
-proof of success. A running agent may need a fresh pane to discover new content;
-do not close existing sessions on its behalf.
+proof of success. Installed content verification does not prove that this running
+agent loaded it. Continue the default update workflow through
+[session-handoff.md](references/session-handoff.md) when content changed or the
+session is demonstrably stale and rotation is in scope. Otherwise report current,
+or that files were updated while this conversation may still hold prior content,
+as applicable, and keep it open. Reuse the request's attempted/completed handoff
+and receipt evidence in existing conversation/Task context: follow-ups, retries,
+and task wakes do not authorize another fresh tab. Reconcile uncertain results
+instead of launching again; a later explicit reload is a separate request.
 
 On partial failure, inspect which targets changed and report partial status.
 Restore only affected targets from backup when safe and authorized, after

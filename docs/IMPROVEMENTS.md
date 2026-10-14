@@ -106,7 +106,11 @@ official installer. It preserves local/global scope and targets; the new global
 default does not migrate existing installs. Unknown provenance, custom changes,
 conflicting edits and unsupported layouts remain untouched for a decision.
 It verifies the resulting content against an upstream revision and checks that
-unrelated skills remain unchanged. See [Installation](INSTALLATION.md).
+unrelated skills remain unchanged. Ordinary explicit updates then adopt a verified
+fresh visible tab and close the old self when content changed or the session is
+demonstrably stale, subject to overrides and public capability/safe-boundary
+gates. See [Installation](INSTALLATION.md) for files-only/keep-open choices and
+unsupported-path recovery.
 
 When an update request also contains a new operating-policy proposal, update
 only the verified installed subset from the official revision and record the
