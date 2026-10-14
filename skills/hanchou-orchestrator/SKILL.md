@@ -91,10 +91,13 @@ Use the same bound Run for the lifetime of this Hanchou conversation. All its
 user requests become Tasks inside that Run; they do not each create a Run.
 At most one active coordinator owns a Run. A project may have multiple Hanchou
 conversations and Runs, usually with one familiar entrypoint. Never persist Run,
-Task, Dispatch, or terminal identifiers in tracked repository files or shared
-config. The explicitly opted-in private status snapshot may retain minimal
-non-displayed identity tuples solely for reconstructible presentation comparison;
-it never establishes ownership or a second authority store.
+Task, Dispatch, or terminal identifiers in repository files or shared config.
+The sole exception is an explicitly opted-in, private, non-shared, reconstructible
+status snapshot at a verified ignored or outside-repository destination: it may
+retain minimal non-displayed identity tuples for presentation comparison only.
+This does not permit IDs in distributed files, other configuration or an execution
+ledger; never use the snapshot for authority or recovery. Verify actual ownership
+through the public Orca Run.
 
 For supervised work, follow the live `orchestration` guide and prefer its
 `worker-start` path. For a user-requested full ownership transfer, use the
