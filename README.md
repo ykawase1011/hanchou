@@ -88,6 +88,19 @@ Claude Codeでは同じ本文をskill commandへ渡します。
 3種類とも同じ`hanchou-orchestrator` skillです。違うのは起動場所、最初のprompt、
 必要ならlocalな静的policyだけです。
 
+## 任意のローカル状況ビュー
+
+起動済みのHanchouに「このprojectの依頼・判断待ち・PR結果をローカル状況ビューに
+してください。保存先は `.hanchou/index.html`、今後は意味のある作業節目でも更新して
+ください」と依頼できます。一回だけなら「今回は一度だけ更新」と指定します。
+保存先・単一の更新担当・対象Runを記録し、欠損も明示した部分的な表示を作れます。
+一回の明確な依頼ならprivate・再生成可能・別バックアップなしの既定で進め、実際の
+衝突がある場合だけ確認します。
+HTMLをブラウザで開くと日本語のカード、原文と訂正の詳細、検索・絞り込みを使えます。
+ライブ監視ではなく、開いても最新化されません。「状況ビューを更新して」と担当へ
+依頼してください。既存ファイルやinstallだけで有効化せず、停止中のcronも再開しません。
+詳細は[status-view手順](skills/hanchou-orchestrator/references/status-view.md)。
+
 ## Repository
 
 ```text
@@ -102,7 +115,9 @@ examples/cross-project/       専用workspaceの例
 docs/                         architecture、導入、運用、移行、検証
 ```
 
-Hanchou用production CLI、Node runtime、DB、scheduler、Dashboard、serviceはありません。
+Hanchou用production CLI、Node runtime、DB、scheduler、status serverはありません。
+限定的な例外として、明示opt-inの読み取り専用ローカルHTMLテンプレートを配布します。
+Orca/GitHubを正本にした再生成可能な時点表示で、操作・承認・編集UIは持ちません。
 install/update/removeはAgent Skills installerまたはOrca Skills UIに任せます。
 
 「hanchou kaizen」「Hanchou 改善」の明示的な依頼は`$hanchou-kaizen`

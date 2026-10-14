@@ -38,6 +38,20 @@ intake and snapshots effective limits into Task briefs. An Automation may pin
 it separately from its job definition, reading both once per occurrence;
 neither document creates work or broadens the registered job scope by itself.
 
+## Optional read-only presentation
+
+The [explicit B decision](https://github.com/ykawase1011/hanchou/issues/37#issuecomment-6162521218)
+permits an opt-in self-contained local HTML/CSS/JS status snapshot,
+using the orchestrator asset and [status-view reference](../skills/hanchou-orchestrator/references/status-view.md).
+This is the sole static-presentation exception to the production-code/dashboard
+prohibition, not a runtime, authoritative DB/cache, exporter service or control UI.
+Orca and GitHub remain authoritative; the embedded snapshot is disposable and must
+contain no unique original instruction or accepted result. One verified writer
+owns a checked private destination; input revisions and existing bytes are checked
+before atomic replacement. Other Runs remain separately owned. Natural meaningful
+checkpoints may refresh an opted-in view; no scheduler, no-op rewrites or post-turn
+update guarantee is added. Cron stops remain effective.
+
 ## Multiplicity and ownership
 
 Orca is normally one runtime per OS user/userData profile. Hanchou has no fixed

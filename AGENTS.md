@@ -7,7 +7,12 @@ or copied Orca command reference.
 
 Use public Orca CLI contracts and the installed binary's live guides. Keep
 `hanchou-orchestrator` provider-neutral and narrowly triggered. Repository tests
-are allowed; production code is not.
+are allowed; production code is not, except the narrowly scoped, opt-in read-only
+static presentation template in `skills/hanchou-orchestrator/assets/status-view.html`
+and its associated instructions/tests. This reconstructible local snapshot may
+contain embedded HTML/CSS/JS for rendering only; it is not an authoritative store
+or permission for a runtime, server, exporter service, DB/cache, scheduler, control
+UI, or other dashboard production code. See the status-view reference.
 
 This repository's standing preference is to keep main for human work and fixed
 reference sources. Place future Hanchou interactive coordinators, independent

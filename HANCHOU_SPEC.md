@@ -11,7 +11,8 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
    同時に1つ。元の対話を復元できない場合の後任・takeoverは継続設計の対象外。
 3. 各Taskのowner Runは1つ。workerの実行repositoryとは別の概念である。
 4. Hanchouが所有するruntime永続状態、process、port、registry、launcherはない。
-   任意のignore済み改善メモと最小限の公開receiptは利用者のlocal文書である。
+   任意のignore済み改善メモ、最小限の公開receipt、明示opt-inの再生成可能な
+   読み取り専用status snapshotは利用者のlocal文書である。
 5. Orca-managed stateはpublic CLIと公式skill contractだけで操作する。
 6. Hanchouは名前付きskill呼び出し、明示的な依頼、または専用workspace local
    instructionでだけactivateする。利用者向けpromptは名前付き呼び出しを標準とする。
@@ -36,7 +37,12 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
 HanchouはCodexまたはClaudeで動作し、具体的なprovider/modelはユーザーpolicyと
 実行時にOrcaが提供する選択肢へ従います。
 
-配布は1つのcoreと5つの任意helperから成り、production codeは含みません。
+配布は1つのcoreと5つの任意helperから成り、原則としてproduction codeを含みません。
+明示opt-inの読み取り専用static HTML/CSS/JS表示templateだけを限定的な例外とします。手順はorchestratorの
+[status-view reference](skills/hanchou-orchestrator/references/status-view.md)に置きます。
+埋込snapshotは破棄・再生成できる派生文書で、Orca/GitHubの正本、唯一の依頼原文、
+受入済み成果、Inbox/ackを所有しません。DB/cache、runtime/server/CLI、scheduler、
+操作・承認・編集UIは追加しません。
 新規installはCodex/Claude Codeへのglobal配置を標準とし、local配置も選択できます。
 helperだけの呼び出しはorchestratorをactivateせず、Runやworkerを作りません。
 `hanchou-cron`の設定操作も同様です。独立した定期業務の明示的な手動試行や

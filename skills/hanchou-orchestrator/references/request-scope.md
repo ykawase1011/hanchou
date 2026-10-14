@@ -5,10 +5,18 @@ At intake, select the target project's optional responsibility policy under
 completion evidence, authorized operations, explicit decision gates, worker
 placement preference, and next owner. Use conversation context and Orca's public
 Task/message surfaces; do not persist execution IDs or create another state store.
+The sole exception is the explicitly opted-in, private, non-shared, reconstructible
+snapshot at a verified ignored or outside-repository destination under
+[status-view.md](status-view.md): minimal non-displayed identity tuples serve
+presentation comparison only. This permits no IDs in distributed files or other
+configuration, and no authority, recovery, execution ledger or other state store.
 
 Later explicit user instructions may override the selected task's standing
 conditions or update the project default when requested. Do not persist a
-task-only override. Send affected workers the changed scope and confirm application using
+task-only override as standing policy or configuration. The opted-in snapshot may
+display an attributed, reconstructible correction already preserved in an
+authorized original source; that display neither changes policy nor grants authority.
+Send affected workers the changed scope and confirm application using
 [inbox.md](inbox.md). Carry the current account into a retry or review brief;
 do not turn one user's preference into a global default.
 
