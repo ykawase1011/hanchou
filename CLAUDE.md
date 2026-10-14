@@ -3,8 +3,9 @@
 Read `AGENTS.md`. Hanchou v3 distributes provider-neutral Orca skills that work from
 both Claude and Codex sessions.
 
-For supervised Hanchou development here, use the dedicated worker workspace
-preference in `AGENTS.md` for implementation, investigation, independent review,
-retries, and added workers unless the user explicitly overrides it. Carry the
-resolved preference into each Task spec and verify the launch receipt's actual
-workspace differs from the coordinator checkout while remaining in the same Run.
+Use `AGENTS.md`'s human-main/Hanchou-child preference for future interactive and
+cron coordinators as well as supervised workers, reviews, and retries, unless
+explicitly overridden. Verify intended parent, host, and project against the
+selector, receipt, and actual workspace lineage. Preserve the current
+conversation/Run and pinned sources; only supervised workers belong to their
+coordinator's existing Run. The preference grants no cron activation authority.

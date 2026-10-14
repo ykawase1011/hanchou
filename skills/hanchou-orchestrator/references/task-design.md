@@ -24,9 +24,11 @@ the worker-side IPC check from [worker-evidence.md](worker-evidence.md), keeping
 the live injected preamble authoritative for handles and lifecycle commands.
 Before dispatch, record in the Task spec whether placement was explicitly
 requested, inherited from a stated conversation/project policy, or unspecified;
-name the selected target and the requirement to verify the resulting workspace
-identity. Recheck this for an independent reviewer, retry, or added worker rather
-than copying a previous `worker-start` selector.
+name the selected target, intended parent when child lineage is required, host,
+project, and the requirement to compare selector, receipt, and actual workspace
+identity under [placement.md](placement.md). Recheck this for an independent
+reviewer, retry, or added worker rather than copying a previous `worker-start`
+selector.
 
 Before creating transient resources, name their intended disposition and cleanup
 owner in the Task spec: remove after acceptance, reuse for named follow-up work,

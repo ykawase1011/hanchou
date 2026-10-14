@@ -39,6 +39,23 @@ PJ責任方針を作る場合は、起動とは別に`$hanchou-init`（Claude Co
 
 ## 4. skill名を指定して開始する
 
+「人間はmain、Hanchouは明示的な子worktree」という希望がある場合は、今後の
+coordinator用の入口にも適用します。インストール済みOrcaの公開`orca-cli` guideで
+対象parent・host・projectを確認し、明示的な親指定で子を作るか、確認済みの専用の
+子を選んで新しいagent sessionを開きます。作成前のselectorと、作成後のreceipt・
+実path・親子関係・host・projectを照合してから、下記promptを送ります。
+別pathや同じGit baseだけでは子配置の証拠になりません。必要な配置を公開操作で
+表現・確認できなければ、その制約を説明して開始を止めます。指定がなければOrcaの
+通常の既定を保ち、明示的な今回だけの例外は継続方針と区別します。
+
+既に開いている会話とbound Runはその場所に残します。配置希望から暗黙に移動・複製・
+再bindしません。新規の対話coordinatorは独立した会話として通常のstartupを行い、
+以前のRunのworkerや第2のcoordinatorにしません。監督下のworker・調査・review・
+追加担当・再試行は元のcoordinatorと同じRunで配置希望を引き継ぎます。
+固定の方針・定義参照元も実行先とは別に保持し、ignoredファイルを暗黙にcopyしたり
+新しいcheckoutの同名ファイルへ切り替えたりしません。
+詳細は[配置方針](../skills/hanchou-orchestrator/references/placement.md)を参照してください。
+
 Codexでは次を最初のpromptとして使います。`<依頼>`は実際の作業へ置き換えます。
 
 ```text

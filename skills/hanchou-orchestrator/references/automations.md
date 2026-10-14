@@ -36,6 +36,14 @@ Default to a fresh session. Use Orca's native reuse-session only when continuity
 is required. Do not bridge an Automation into an existing interactive Hanchou
 Run, mirror run history, or implement catch-up/overlap logic.
 
+Follow [placement.md](placement.md) for the user's coordinator placement
+preference, explicit parent verification, and persistent cron-child retention.
+An independent job keeps fresh occurrences even when they reuse the same
+verified child workspace. Validate the saved Automation's public target
+representations before an authorized trial or enablement; unknown or conflicting
+targets are not successful configuration. Keep disabled when instructed, and
+never treat placement isolation as launch-failure backpressure.
+
 For a request to periodically resume the same interactive Hanchou, read
 [continuation.md](continuation.md) first. Reuse-session availability alone does
 not qualify coordinator/Run continuity or authorize schedule creation.
