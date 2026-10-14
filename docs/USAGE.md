@@ -98,6 +98,17 @@ Taskの条件を変更できますが、1回限りの変更を既定方針へ保
 このrepositoryでのHanchou開発には`AGENTS.md`と`CLAUDE.md`に専用配置の方針があり、
 対象workerのTask仕様と起動receiptを照合します。この方針を配布skillの全利用者へは適用しません。
 
+Hanchouがworktreeを新規作成するときの既定名は、用途が分かる短い`hanchou-`名です。
+通常作業・調査・対話coordinator・追加worker・レビュー・再試行に適用し、例えば
+`hanchou-fix-login`、`hanchou-coordinator`、`hanchou-review-login`を使います。
+明示された名前を優先し、既にある`hanchou-`は重ねません。定期業務の継続利用先は
+`hanchou-cron`、ジョブの分離が必要なら`hanchou-cron-<job-name>`が既定です。
+命名だけを理由に新規作成や既存worktreeの改名・移動は行いません。
+同名でもproject・host・必要な親子関係・用途・所有者を確認してから再利用し、
+既定名の衝突には短い接尾辞か別の確認済み対象を選びます。明示名が衝突した場合は
+勝手に変えず選択を確認し、作成結果が不明な場合は別名で重複起動せず元のreceiptを照合します。
+詳細は[配置と命名](../skills/hanchou-orchestrator/references/placement.md)を参照してください。
+
 ブラウザQAでは利用者の明示指定を優先し、指定がなければ必要な操作ができるOrca内蔵
 ブラウザ、独立したagentブラウザ、必要時の利用者既存ブラウザの順に選びます。操作後の
 対象URL・識別子・保存状態を確認し、効果が不明な変更操作は重ねません。改善メモは明示

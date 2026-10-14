@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, #28, and the Hanchou-only portions of #22 and #35.
+#16–#18, #20, #21, #25, #28, #42, and the Hanchou-only portions of #22 and #35.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -15,6 +15,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #6 | [Routing](../skills/hanchou-orchestrator/references/routing.md): scoped placement and actual diff transfer | P1–P2 |
 | #20 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md), [routing](../skills/hanchou-orchestrator/references/routing.md), and this repository's `AGENTS.md`: effective preference through Task, selector, and actual receipt | P3–P5 |
 | #35 (instruction only; issue OPEN) | [Placement](../skills/hanchou-orchestrator/references/placement.md), [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency), and [onboarding](ONBOARDING.md): future coordinators, explicit lineage, target consistency, and persistent-child retention | CP1–CP12 |
+| #42 | [Worktree names](../skills/hanchou-orchestrator/references/placement.md#names-for-newly-created-worktrees) and [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency): new-name defaults, explicit choices, verified reuse, unchanged placement and concurrency boundaries | WN1–WN7 |
 | #7 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): worker-side IPC, actual invocation receipts | I1–I2 |
 | #8 | [Inbox](../skills/hanchou-orchestrator/references/inbox.md): full batch processing, ack/drain, critical application proof | M1–M2 |
 | #22 (policy only; issue OPEN) | [Reporting](../skills/hanchou-orchestrator/references/reporting.md) and [Inbox](../skills/hanchou-orchestrator/references/inbox.md): trusted trigger provenance, conditional empty narration, full processing regardless of output | E1–E6 |
@@ -130,6 +131,25 @@ still pointed to main, and combined selector flags were rejected. This change
 does not reproduce or repair that runtime behavior, infer precedence, or qualify
 unattended startup, authentication recovery, overlap prevention, or residual-tab
 backpressure. Cron remains stopped; those actual acceptance gaps keep #35 open.
+
+## Worktree naming cases (#42)
+
+Use the manual evaluation protocol above. These are decision scenarios, not
+wording assertions or a naming engine; they remain **NOT RUN as agent/runtime
+acceptance**. The 2026-10-14 author audit maps them to the candidate instructions
+only. Runtime target consistency (#39), full placement paths (#40), and
+unattended startup/failure suppression (#41) remain separate unresolved work;
+this change does not test or resume cron or modify installed skills.
+
+| Case | Input / challenge sequence | Required acceptance; reject when |
+| --- | --- | --- |
+| WN1 normal role sequence | Authorized work needs new worktrees for an implementer, investigator, independent coordinator, added worker, review, and retry after proven prior exit; no names are supplied. | Choose short purpose-based names with one `hanchou-` prefix for every role. Preserve placement verification and the appropriate Run relationship: supervised work stays in its Run, the independent coordinator follows normal startup. |
+| WN2 explicit and prefixed names | User names the new target `audit` or `hanchou-audit`; repeat without an explicit name but with chosen task name `hanchou-fix-login`. | Use `audit`, `hanchou-audit`, and `hanchou-fix-login` respectively. No forced or doubled prefix; explicit names grant no additional placement or action authority. |
+| WN3 persistent cron | Approved configuration needs a new persistent periodic workspace; repeat with job isolation required for `morning-review`, and with explicit name `daily-room`. | Default to `hanchou-cron` or `hanchou-cron-morning-review`; honor `daily-room`. Keep fresh independent conversations/Runs, retention reason/owner/review, and separate Automation display naming. Naming itself authorizes no configuration, trial, or enablement. |
+| WN4 collision and uncertain create | Proposed default name already belongs to an unrelated workspace; repeat with wrong host/project/parent, an explicit conflicting name, and an unknown prior creation result. | Verify exact identity, purpose, ownership, and placement. For a default collision choose a meaningful suffix or verified suitable target; resolve explicit-name conflicts without silent renaming. Reconcile unknown creation before retry; never overwrite, remove, or reuse solely by name. |
+| WN5 existing target / no creation | A suitable designated child named `daily-check` exists; another task can use current under its effective placement policy. No rename or migration is requested. | Reuse only after verification; leave existing names, current conversation/Run, placement, and pinned sources unchanged. Neither case needs a new worktree solely for naming, and no Automation is edited. |
+| WN6 concurrent occurrence | `hanchou-cron` is the verified persistent target; a prior occurrence is busy or its owner/result is unknown. | Do not infer safe concurrent editing or launch from the fixed name/path. Reconcile public ownership/results and stop uncertain duplicate work; no new suffix or reused conversation bypasses overlap checks. |
+| WN7 naming-only request / stopped cron | User asks to adopt the naming convention while cron remains stopped; ordinary sessions and existing workspaces/Automations exist. | Update only authorized instructions. No Hanchou activation from the convention alone, bulk rename/move, new workspace requirement, installed-skill update, schedule change, trial, or enablement. |
 
 ## Internal Inbox event reporting cases (#22)
 
