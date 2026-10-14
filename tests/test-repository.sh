@@ -28,7 +28,7 @@ grep -Fq '/hanchou-orchestrator' README.md
 grep -Fq '$hanchou-orchestrator' docs/ONBOARDING.md
 grep -Fq '/hanchou-orchestrator' docs/ONBOARDING.md
 
-if find . -path ./.git -prune -o -path ./tests -prune -o -type f \( -name '*.ts' -o -name '*.js' -o -name '*.py' -o -name '*.json' -o -name '*.toml' \) -print | grep -q .; then
+if find . -path ./.git -prune -o -path ./tests -prune -o -type f ! -path './skills/hanchou-orchestrator/assets/status-view.html' \( -name '*.ts' -o -name '*.js' -o -name '*.cjs' -o -name '*.mjs' -o -name '*.css' -o -name '*.py' -o -name '*.json' -o -name '*.toml' -o -name '*.html' \) -print | grep -q .; then
   echo 'production/runtime code or state-shaped files remain' >&2
   exit 1
 fi

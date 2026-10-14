@@ -43,7 +43,9 @@ to reduce visible output.
 ## Coordination and completion evidence
 
 The Orca Run Inbox and Delivery mechanics are the coordination source of truth.
-Hanchou does not mirror them into files or a second database. Follow
+Hanchou does not mirror them into files or a second database. An explicitly
+opted-in [local status view](status-view.md) is only a reconstructible human
+presentation, never an Inbox, ack log or source of execution authority. Follow
 [inbox.md](inbox.md) for complete Delivery processing and critical steering,
 [worker-evidence.md](worker-evidence.md) for stage/liveness/IPC claims, and
 [cleanup.md](cleanup.md) for result preservation and resource accounting.

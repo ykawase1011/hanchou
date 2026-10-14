@@ -359,12 +359,14 @@ class DistributionContracts(unittest.TestCase):
             self.assertFalse(expected - visited,
                              f"unreachable references: {sorted(expected - visited)}")
 
-    def test_exact_optional_skill_inventory_and_no_executable_payload(self):
+    def test_exact_optional_skill_inventory_and_narrow_static_exception(self):
         skills = ROOT / "skills"
         self.assertEqual({p.parent.name for p in skills.glob("*/SKILL.md")},
                          {"hanchou-orchestrator", "hanchou-kaizen", "hanchou-publish-issues", "hanchou-update", "hanchou-cron", "hanchou-init"})
         for path in skills.rglob("*"):
             if path.is_file():
+                if path == skills / "hanchou-orchestrator/assets/status-view.html":
+                    continue  # Sole read-only presentation exception; safety tested separately.
                 self.assertIn(path.suffix, {".md", ".yaml"}, str(path))
 
     def test_relative_document_links_resolve(self):

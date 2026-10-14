@@ -91,7 +91,10 @@ Use the same bound Run for the lifetime of this Hanchou conversation. All its
 user requests become Tasks inside that Run; they do not each create a Run.
 At most one active coordinator owns a Run. A project may have multiple Hanchou
 conversations and Runs, usually with one familiar entrypoint. Never persist Run,
-Task, Dispatch, or terminal identifiers in repository files or shared config.
+Task, Dispatch, or terminal identifiers in tracked repository files or shared
+config. The explicitly opted-in private status snapshot may retain minimal
+non-displayed identity tuples solely for reconstructible presentation comparison;
+it never establishes ownership or a second authority store.
 
 For supervised work, follow the live `orchestration` guide and prefer its
 `worker-start` path. For a user-requested full ownership transfer, use the
@@ -112,6 +115,7 @@ Use these topic gates; do not load every reference for every request:
 | Investigating, repairing, or reviewing a data migration | [migration-acceptance.md](references/migration-acceptance.md) |
 | Browser/API QA or transient browser tool errors | [browser-qa.md](references/browser-qa.md) |
 | Requested notification aggregation design | [notifications.md](references/notifications.md) |
+| Explicit local status-view request or opted-in meaningful update | [status-view.md](references/status-view.md) |
 | Requested continuation after a turn ends | [continuation.md](references/continuation.md) |
 
 ## Improvement notes

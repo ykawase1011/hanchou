@@ -10,3 +10,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make check
+
+  status-view-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test-only browser in isolated cache
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/status-view-browsers
+          PLAYWRIGHT_SKIP_BROWSER_GC: '1'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/status-view" --no-save --package-lock=false playwright@1.64.0
+          "$RUNNER_TEMP/status-view/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Exercise local snapshot
+        env:
+          NODE_PATH: ${{ runner.temp }}/status-view/node_modules
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/status-view-browsers
+        run: make check-status-view-browser

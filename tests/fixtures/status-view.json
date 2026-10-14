@@ -1,0 +1,395 @@
+{
+  "version": 1,
+  "title": "練習 project — 状況ビュー",
+  "generatedAt": "2026-01-20T09:00:00Z",
+  "staleAfterHours": 24,
+  "coverage": "2つの対話と取得できた作業のみ（全件保証なし）",
+  "writerLabel": "対話 A の coordinator",
+  "writer": {
+    "run": "synthetic-run-a",
+    "host": "sample-host",
+    "project": "github:example/sample"
+  },
+  "revision": "synthetic-revision-1",
+  "inputs": [
+    {
+      "source": "synthetic-public-observation",
+      "revision": "synthetic-input-1"
+    }
+  ],
+  "gaps": [
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "text": "会話の全原文は未取得です。"
+    }
+  ],
+  "requests": [
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "title": "検索画面の改善",
+      "group": "decision",
+      "runLabel": "対話 A",
+      "summary": "現在の依頼を要約した合成例です。",
+      "owner": "担当 A",
+      "next": "根拠を確認して次の判断を報告",
+      "decision": "PR 作成まで許可・マージ判断待ち",
+      "acceptanceCriteria": "読みやすさと根拠の確認",
+      "original": {
+        "observedAt": "2026-01-20T09:00:00Z",
+        "source": "合成された公開観測",
+        "scope": "練習用 project の観測範囲",
+        "quality": "observed",
+        "text": "検索できる画面にしてください。",
+        "project": "github:example/sample",
+        "url": "https://github.com/example/sample/issues/12"
+      },
+      "corrections": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "訂正 1",
+          "text": "まず PR を作成し、マージは私の判断を待ってください。",
+          "supersedes": "原依頼の統合範囲"
+        }
+      ],
+      "lifecycle": {
+        "worker": "reported",
+        "acceptance": "pending",
+        "pr": "created",
+        "merge": "pending",
+        "cleanup": "retained"
+      },
+      "pullRequests": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "PR #10",
+          "state": "作成済み・未マージ",
+          "head": "synthetic-head",
+          "project": "github:example/sample",
+          "url": "https://github.com/example/sample/pull/10"
+        }
+      ],
+      "worktreeRefs": [
+        {
+          "identity": "synthetic-child",
+          "host": "sample-host",
+          "project": "github:example/sample"
+        }
+      ]
+    },
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "title": "利用手順の見直し",
+      "group": "active",
+      "runLabel": "対話 A",
+      "summary": "現在の依頼を要約した合成例です。",
+      "owner": "担当 A",
+      "next": "根拠を確認して次の判断を報告",
+      "decision": "PR 作成まで許可・マージ判断待ち",
+      "acceptanceCriteria": "読みやすさと根拠の確認",
+      "original": {},
+      "corrections": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "訂正 1",
+          "text": "まず PR を作成し、マージは私の判断を待ってください。",
+          "supersedes": "原依頼の統合範囲"
+        }
+      ],
+      "lifecycle": {
+        "worker": "reported",
+        "acceptance": "pending",
+        "pr": "created",
+        "merge": "pending",
+        "cleanup": "retained"
+      },
+      "pullRequests": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "PR #10",
+          "state": "作成済み・未マージ",
+          "head": "synthetic-head",
+          "project": "github:example/sample",
+          "url": "https://github.com/example/sample/pull/10"
+        }
+      ],
+      "worktreeRefs": [
+        {
+          "identity": "synthetic-child",
+          "host": "sample-host",
+          "project": "github:example/sample"
+        }
+      ]
+    },
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "title": "外部レビューの確認",
+      "group": "waiting",
+      "runLabel": "対話 B",
+      "summary": "現在の依頼を要約した合成例です。",
+      "owner": "担当 A",
+      "next": "根拠を確認して次の判断を報告",
+      "decision": "PR 作成まで許可・マージ判断待ち",
+      "acceptanceCriteria": "読みやすさと根拠の確認",
+      "original": {
+        "observedAt": "2026-01-20T09:00:00Z",
+        "source": "合成された公開観測",
+        "scope": "練習用 project の観測範囲",
+        "quality": "observed",
+        "text": "検索できる画面にしてください。",
+        "project": "github:example/sample",
+        "url": "https://github.com/example/sample/issues/12"
+      },
+      "corrections": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "訂正 1",
+          "text": "まず PR を作成し、マージは私の判断を待ってください。",
+          "supersedes": "原依頼の統合範囲"
+        }
+      ],
+      "lifecycle": {
+        "worker": "reported",
+        "acceptance": "pending",
+        "pr": "closed",
+        "merge": "pending",
+        "cleanup": "retained"
+      },
+      "pullRequests": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "stale",
+          "label": "PR #10",
+          "state": "closed without merge",
+          "head": "synthetic-head",
+          "project": "github:example/sample",
+          "url": "https://github.com/example/sample/pull/10"
+        }
+      ],
+      "worktreeRefs": [
+        {
+          "identity": "synthetic-child",
+          "host": "sample-host",
+          "project": "github:example/sample"
+        }
+      ]
+    },
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "stale",
+      "title": "受入済みの調査",
+      "group": "result",
+      "runLabel": "対話 B",
+      "summary": "現在の依頼を要約した合成例です。",
+      "owner": "担当 A",
+      "next": "根拠を確認して次の判断を報告",
+      "decision": "PR 作成まで許可・マージ判断待ち",
+      "acceptanceCriteria": "読みやすさと根拠の確認",
+      "original": {
+        "observedAt": "2026-01-20T09:00:00Z",
+        "source": "合成された公開観測",
+        "scope": "練習用 project の観測範囲",
+        "quality": "observed",
+        "text": "検索できる画面にしてください。",
+        "project": "github:example/sample",
+        "url": "https://github.com/example/sample/issues/12"
+      },
+      "corrections": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "訂正 1",
+          "text": "まず PR を作成し、マージは私の判断を待ってください。",
+          "supersedes": "原依頼の統合範囲"
+        }
+      ],
+      "lifecycle": {
+        "worker": "reported",
+        "acceptance": "accepted",
+        "pr": "created",
+        "merge": "merged",
+        "cleanup": "done"
+      },
+      "pullRequests": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "PR #10",
+          "state": "マージ確認済み",
+          "head": "synthetic-head",
+          "project": "github:example/sample",
+          "url": "https://github.com/example/sample/pull/10"
+        }
+      ],
+      "worktreeRefs": [
+        {
+          "identity": "synthetic-deleted",
+          "host": "sample-host",
+          "project": "github:example/sample"
+        }
+      ]
+    },
+    {
+      "observedAt": null,
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "conflict",
+      "title": "観測できない作業",
+      "group": "unknown",
+      "runLabel": "対話 A",
+      "summary": "現在の依頼を要約した合成例です。",
+      "owner": "担当 A",
+      "next": "根拠を確認して次の判断を報告",
+      "decision": "PR 作成まで許可・マージ判断待ち",
+      "acceptanceCriteria": "読みやすさと根拠の確認",
+      "original": {
+        "observedAt": "2026-01-20T09:00:00Z",
+        "source": "合成された公開観測",
+        "scope": "練習用 project の観測範囲",
+        "quality": "observed",
+        "text": "検索できる画面にしてください。",
+        "project": "github:example/sample",
+        "url": "https://github.com/example/sample/issues/12"
+      },
+      "corrections": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "訂正 1",
+          "text": "まず PR を作成し、マージは私の判断を待ってください。",
+          "supersedes": "原依頼の統合範囲"
+        }
+      ],
+      "lifecycle": {
+        "worker": "reported",
+        "acceptance": "pending",
+        "pr": "created",
+        "merge": "pending",
+        "cleanup": "retained"
+      },
+      "pullRequests": [
+        {
+          "observedAt": "2026-01-20T09:00:00Z",
+          "source": "合成された公開観測",
+          "scope": "練習用 project の観測範囲",
+          "quality": "observed",
+          "label": "PR #10",
+          "state": "作成済み・未マージ",
+          "head": "synthetic-head",
+          "project": "github:example/sample",
+          "url": "https://github.com/example/sample/pull/10"
+        }
+      ],
+      "worktreeRefs": [
+        {
+          "identity": "synthetic-child",
+          "host": "sample-host",
+          "project": "github:example/sample"
+        }
+      ],
+      "note": "fleet と個別観測が異なります。無応答から停止とは判断できません。"
+    }
+  ],
+  "worktrees": [
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "identity": "synthetic-main",
+      "host": "sample-host",
+      "project": "github:example/sample",
+      "label": "人間の checkout",
+      "role": "人間用 main",
+      "hostLabel": "ローカル（例）",
+      "projectLabel": "練習 project",
+      "presence": "存在を観測",
+      "owner": "利用者",
+      "retainedReason": "人間の作業と固定参照元",
+      "nextReview": "次の作業終了時",
+      "history": "変更なし"
+    },
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "identity": "synthetic-child",
+      "host": "sample-host",
+      "project": "github:example/sample",
+      "parent": {
+        "identity": "synthetic-main",
+        "host": "sample-host",
+        "project": "github:example/sample"
+      },
+      "label": "調査",
+      "role": "Hanchou 子",
+      "hostLabel": "ローカル（例）",
+      "projectLabel": "練習 project",
+      "presence": "存在を観測",
+      "owner": "担当 A",
+      "retainedReason": "独立受入を待つ",
+      "nextReview": "受入直後",
+      "history": "明示した親から作成"
+    },
+    {
+      "observedAt": "2026-01-20T09:00:00Z",
+      "source": "合成された公開観測",
+      "scope": "練習用 project の観測範囲",
+      "quality": "observed",
+      "identity": "synthetic-deleted",
+      "host": "sample-host",
+      "project": "github:example/sample",
+      "parent": {
+        "identity": "synthetic-main",
+        "host": "sample-host",
+        "project": "github:example/sample"
+      },
+      "label": "調査",
+      "role": "Hanchou 子（過去）",
+      "hostLabel": "ローカル（例）",
+      "projectLabel": "練習 project",
+      "presence": "削除確認済み",
+      "owner": "担当 B",
+      "retainedReason": "成果は別の正本に保存済み",
+      "nextReview": "なし（回収確認済み）",
+      "history": "過去の関係を保存。表示名は同じでも別の作業場所"
+    }
+  ]
+}

@@ -295,3 +295,8 @@ the installed v1.4.195 UI itself has no such toggle.
 9. **Passed:** disabled Automation creation/manual run/history/edit/removal for
    the simple path, plus an installed-skill Temporary Hanchou manual run through
    Run/Task/Dispatch/worker release/Delivery ack.
+
+## Optional static status view
+
+See [status view validation](STATUS_VIEW_VALIDATION.md) for synthetic security,
+browser, and publication-policy coverage and the limits of those checks.
