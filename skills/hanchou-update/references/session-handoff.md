@@ -123,7 +123,9 @@ preserved brief. Ask that new conversation to read the actual installed paths
 and verify the revision/content and source access as above. After reviewing its
 acknowledgment, the user can close the identified old tab manually. This is a
 manual recovery, not automated E2E success; do not guess UI automation. If the
-user requires fully automatic structured rotation/current-Run preservation,
-leave it blocked on a public independent-session lifecycle, verifiable fresh
-content acknowledgment, fenced ownership/mail transfer, and exact closure
-receipt/recovery contract. Never enable cron to bridge this gap.
+user requires fully automatic structured rotation, leave it blocked on a public
+independent-session lifecycle, verifiable fresh-content acknowledgment, safe
+settled boundary, and exact closure receipt/recovery contract. Fenced ownership/
+mail transfer is additionally required only if the user asks to preserve the
+current Run across owners; it is not a prerequisite for a settled-boundary new
+conversation/new Run. Never enable cron to bridge this gap.

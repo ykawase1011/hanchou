@@ -86,10 +86,16 @@ fixture評価と、別途許可された実機試験は分けます。
 
 ## 続きの公開契約に必要な受入条件
 
-#44の完全自動交代を閉じるには、公開経路による独立structuredセッションの
-create/read/identity/限定close、fresh installed skill実内容の受領確認、旧coordinatorを
-fenceしてcurrent Runのtask/mail/gate/権限を保持する移譲、late mail競合の扱い、
-旧自分close後のreceipt観測・unknown結果の重複防止/回復が必要です。
-PTYとstructured、old-selfと後任cleanup、通常新Run開始とcurrent Run移譲を別々に
-実機検証します。この一覧は後続Issue用の要件であり、存在しないAPI名を指定しません。
+#44のfresh tab確認後にold-selfを閉じる要求は、全旧作業がsettleした区切りでの
+新会話/新Runへの交代で満たせます。current Runの原子的移譲は必須ではありません。
+その経路の完全自動交代には、公開経路による独立sessionのcreate/read/identity/
+限定close、可視tab確認、新会話の実skill内容受領、late mailによる区切りの無効化、
+旧自分close後のreceipt観測・unknown結果の重複防止/回復を実機確認する必要があります。
+PTY経路は公開契約あり/実機未試験、structured経路は独立lifecycleの公開契約も未資格です。
+
+利用者が**追加で同じcurrent Runの維持を要求した場合だけ**、旧coordinatorをfenceし
+task/mail/gate/権限を保持する公開移譲契約が必要になります。この追加経路を#44の
+通常の新会話要求の前提にしません。PTYとstructured、old-selfと後任cleanup、
+通常新Run開始とcurrent Run移譲を別々に実機検証します。この一覧は後続Issue用の
+要件であり、存在しないAPI名を指定しません。
 別Issueがまだ公開されていない場合は#44を未完の追跡元として残します。
