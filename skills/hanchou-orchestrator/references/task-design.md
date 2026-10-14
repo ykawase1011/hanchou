@@ -36,6 +36,12 @@ or retain for a stated reason and next action. Reconcile that intent with each
 launch receipt's actual resources, including failed starts and retries, in the
 Run's public Task/report evidence. Apply this to investigation and review workers
 too; keep execution identifiers out of repository files and add no registry.
+The sole exception under [status-view.md](status-view.md) is an explicitly opted-in,
+private, non-shared, reconstructible snapshot at a verified ignored or
+outside-repository destination, retaining minimal non-displayed identity tuples
+for presentation comparison only. IDs remain prohibited in distributed files and
+other configuration; the exception permits no authority, recovery, execution
+ledger or other state store.
 Use [cleanup.md](cleanup.md) for the final resource accounting.
 
 For implementation and PR-preparation workers, carry the effective

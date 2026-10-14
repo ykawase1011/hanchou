@@ -53,6 +53,20 @@ const {pathToFileURL} = require('node:url');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.screenshot({path:path.join(directory,'mobile.png'),fullPage:true});
 
+    // Closure alone says nothing about merge; assert both independent lifecycle rows.
+    for (const [merge, expected] of [['merged','マージ確認済み'],[undefined,'不明・未観測'],['pending','未マージ']]) {
+      const closed=structuredClone(fixture.requests[2]);
+      closed.lifecycle={pr:'closed',acceptance:'accepted'};
+      if (merge !== undefined) closed.lifecycle.merge=merge;
+      closed.pullRequests=merge === 'pending' ? closed.pullRequests : [];
+      await open({...fixture,requests:[closed]});
+      const stages=page.locator('#requests article > dl').nth(1);
+      assert.equal(await stages.locator('dt').filter({hasText:/^PR$/}).locator('+ dd').innerText(),'クローズ確認済み');
+      assert.equal(await stages.locator('dt').filter({hasText:/^マージ$/}).locator('+ dd').innerText(),expected);
+      if (merge === 'pending') assert.match(await text('#requests'), /closed without merge/);
+      else assert.doesNotMatch(await text('#requests'), /closed without merge|未マージ/);
+    }
+
     const hostile=structuredClone(fixture);
     const attack='</script><script>globalThis.pwned=1</script><img src=https://evil.invalid onerror=globalThis.pwned=1> 日本語';
     hostile.requests[0].title=attack;

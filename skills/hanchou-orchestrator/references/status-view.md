@@ -104,6 +104,10 @@ in `tests/fixtures/status-view.json` for repository QA, not as a user's history.
   `none|pending|merged`; `cleanup` = `pending|retained|done`. Unknown/missing values
   stay unknown. These are independently observed labels, never derived from each
   other; explain differing evidence/times in `note` and PR records.
+  `pr: closed` is neutral about merge status: it can accompany `merge: merged`
+  or an unknown merge observation. Use `merge: none|pending` only with explicit
+  unmerged evidence; a PR record's `state` may say `closed without merge` only
+  when that combined fact was observed, never from closure alone.
 - PR: `label`, `state` (explicit observed fact, including created/closed/merged),
   `head`, observation metadata, optional `url`, `project` (`github:owner/repository`).
   Originals/corrections may also have `url` and `project`. First validate the source

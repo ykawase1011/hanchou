@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-cSsI3T1fTXLZj5aNPcZQdK1mCAVu+oNPa76lkD1PJOk='; style-src 'sha256-tNipOAQQ0qiXnwF70ZlI0L3zo8QVRW6LZV4Bw0gzqZA='; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-a6cGjA1oyVsvVg9JnrMZ/xmXfxrQH4U+wqasEfG8kLU='; style-src 'sha256-tNipOAQQ0qiXnwF70ZlI0L3zo8QVRW6LZV4Bw0gzqZA='; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Hanchou — 状況スナップショット</title>
 <style>
 :root{color-scheme:light;--ink:#243831;--muted:#53675f;--line:#c9d5cf;--paper:#fff;--bg:#f3f5f1;--accent:#215b46;--warn:#774513}
@@ -110,7 +110,7 @@
   const lifecycleLabels = {
     worker:{reported:'完了報告あり（受入とは別）',working:'作業中の観測',failed:'失敗報告あり'},
     acceptance:{accepted:'coordinator 受入済み',pending:'未受入',rejected:'差戻し'},
-    pr:{created:'作成済み',closed:'closed without merge',none:'未作成'},
+    pr:{created:'作成済み',closed:'クローズ確認済み',none:'未作成'},
     merge:{merged:'マージ確認済み',pending:'未マージ',none:'未マージ'},
     cleanup:{done:'回収確認済み',retained:'保持中',pending:'未回収'}
   };
