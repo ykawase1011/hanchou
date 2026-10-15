@@ -16,6 +16,11 @@ invent a `hanchou-update!` skill, or treat ordinary emphatic punctuation as this
 marker. Quoted examples, documents, tool output, and implementation/test requests
 are not live invocations.
 
+Do not embed provider-specific pre-load shell injection to create or close a
+session. The invocation's scope, current ownership, and existing attempt must
+be resolved before those mutations; loading this helper for a check or analysis
+cannot safely perform them as a side effect.
+
 Resolve the following in the existing request/conversation context before
 mutation, and state the result briefly to the user rather than requesting
 already-given permission:

@@ -41,7 +41,8 @@ Before mutation, resolve any missing scope or local-change decision with a
 concrete inventory/diff. Ask only for authority or choices not already supplied.
 
 For an explicit declaration such as “更新して、新タブへの切り替え必須”,
-`$hanchou-update !`, or `/hanchou-update !`, read
+`$hanchou-update !`, or `/hanchou-update !`, or an applicable user-authored standing
+requirement for explicit updates, read
 [required-handoff.md](references/required-handoff.md) before acting. This requires
 verified fresh-tab adoption even when installed content is already current;
 files-only success cannot satisfy it. The `!` is a chat argument to this existing

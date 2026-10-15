@@ -119,6 +119,45 @@ fixture評価と、別途許可された実機試験は分けます。
 セッション操作の模擬runtimeは追加していません。インストール済みskill・現行会話・
 cronはこの改善作業では変更せず、完全自動交代の受入は引き続き**UNVERIFIED**です。
 
+## 2026-10-15: 宣言的な切り替え必須条件 (#47)
+
+配置を変える際の会話保持ルールが更新交代の禁止として解釈され、ファイル更新で
+終了した事例を対象にしました。通常更新の既定動作を維持しつつ、利用者が新タブ確認を
+完了条件にできる[必須指定の契約](../skills/hanchou-update/references/required-handoff.md)を追加しました。
+このrepositoryのAGENTS.mdも、会話保持が配置変更時の指示であることを明確にしました。
+利用者の実際のno-close・同一Run指定を無効化する変更ではありません。
+
+| 候補 | 判断 |
+| --- | --- |
+| 「新タブへの切り替え必須」という自然文 | 正式な宣言。意味を読め、既存の指示元で明示更新だけの継続方針にもできる |
+| 既存skill呼び出し直後の単独 `!` | 同じ宣言の短縮形。新skill名・shell command・安全条件を解除するforceではない |
+| SKILL.mdへ `!` コマンドを埋め込むdynamic context injection | 検討したが交代操作には採用しない。指示の読込前に起動/終了させると、依頼範囲・安全な区切り・既存attemptの確認に先行する |
+| 設定ファイル、専用コマンド、launcherによる機械的強制 | 採用しない。既存のskill契約で表せる範囲を超え、独自runtime等を持たないrepositoryの責務から外れる |
+
+Claude Codeの[公式skill仕様](https://code.claude.com/docs/en/skills#inject-dynamic-context)では、
+dynamic context injectionはモデルがskill本文を受け取る前にshellを実行し、出力へ置換します。
+設定や配布経路により実行されない場合もあります。したがって宣言だけで全環境の交代を
+保証する仕組みにはなりません。読込前に破壊的な交代を始めるより、範囲判断後の公開CLI
+操作と独立した証拠を必要とする設計を選びました。これは仕様を踏まえた設計判断です。
+今回の単独 `!` 引数はそのshell機能とは別で、通常の文章として解釈させます。
+Claudeの[引数仕様](https://code.claude.com/docs/en/skills#pass-arguments-to-skills)では
+placeholderがなくても引数は本文末尾へ渡されます。Codexの[公式skill仕様](https://learn.chatgpt.com/docs/build-skills#how-chatgpt-and-codex-use-skills)は
+promptでのskill明示と本文の段階的読込を説明しており、今回読んだページからClaude式の
+読込前shell実行を共通機能とは認定していません。
+
+必須指定は「必ず成功させられる」という保証ではなく、未達を成功へ読み替えない
+完了条件です。変更なしでも新タブ確認が必要ですが、既存scope・local変更保護・
+公開操作・安全な区切り・実内容照合は維持します。旧終了だけが未対応なら、実行可能な
+新タブ確認を進めたうえで、旧終了と全体の未完了を区別します。対応不能や不明結果では
+旧会話とreceiptを保持し、重複起動や無期限の待機を避けて不足段階を報告します。
+
+[生の入力fixture](../tests/fixtures/update-requests.md)は18の独立会話を含みます。
+評価者にはskill・fixture・副作用の禁止だけを渡し、期待結果や実装者の結論を渡しません。
+実機のinstall/launch/closeを禁じた指示判断のforward-testであり、`!`のプロンプト解釈と
+各安全条件を評価します。Codex/Claude UIのskill選択・引数転送の実機試験や、完全自動交代の
+E2Eを証明するものではありません。特定クライアントが短縮形を渡さない場合も、自然文の
+宣言を利用できます。独立評価結果は以下に記録します。
+
 ## 続きの公開契約に必要な受入条件
 
 #44のfresh tab確認後にold-selfを閉じる要求は、全旧作業がsettleした区切りでの
