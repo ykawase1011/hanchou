@@ -100,6 +100,23 @@ fresh-tab recovery after work settles. See [update acceptance and capability
 limits](UPDATE_VALIDATION.md); installing files does not itself refresh a running
 agent, close its session or enable cron.
 
+The final update report separates verified file installation, fresh-tab adoption,
+and old-session closure. For example, files may be current while adoption is
+blocked and the old session is retained. A missing structured operation in the
+inspected public CLI is a bounded finding, not proof that Orca has no such
+internal feature. Full automation is not established until the requested
+endpoint path has been exercised and verified. A helper that updates its own
+instructions also distinguishes the initially loaded workflow from the installed
+one; new text alone cannot broaden installation-only authority. Capability
+findings do not authorize external Issue/PR/comment publication.
+An ordinary Codex/Claude terminal is a valid successor when the user accepts
+that surface. Its launch and content acknowledgment can succeed even when the
+old structured chat's CLI close operation is unavailable; report the retained
+old chat explicitly. Automatic handoff uses public CLI operations only, without
+Computer Use or a GUI fallback. An explicit request to implement and track
+blocked work authorizes the corresponding in-scope issue follow-up; exclusions
+on destinations still apply.
+
 Remove through the installer/UI that created the copy, with explicit skill
 names, matching agents and scope. For example, for an unmodified global core:
 

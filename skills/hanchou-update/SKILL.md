@@ -38,7 +38,9 @@ concrete inventory/diff. Ask only for authority or choices not already supplied.
 
 For the default workflow or a separately authorized fresh-session/reload request,
 verify the public capability and safe boundary in
-[session-handoff.md](references/session-handoff.md). Implementing this feature,
+[session-handoff.md](references/session-handoff.md), selecting the successor
+surface separately from the old endpoint and using public CLI operations only.
+Implementing this feature,
 installation alone, or requesting a check does not authorize replacing the current
 conversation. Never change or enable cron as part of an update.
 
@@ -130,7 +132,11 @@ scopes/targets; check unrelated skill contents, aliases and metadata entries
 against the before-state. Report the revision and actual paths, updated/skipped
 skills, preserved changes, and any local shadowing. An exit code alone is not
 proof of success. Installed content verification does not prove that this running
-agent loaded it. Continue the default update workflow through
+agent loaded it. Before the final report, account separately for verified file
+installation, fresh-tab adoption, and exact old-session closure using the
+[outcome reporting rules](references/session-handoff.md#report-the-observed-outcome).
+Do not report the whole workflow complete from installation evidence alone.
+Continue the default update workflow through
 [session-handoff.md](references/session-handoff.md) when content changed or the
 session is demonstrably stale and rotation is in scope. Otherwise report current,
 or that files were updated while this conversation may still hold prior content,

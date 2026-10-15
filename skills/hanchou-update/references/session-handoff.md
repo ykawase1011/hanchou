@@ -10,6 +10,23 @@ alone does not trigger it. Explicit reload is distinct. Reuse prior attempt and
 receipt evidence so repeated task wakes cannot open fresh tabs. Do not replace
 the current session while merely implementing or testing this policy.
 
+## Select the successor and control path
+
+A fresh agent tab does not inherently mean a structured chat. When the user
+accepts an ordinary Codex/Claude terminal, use the configured agent's public
+Orca terminal/worktree workflow; do not require independent structured-session
+creation. Preserve an explicitly requested surface or provider. Select the
+successor separately from identifying the old endpoint: a PTY successor does
+not turn an old structured chat into a terminal that `terminal close` accepts.
+
+Use the public Orca CLI for this automatic handoff. Do not switch to Computer
+Use, accessibility actions, GUI shortcuts, private RPC, or process killing when
+an operation is missing. A user choosing an ordinary terminal permits that
+successor type, not a different control method. If the old endpoint cannot be
+closed through a verified CLI contract, retain it and report that exact gap.
+An explicitly requested new terminal and its adoption check may still complete;
+disclose the retained old endpoint and do not call this full automatic rotation.
+
 ## Capability gate
 
 Resolve and reuse the actual Orca executable by its official discovery rule.
@@ -30,6 +47,15 @@ this historical finding. Ordinary `run-use` binding and legacy-only takeover
 are not qualified current-Run transfer. Never start a second coordinator in the
 old Run, dispatch the successor as a worker, or create a replacement Run to
 pretend unfinished old-Run work transferred.
+
+Describe a missing operation as not found in the inspected public contract,
+naming the version, endpoint type and missing step. This does not prove that
+Orca lacks the feature internally or needs a new implementation; exposing or
+documenting an existing operation may suffice. An empty terminal inventory
+does not identify the current session as a PTY or prove no structured session
+exists. If identity/type cannot be verified, report that uncertainty and keep
+the current endpoint. Do not silently switch a structured-chat request to a
+PTY successor to bypass the missing contract.
 
 ## Safe boundary and preserved state
 
@@ -70,8 +96,10 @@ It is a new entrypoint, not live Run takeover or same-conversation continuation.
 
 ## Conditional launch, read-back, and close
 
-If the requested endpoint types, ownership boundary, and public workflow are
-supported, perform the already authorized independent launch. Apply the user's
+Check launch/read-back and old-close support separately. If the requested new
+endpoint and ownership boundary have a public workflow, perform the already
+authorized independent launch, subject to the retained-old-endpoint rule above.
+Apply the user's
 placement preference, verify parent/host/project/path against the launch receipt,
 and use a short `hanchou-` name for a new worktree absent an explicit name. A
 fresh session alone does not require a checkout. Use the configured agent through
@@ -124,11 +152,9 @@ must not restart old task coordination or trigger a blind broad retry.
 
 ## Supported recovery when a gate is unavailable
 
-Report installation and session adoption separately: for example, “files updated
-and verified; fresh structured-session handoff/old-self close unsupported by
-the inspected public contract; current conversation retained.” Preserve the
-prepared handoff and continue unrelated authorized work in the current session.
-Do not promise that this agent has refreshed its loaded skill.
+Use the outcome report below. Preserve the prepared handoff and continue
+unrelated authorized work in the current session. Do not promise that this
+agent has refreshed its loaded skill.
 
 When the old work is settled, the user can open a fresh Orca agent tab using the
 normal app workflow, explicitly invoke Hanchou if desired, and provide the
@@ -142,3 +168,44 @@ settled boundary, and exact closure receipt/recovery contract. Fenced ownership/
 mail transfer is additionally required only if the user asks to preserve the
 current Run across owners; it is not a prerequisite for a settled-boundary new
 conversation/new Run. Never enable cron to bridge this gap.
+
+## Report the observed outcome
+
+At the end of an update request, including an interrupted or blocked handoff,
+state three independent results in the user's language. A short sentence is
+enough when the result is simple:
+
+| Result | Evidence and limits |
+| --- | --- |
+| Files | Updated/current/partial/failed, with the verified revision and placement. Installer success alone is insufficient. |
+| Fresh tab | Not requested/not needed/not attempted/blocked/unverified/verified. Name the unmet gate when blocked; only the actual successor's content comparison and handoff response establish verified adoption. |
+| Old session | Retained/closure unverified/closure verified, with the reason or exact-endpoint public evidence. Caller disappearance is not confirmation. |
+
+For example: “Files updated and verified at <revision>; fresh-tab adoption
+not attempted because independent structured create/read was not found in the
+inspected Orca <version> CLI; current session retained.” Give manual recovery
+only as a fallback with this reason, not as a substitute for an available,
+already authorized automatic path. Report pending results without claiming
+the entire workflow is complete or that full automation has been validated.
+
+If the update replaces this helper's own instructions, distinguish the workflow
+loaded at the start from the newly installed one. Read the verified changes
+before reporting; explain any remaining adoption step. New skill text does not
+retroactively expand a files-only/installation-only request or override a
+keep-open instruction. Honor any separately supplied adoption authority, using
+the same request's receipt evidence to avoid duplicate launches. Reading the
+new instructions in the old conversation is not fresh-tab adoption.
+
+A capability gap does not authorize an upstream Issue, PR, comment, Orca
+update, or private API workaround. When improvement work is requested, record
+the bounded evidence and required observable behavior locally under the
+improvement-notes contract; retain an existing relevant issue as the tracking
+reference rather than creating a duplicate. Publishing remains a separate,
+explicitly requested action. Distinguish instruction changes, documented public
+support, and successful end-to-end execution when reporting an improvement.
+When the user has already requested both implementation and issue tracking for
+blocked work, finish the feasible authorized work and publish/reuse the in-scope
+tracking issue before ending the turn; do not repeatedly defer this to another
+user reminder. Preserve destination exclusions: if Orca-side publication is
+forbidden, track the Hanchou acceptance gap in Hanchou when authorized, without
+posting to Orca or claiming its internal implementation is absent.
