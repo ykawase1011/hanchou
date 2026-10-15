@@ -26,8 +26,11 @@ public launch selector, and verify receipt plus actual path, parent lineage,
 host, and project before accepting placement. A distinct path alone is not
 proof of a child relationship.
 
-Preserve the current conversation and its bound Run; do not silently move,
-clone, or rebind them. A future independent interactive coordinator follows
+When changing execution placement, preserve the current conversation and its
+bound Run; do not silently move, clone, or rebind them. This placement rule is
+not a no-close restriction on an explicitly authorized `hanchou-update` handoff.
+An actual keep-open or same-Run requirement still applies to that handoff.
+A future independent interactive coordinator follows
 normal startup in its verified child, not a worker dispatch into the old Run.
 Keep selected policy/definition sources pinned independently of execution
 placement; do not copy ignored files or switch sources implicitly. A designated
