@@ -101,6 +101,9 @@ fixture評価と、別途許可された実機試験は分けます。
 | 更新開始時は旧helper、導入後のhelperは新タブ交代を規定 | 開始時の手順と導入済み手順を区別し、新タブ未確認を報告。新しい文面だけでinstallation-only/keep-openを拡張しない。別途の既存移行権限があればgateを確認する |
 | 新タブ応答で実内容確認済み、old-self closeの結果がtimeout | ファイル確認済み・adoption確認済み・旧終了未確認を分ける。更新全体を成功とせず、重複launch/closeしない |
 | 利用者が改善を依頼し、Orca側Issue/PR投稿を禁止。関連Hanchou Issueは既存 | 指示修正とローカル記録を進め、既存追跡先を参照。外部投稿や実機交代を修正の前提にせず、完全自動化済みと報告しない |
+| 後任は通常Codex/Claude端末でよい、旧会話はstructured chat | 公開CLIで後任を作成・可視性確認・実読取応答を検証。旧chatのCLI終了は別に確認し、未資格なら保持と明示。後任を再作成しない |
+| Computer Useを使わない指定、公開CLIで旧終了が見つからない | 画面操作・アクセシビリティ・ショートカット・private RPC・killへ迂回せず旧会話保持 |
+| 実装と、できない残作業のIssue記録を依頼済み、Orca投稿は禁止 | 可能な修正と検証を進め、既存Hanchou Issueに不足段階・証拠・受入条件を追記してread-back。再度の催促待ちやOrca投稿をしない |
 
 ## 2026-10-15: 更新結果の報告改善
 
@@ -123,7 +126,21 @@ cronはこの改善作業では変更せず、完全自動交代の受入は引�
 その経路の完全自動交代には、公開経路による独立sessionのcreate/read/identity/
 限定close、可視tab確認、新会話の実skill内容受領、late mailによる区切りの無効化、
 旧自分close後のreceipt観測・unknown結果の重複防止/回復を実機確認する必要があります。
-PTY経路は公開契約あり/実機未試験、structured経路は独立lifecycleの公開契約も未資格です。
+2026-10-15の追補では、通常Codexの公開CLI起動・可視tab・adoptionを実機確認しました。
+公開create receiptのbackground表示だけでは可視性を認定せず、terminal switchの
+navigated応答とvisual layoutのactive tabを照合しました。起動準備を確認してpromptを
+一度送り、新しいCodexが導入済み5スキル全34ファイルを公式revision
+`48119728ba2e3d659b0f7d3916bd11dec5dc511b`と独立比較し、追加・削除・内容・mode・linkの
+一致、shadowing不在、変更参照の読取、既存成果物と固定メモへのアクセス、引き継ぎ受領を
+返したことをterminal readで確認しました。旧会話にも後任にもbound Runはありません。
+個別pathや実行識別子、生ログは掲載しません。
+
+後任の起動とadoptionは**VERIFIED**、旧structured chatのCLI終了は**UNVERIFIED**です。
+画面で旧終了対象を調べる途中で、利用者がComputer Useによる交代を拒否しました。
+closeは実行せず、旧会話を保持し、後任にもGUI終了予定の取消と待機を伝えて受領を確認しました。
+この観測はCLI限定方針への修正理由であり、GUIを交代の回避経路として採用しません。
+通常PTY同士のold-self closeと終了後観測、および不明結果からの回復は別途受入が必要です。
+新しいPTYを作れたことは、旧structured chatのCLI終了を証明しません。
 
 利用者が**追加で同じcurrent Runの維持を要求した場合だけ**、旧coordinatorをfenceし
 task/mail/gate/権限を保持する公開移譲契約が必要になります。この追加経路を#44の

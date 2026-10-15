@@ -38,7 +38,9 @@ concrete inventory/diff. Ask only for authority or choices not already supplied.
 
 For the default workflow or a separately authorized fresh-session/reload request,
 verify the public capability and safe boundary in
-[session-handoff.md](references/session-handoff.md). Implementing this feature,
+[session-handoff.md](references/session-handoff.md), selecting the successor
+surface separately from the old endpoint and using public CLI operations only.
+Implementing this feature,
 installation alone, or requesting a check does not authorize replacing the current
 conversation. Never change or enable cron as part of an update.
 

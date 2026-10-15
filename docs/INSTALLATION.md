@@ -109,6 +109,13 @@ endpoint path has been exercised and verified. A helper that updates its own
 instructions also distinguishes the initially loaded workflow from the installed
 one; new text alone cannot broaden installation-only authority. Capability
 findings do not authorize external Issue/PR/comment publication.
+An ordinary Codex/Claude terminal is a valid successor when the user accepts
+that surface. Its launch and content acknowledgment can succeed even when the
+old structured chat's CLI close operation is unavailable; report the retained
+old chat explicitly. Automatic handoff uses public CLI operations only, without
+Computer Use or a GUI fallback. An explicit request to implement and track
+blocked work authorizes the corresponding in-scope issue follow-up; exclusions
+on destinations still apply.
 
 Remove through the installer/UI that created the copy, with explicit skill
 names, matching agents and scope. For example, for an unmodified global core:

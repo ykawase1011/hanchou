@@ -10,6 +10,23 @@ alone does not trigger it. Explicit reload is distinct. Reuse prior attempt and
 receipt evidence so repeated task wakes cannot open fresh tabs. Do not replace
 the current session while merely implementing or testing this policy.
 
+## Select the successor and control path
+
+A fresh agent tab does not inherently mean a structured chat. When the user
+accepts an ordinary Codex/Claude terminal, use the configured agent's public
+Orca terminal/worktree workflow; do not require independent structured-session
+creation. Preserve an explicitly requested surface or provider. Select the
+successor separately from identifying the old endpoint: a PTY successor does
+not turn an old structured chat into a terminal that `terminal close` accepts.
+
+Use the public Orca CLI for this automatic handoff. Do not switch to Computer
+Use, accessibility actions, GUI shortcuts, private RPC, or process killing when
+an operation is missing. A user choosing an ordinary terminal permits that
+successor type, not a different control method. If the old endpoint cannot be
+closed through a verified CLI contract, retain it and report that exact gap.
+An explicitly requested new terminal and its adoption check may still complete;
+disclose the retained old endpoint and do not call this full automatic rotation.
+
 ## Capability gate
 
 Resolve and reuse the actual Orca executable by its official discovery rule.
@@ -79,8 +96,10 @@ It is a new entrypoint, not live Run takeover or same-conversation continuation.
 
 ## Conditional launch, read-back, and close
 
-If the requested endpoint types, ownership boundary, and public workflow are
-supported, perform the already authorized independent launch. Apply the user's
+Check launch/read-back and old-close support separately. If the requested new
+endpoint and ownership boundary have a public workflow, perform the already
+authorized independent launch, subject to the retained-old-endpoint rule above.
+Apply the user's
 placement preference, verify parent/host/project/path against the launch receipt,
 and use a short `hanchou-` name for a new worktree absent an explicit name. A
 fresh session alone does not require a checkout. Use the configured agent through
@@ -184,3 +203,9 @@ improvement-notes contract; retain an existing relevant issue as the tracking
 reference rather than creating a duplicate. Publishing remains a separate,
 explicitly requested action. Distinguish instruction changes, documented public
 support, and successful end-to-end execution when reporting an improvement.
+When the user has already requested both implementation and issue tracking for
+blocked work, finish the feasible authorized work and publish/reuse the in-scope
+tracking issue before ending the turn; do not repeatedly defer this to another
+user reminder. Preserve destination exclusions: if Orca-side publication is
+forbidden, track the Hanchou acceptance gap in Hanchou when authorized, without
+posting to Orca or claiming its internal implementation is absent.
