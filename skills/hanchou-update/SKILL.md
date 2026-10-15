@@ -130,7 +130,11 @@ scopes/targets; check unrelated skill contents, aliases and metadata entries
 against the before-state. Report the revision and actual paths, updated/skipped
 skills, preserved changes, and any local shadowing. An exit code alone is not
 proof of success. Installed content verification does not prove that this running
-agent loaded it. Continue the default update workflow through
+agent loaded it. Before the final report, account separately for verified file
+installation, fresh-tab adoption, and exact old-session closure using the
+[outcome reporting rules](references/session-handoff.md#report-the-observed-outcome).
+Do not report the whole workflow complete from installation evidence alone.
+Continue the default update workflow through
 [session-handoff.md](references/session-handoff.md) when content changed or the
 session is demonstrably stale and rotation is in scope. Otherwise report current,
 or that files were updated while this conversation may still hold prior content,
