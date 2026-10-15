@@ -6,7 +6,8 @@ from restoring/continuing the same conversation and Run. Honor files-only,
 keep-open/no-close, scope limits and contrary standing instructions. Default
 rotation needs actual selected content change or evidence that the current
 session loaded older content than the verified installed tree; current content
-alone does not trigger it. Explicit reload is distinct. Reuse prior attempt and
+alone does not trigger it. Explicit reload and
+[required adoption](required-handoff.md) do not need a content change. Reuse prior attempt and
 receipt evidence so repeated task wakes cannot open fresh tabs. Do not replace
 the current session while merely implementing or testing this policy.
 
@@ -115,8 +116,11 @@ The ordinary full-handoff send receipt is insufficient for this update-specific
 close request. First require observable readiness and a response from the actual
 new conversation that explicitly accepts the preserved handoff and states:
 
-- Its own identity, execution placement and independent ownership boundary;
-  it must not bind/take over the previous Run.
+- Its own identity, execution placement and ownership boundary. For this
+  independent-session path it must not bind/take over the previous Run. If a
+  separately requested same-Run transfer has a qualified public contract, use
+  that contract's fencing and ownership acknowledgment instead; ordinary
+  `run-use` does not qualify.
 - The installed skill paths it actually opened (including local shadowing),
   exact revision plus complete content comparison, and relevant changed
   instructions/references it read. A pasted expected hash, startup title,
@@ -174,6 +178,10 @@ conversation/new Run. Never enable cron to bridge this gap.
 At the end of an update request, including an interrupted or blocked handoff,
 state three independent results in the user's language. A short sentence is
 enough when the result is simple:
+
+Retain any declared required-adoption condition in this report. Do not relabel
+it as optional, not requested, or successful files-only work because a gate
+failed. Apply the [required-handoff completion contract](required-handoff.md#execute-the-available-steps-and-account-for-completion).
 
 | Result | Evidence and limits |
 | --- | --- |
