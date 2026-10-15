@@ -116,8 +116,11 @@ The ordinary full-handoff send receipt is insufficient for this update-specific
 close request. First require observable readiness and a response from the actual
 new conversation that explicitly accepts the preserved handoff and states:
 
-- Its own identity, execution placement and independent ownership boundary;
-  it must not bind/take over the previous Run.
+- Its own identity, execution placement and ownership boundary. For this
+  independent-session path it must not bind/take over the previous Run. If a
+  separately requested same-Run transfer has a qualified public contract, use
+  that contract's fencing and ownership acknowledgment instead; ordinary
+  `run-use` does not qualify.
 - The installed skill paths it actually opened (including local shadowing),
   exact revision plus complete content comparison, and relevant changed
   instructions/references it read. A pasted expected hash, startup title,
