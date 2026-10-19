@@ -124,8 +124,11 @@ and independent review. Follow [placement.md](placement.md) to distinguish a
 separate workspace from an explicit child and to preserve coordinator boundaries.
 A request to keep worker tabs out of the coordinator's
 workspace is sufficient reason to use a dedicated workspace through the live
-placement guide. Without such a preference, use the official current/existing
-workspace default; a fresh agent alone does not require a new checkout.
+placement guide. Without such a preference, apply the dedicated-worktree default
+for change work, including coordinator Git/integration operations, and preserve
+the original human checkout throughout. Read-only/Issue-only work may use the
+official current/existing default; a verified dedicated target may be reused.
+A fresh agent alone does not require a new checkout.
 Workspace separation does not create another Run. Discover and verify the exact
 target before launch; if that placement is unsupported, report the constraint
 instead of silently placing the worker in the coordinator workspace.
@@ -141,8 +144,8 @@ the first Task may already have reached the worker: steer it to a safe checkpoin
 results, and reconcile ownership before further work, dispatch, or retry. Do not
 start a duplicate editor. Apply the same check to implementation, investigation,
 review, follow-up, and retry Tasks. An explicit `current` choice and an
-unspecified choice remain distinct: honor the former and use the live guide's
-default for the latter.
+unspecified choice remain distinct: honor the former only within its scope;
+for the latter apply the change-work default or read-only/Issue-only exception.
 
 Before moving review or implementation elsewhere, preserve the existing work
 and transfer the actual base, diff, and any uncommitted/untracked artifacts needed

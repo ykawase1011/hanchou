@@ -78,6 +78,12 @@ Claude Codeでは同じ本文をskill commandへ渡します。
 ある場合に別Hanchouを明示して始めます。同じRunを複数coordinatorが同時に共有せず、
 元の対話の依頼を同じRunで管理します。
 
+変更作業は専用worktreeと作業branchで行い、人間が使っている元checkoutのbranch・
+ファイル・indexを途中も含めて保持するのが既定です。coordinator自身のGit・統合作業にも
+適用します。明示的な例外を優先し、読み取り・Issue公開だけの作業や確認済み専用workspaceの
+再利用には不要な新規作成を求めません。現在の会話とRunは維持します。
+詳細は[配置と元checkoutの保全](skills/hanchou-orchestrator/references/placement.md)を参照してください。
+
 ## Three uses
 
 - **Project Hanchou**: 1つのproject/repositoryを主に扱います。

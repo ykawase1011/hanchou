@@ -67,11 +67,15 @@ prompt's pinned policy source or its recorded no-policy decision; do not perform
 this interactive default lookup. An absent interactive default file does not
 block ordinary requested work.
 
-Before new coordinator or worker launches, read
-[placement.md](references/placement.md) for placement preferences and default
-`hanchou-` worktree naming. Naming alone never requires a new worktree. Keep the
-current conversation and bound Run in place; the preference governs future
-entrypoints, not an implicit migration.
+Before any change work or coordinator Git/integration mutation, and before new
+coordinator or worker launches, read [placement.md](references/placement.md).
+Default to a verified dedicated worktree/task branch while preserving the
+original human checkout's branch, files, and index throughout. Carry this into
+reviews, added workers, retries, and integration; honor scoped explicit user
+exceptions. Read-only/Issue-only work and an already verified dedicated target
+need no gratuitous new worktree. Apply default `hanchou-` naming only on creation.
+Keep the current conversation and bound Run in place; choosing an operation's
+worktree is not an implicit session migration.
 
 At explicit activation and each separately assigned new user task, perform one
 read-only Hanchou update check through the installed optional `hanchou-update`

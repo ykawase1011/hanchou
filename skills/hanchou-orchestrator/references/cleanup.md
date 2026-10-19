@@ -6,6 +6,15 @@ committed, uncommitted, and untracked results, then verify their destination
 against the source before deleting any sole copy. A worker's settlement does
 not itself prove user acceptance or successful integration.
 
+Apply [placement.md](placement.md) to coordinator integration and cleanup too.
+Keep the original human checkout's branch, files, and index intact throughout;
+never switch it back, reset its files/index, or synchronize it after merge as
+cleanup. Verify effects on shared refs and branches checked out elsewhere before
+branch deletion or integration. Report checkpoint evidence and intervening
+operation targets; preserve human concurrent changes and disclose attribution
+gaps instead of restoring a baseline. A protected original checkout is not a
+task-created resource eligible for removal.
+
 Accepted work is not fully handed back until every task-created resource has a
 disposition. Reconcile all launch attempts, including rejected/failed starts,
 retries, investigation, and review, against creation receipts and current public

@@ -129,9 +129,19 @@ scopeは方針の編集だけでは拡大しません。方針に許可があっ
 Taskの条件を変更できますが、1回限りの変更を既定方針へ保存しません。
 例えば「workerとreviewは専用workspaceへ配置、PR作成まで許可、mergeと環境反映は
 判断待ち」と指定できます。この場合、同じRunのまま専用配置を使い、許可済みのPR作成
-まで進め、mergeを待ちます。指定のない利用者にはOrcaの公式配置既定を使います。
-このrepositoryでのHanchou開発には`AGENTS.md`と`CLAUDE.md`に専用配置の方針があり、
-対象workerのTask仕様と起動receiptを照合します。この方針を配布skillの全利用者へは適用しません。
+まで進め、mergeを待ちます。配置指定がなくても、変更作業は専用worktreeと作業branchを
+既定とし、元checkoutの開始時branch・作業ファイル・indexを途中も含めて保持します。
+開始前に元checkoutと既存変更を読み取りで確認し、元のbranchがmain以外でも同様に扱います。
+worktreeとbranchの同時作成は可能ですが、元checkoutを一時的に切り替えて準備しません。
+coordinator自身のGit操作、review・追加worker・再試行、マージ前後の統合作業にも適用し、
+操作対象と実際の配置・branchを確認します。失敗や配置不明時は元checkoutへfallbackせず、
+人間の並行変更はstash・reset・移動・復元で消しません。開始・終了の一致だけでは途中の
+無変更を証明できないため、操作先と節目の証拠を残し、不明点は不明と報告します。
+明示的な例外は指定範囲で優先します。読み取り・Issue公開のみなら不要なworktreeは作らず、
+所有者・用途・branch・配置が確認済みの専用workspaceは再利用できます。
+このrepositoryの`AGENTS.md`と`CLAUDE.md`による明示child配置はさらに強い固有方針です。
+対象workerのTask仕様と起動receipt・実配置を照合しますが、このchild限定方針を全利用者へ
+適用しません。現在の会話とRunは維持し、固定したpolicy参照元も勝手に変更しません。
 
 Hanchouがworktreeを新規作成するときの既定名は、用途が分かる短い`hanchou-`名です。
 通常作業・調査・対話coordinator・追加worker・レビュー・再試行に適用し、例えば

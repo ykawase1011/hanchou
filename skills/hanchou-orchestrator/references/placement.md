@@ -1,11 +1,14 @@
 # Coordinator and worker placement
 
 Resolve placement from the current explicit request and applicable conversation
-or project policy. Record its source and scope: unspecified, separate workspace,
-or explicit child of a selected parent. These are different requirements. An
-explicit one-task override does not rewrite the standing preference. Without a
-preference, preserve the installed Orca guide's defaults; a fresh session alone
-does not require a new worktree. This policy does not activate Hanchou.
+or project policy, then the change-work default below. Record its source and
+scope: explicit override, inherited preference, or Hanchou default; distinguish
+separation from an explicit child of a selected parent. An explicit one-task
+override does not rewrite the standing preference. Read-only investigation or
+Issue-only publication needs no new worktree or branch solely for this policy;
+absent a stronger preference, retain the installed Orca guide's defaults for
+those tasks. A fresh session alone does not require a new worktree. This policy
+does not activate Hanchou or authorize work, installation, or Automation changes.
 
 When the user says “human work stays in main; Hanchou uses explicit children,”
 carry that preference into future interactive coordinators, independent
@@ -13,6 +16,75 @@ scheduled coordinators, implementation, investigation, independent review,
 added workers, and retries. Select the intended parent, host, project, and Git
 base separately. A different path, Git branch/base, UI grouping, or common Run
 does not establish Orca parent lineage.
+
+## Change work: preserve the original checkout
+
+Before editing or Git operations that can change checkout state, identify the
+original human checkout and any other protected coordinator/source checkout by
+exact path, host, and project. Read its current branch (or detached HEAD), HEAD,
+staged and unstaged changes, and relevant untracked files without refreshing or
+writing its index (for example, disable Git optional locks for inspection).
+Record only necessary non-secret evidence in the existing conversation/Task.
+Protect whichever branch the human is using, including a release branch; never
+assume it is main or that a clean checkout is available for Hanchou to mutate.
+
+By default, perform change work in a dedicated worktree and its task branch.
+Use the installed public Orca worktree workflow to create it or select an
+already verified dedicated workspace. Worktree and branch creation together is
+valid; never first switch the original checkout, even temporarily. Select the
+Git base separately from Orca parent lineage. Compare intention, public receipt,
+and actual path, host, project, required parent lineage, branch, and base/HEAD
+before edits. An existing dedicated target (including the current workspace)
+needs no gratuitous new worktree: verify identity, task purpose, branch, existing
+changes, current owner, and absence of conflicting users/agents first. A name,
+clean status, or different path alone proves neither ownership nor safety.
+Do not reset/reuse a conflicting branch or move a branch checked out by a human.
+
+Preserve the original checkout's branch, working files, and index throughout.
+Do not edit there, switch/checkout a branch there, or stash, reset, restore,
+clean, move, stage, or commit its existing changes to prepare another workspace.
+Do not copy human uncommitted work into a task by implication; obtain scoped
+authority if it is actually required. Returning to the original branch at the
+end is not compliance. An explicit user exception can permit named operations
+in the original checkout only within its stated scope; it does not grant general
+cleanup or authority over unrelated changes. An unspecified placement is not
+such an exception.
+
+Apply this to the coordinator's own Git and integration operations as well as
+implementation, independent review, added workers, and retries. Before merge,
+rebase, cherry-pick, conflict resolution, post-merge synchronization, or branch
+cleanup, verify the exact operation target and its effects on shared Git refs
+and other checked-out branches. Run authorized mutations only in the verified
+dedicated target, with an explicit working directory/target; inspect tool side
+effects that can checkout, pull, or delete local branches. Remote PR integration
+does not authorize synchronizing the human checkout. If integration needs a
+separate target, use a verified dedicated integration workspace within existing
+authority; do not use the original checkout for convenience. Separation grants
+no merge, push, cleanup, or release permission. Keep review input and task-owned
+results intact under [routing.md](routing.md) and [cleanup.md](cleanup.md).
+
+The coordinator's conversation and bound Run stay in place; commands may target
+a verified dedicated worktree without migrating the conversation. Carry the
+protected checkout evidence, exception scope (or none), actual task branch and
+workspace, ownership, and verification duties into each Task and integration
+handoff. A stronger child/separate-worker preference still applies. Do not
+reinterpret session preservation as permission to edit the human checkout.
+
+If creation fails or placement/ownership/branch is unknown, stop dependent
+mutations and report the gap. Never silently fall back to the original/current
+checkout or guess another host. Reconcile an uncertain create or launch before
+retry; input may already have reached a worker. Preserve results and steer to a
+safe checkpoint if a mismatch is discovered after launch.
+
+At creation, edit/review handoffs, before and after integration, and completion,
+compare protected checkout evidence with the baseline and inspect the actual
+task workspace/branch. Keep operation targets and receipts from the intervening
+steps: equal start/end snapshots cannot prove there was no temporary switch.
+Human concurrent edits are legitimate; do not roll them back to make snapshots
+match or attribute them to Hanchou without evidence. Report observed differences,
+Hanchou's actual operations, and any attribution gap separately. Never restore
+an old index or files as a verification step. This is instruction policy, not a
+runtime lock or a guarantee against concurrent agents.
 
 ## Names for newly created worktrees
 
@@ -38,7 +110,7 @@ trying another name; a suffix is not permission to duplicate unknown work.
 
 ## Future interactive entrypoints
 
-Before opening a new coordinator, use the installed public `orca-cli` worktree
+When child placement is required, before opening a new coordinator use the installed public `orca-cli` worktree
 and agent/session workflow to discover the intended parent and explicitly
 create its child, or select an already verified designated child when reuse is
 appropriate. Compare that intention with the actual creation/launch selector;

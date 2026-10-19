@@ -23,12 +23,25 @@ briefs, include the checkpoint/drain obligations from [inbox.md](inbox.md) and
 the worker-side IPC check from [worker-evidence.md](worker-evidence.md), keeping
 the live injected preamble authoritative for handles and lifecycle commands.
 Before dispatch, record in the Task spec whether placement was explicitly
-requested, inherited from a stated conversation/project policy, or unspecified;
+requested, inherited from a stated conversation/project policy, or selected by
+the Hanchou change-work default (or the read-only/Issue-only exception);
 name the selected target, intended parent when child lineage is required, host,
 project, and the requirement to compare selector, receipt, and actual workspace
 identity under [placement.md](placement.md). Recheck this for an independent
 reviewer, retry, or added worker rather than copying a previous `worker-start`
 selector.
+
+For change work, carry the protected original checkout's path/host/project,
+starting branch/HEAD and non-secret existing-change/index evidence, the dedicated
+target's actual branch and base, ownership, and any scoped user exception.
+Require preservation throughout, including coordinator Git and pre/post-merge
+integration, and checkpoints with intervening operation targets under
+[placement.md](placement.md#change-work-preserve-the-original-checkout).
+No temporary original-checkout switch, implicit stash/reset/move, or fallback
+after failed creation is allowed. Preserve human concurrent changes and report
+attribution gaps without restoring a baseline. Reverify these constraints for
+review, added workers, retries, and integration handoffs; they do not migrate
+the current conversation/Run or change pinned policy sources.
 
 For reuse or replacement, include the [reuse qualification](worker-evidence.md#reuse-qualification-before-submission)
 evidence: original receipt's session kind, target version/host's public route and
