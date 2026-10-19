@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, #28, #42, #49, #50, and the Hanchou-only portions of #22 and #35.
+#16–#18, #20, #21, #25, #28, #42, #49, #50, #51, and the Hanchou-only portions of #22 and #35.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -30,6 +30,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #21 | [`hanchou-cron` scheduled work](CRON.md): project/job source, independent runs, and continuation qualification | Cron scenarios in `CRON.md` |
 | #14 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): postconditions, tool recovery, baseline cleanup | B1–B3 |
 | #17 | [Browser QA](../skills/hanchou-orchestrator/references/browser-qa.md): explicit choice, capable isolated browser preference, effect reconciliation | B4–B6 |
+| #51 | [Browser QA readiness](../skills/hanchou-orchestrator/references/browser-qa.md#before-feature-qa-health-and-readiness): effective target comparison, representative read-only business query, separate health/readiness/functional QA | Q1–Q8 in [QA readiness acceptance](QA_READINESS_VALIDATION.md) |
 | #18 | [Improvement notes](../skills/hanchou-orchestrator/references/improvement-notes.md): local language selection, stable IDs, separate publication decision | L1–L3 |
 | #25 | [`hanchou-init`](../skills/hanchou-init/SKILL.md) and [initialization guide](INITIALIZATION.md): response language, separate document preservation, localized choices and actual consent | H1–H8 |
 | #28 | [PR titles](../skills/hanchou-orchestrator/references/request-scope.md#pr-titles) and [Task design](../skills/hanchou-orchestrator/references/task-design.md): Japanese default, delegation, exact GitHub read-back, scoped updates | PR1–PR5 |

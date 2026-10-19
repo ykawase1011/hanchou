@@ -55,6 +55,19 @@ from success. Carry these constraints into steering and independent review,
 without embedding credentials, source excerpts, or raw failure receipts in the
 Task. A generic “do not output secrets” instruction is insufficient.
 
+For browser/API or DB-backed feature QA, carry the
+[health/readiness/functional-QA contract](browser-qa.md#before-feature-qa-health-and-readiness)
+into the Task before checks start: intended-target source, evidence of the
+application's effective connection and identity, authorized metadata comparisons,
+project-derived read-only representative query source and required tables/views/schema,
+expected predicate (including empty-result semantics), bounded execution limits,
+and separate acceptance/report fields for all three layers. Name the safe output
+schema and failure classes, the stop/escalation path for unknown or failed
+readiness, and who may authorize a correction. Neither health success nor query
+success substitutes for functional QA; do not embed secrets, row data, or a
+project-specific universal query in the distributed skill. Carry the same
+contract into independent review and any retry after an authorized correction.
+
 Before creating transient resources, name their intended disposition and cleanup
 owner in the Task spec: remove after acceptance, reuse for named follow-up work,
 or retain for a stated reason and next action. Reconcile that intent with each

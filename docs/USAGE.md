@@ -149,6 +149,14 @@ Hanchouがworktreeを新規作成するときの既定名は、用途が分か�
 対象URL・識別子・保存状態を確認し、効果が不明な変更操作は重ねません。改善メモは明示
 された言語、なければ作業場所の開発文書の言語で書き、Issue公開時の言語は別に判断します。
 
+DBを使う機能のQA開始前には、許可済みの非秘密metadataで意図した接続先と
+アプリの実接続先を照合し、その機能のtable/view/schemaを使うread-only代表業務queryを
+実効権限で確認します。HTTPや`SELECT 1`のhealth成功だけではreadiness合格にせず、
+代表query成功も実画面/APIの機能QA完了とは分けます。失敗は接続先・構造・権限を
+証拠で切り分け、未許可の修復やDB変更へ進みません。秘密値・行データを出さず、
+最小boolean/許可済みmetadataと未実施の層を報告します。
+[QA readiness acceptance](QA_READINESS_VALIDATION.md)に合成例と未検証範囲を示します。
+
 起動やsendのreceiptだけで開始・受領・完了を断定しません。DB照合とブラウザ検証、
 成果の受け入れとresource回収も区別します。判断規則と合成受入例は
 [Policy acceptance](POLICY_ACCEPTANCE.md)を参照してください。
