@@ -14,6 +14,12 @@ results when relevant. For data work, use
 [migration-acceptance.md](migration-acceptance.md); for browser/API acceptance,
 use [browser-qa.md](browser-qa.md). Require evidence independent of the claim being
 reviewed. A read-only review does not inherit implementation publication hooks.
+Carry the protected original checkout and effective placement/exception scope
+under [placement.md](placement.md); verify the actual review branch and artifact.
+A read-only review alone needs no new worktree unless applicable separation or
+child policy requires it. Checks that write files and subsequent fixes must use
+a verified dedicated target. Preserve the human checkout through pre/post-merge
+integration too; reviewer completion grants no authority to synchronize it.
 
 Resolve the reviewer's model/effort from the latest scoped role policy in
 [routing.md](routing.md), and include its difficulty and selection reason in the

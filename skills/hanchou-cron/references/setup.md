@@ -125,8 +125,14 @@ creation receipt before retrying under a different name.
 Resolve the user's current placement instruction and applicable project policy
 before choosing the execution target. Record whether it is unspecified, merely
 separate, or an explicit child of a selected parent. Honor a scoped explicit
-override separately from an absent preference; without a preference retain
-Orca's documented defaults. For “human main, Hanchou child,” apply the preference
+override separately from an absent preference. For change work, apply the
+installed `hanchou-orchestrator` skill's `references/placement.md` change-work
+and original-checkout policy to the occurrence and its workers, including
+coordinator Git/integration; read that reference before selecting the target.
+Read-only/Issue-only work without a stronger preference retains Orca's documented
+defaults; an already verified dedicated target needs no new worktree per occurrence.
+This default grants no Automation creation, migration, trial, or enablement.
+For “human main, Hanchou child,” apply the preference
 to the scheduled coordinator as well as its future workers, reviews, and retries.
 Compare intended parent, host, project, and target with the public launch/configuration
 selector before mutation. Verify the receipt and actual workspace path, host,

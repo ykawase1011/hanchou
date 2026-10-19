@@ -17,6 +17,11 @@ Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestr
 6. Hanchouは名前付きskill呼び出し、明示的な依頼、または専用workspace local
    instructionでだけactivateする。利用者向けpromptは名前付き呼び出しを標準とする。
 7. 通常のOrca session、既存project、agent/model既定値、Automationには介入しない。
+8. 有効なHanchouの変更作業は専用worktreeと作業branchを既定とし、元の人間用checkoutの
+   開始時branch・作業ファイル・indexを途中も含めて保持する。coordinator自身のGit操作と
+   マージ前後の統合作業にも適用し、明示的な例外はその範囲だけ優先する。
+   読み取り・Issue公開のみ、または既に検証済みの専用workspaceには不要な新規作成を求めない。
+   操作対象の分離は現在の会話やbound Runの移動・再作成を意味しない。
 
 ## Ownership
 
