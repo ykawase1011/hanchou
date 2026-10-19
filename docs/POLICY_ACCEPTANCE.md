@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, #28, #42, #49, and the Hanchou-only portions of #22 and #35.
+#16–#18, #20, #21, #25, #28, #42, #49, #50, and the Hanchou-only portions of #22 and #35.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -21,6 +21,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #22 (policy only; issue OPEN) | [Reporting](../skills/hanchou-orchestrator/references/reporting.md) and [Inbox](../skills/hanchou-orchestrator/references/inbox.md): trusted trigger provenance, conditional empty narration, full processing regardless of output | E1–E6 |
 | #9 | [Migration acceptance](../skills/hanchou-orchestrator/references/migration-acceptance.md): independent cause/data/time/query evidence | D1–D3 |
 | #49 | [Secret-input boundary](../skills/hanchou-orchestrator/references/secret-inputs.md): scoped private processing, pre-output projection, failure paths and delegation | S1–S10 in [Secret-input acceptance](SECRET_INPUT_VALIDATION.md) |
+| #50 | [Routing](../skills/hanchou-orchestrator/references/routing.md), [Task design](../skills/hanchou-orchestrator/references/task-design.md), and [reporting](../skills/hanchou-orchestrator/references/reporting.md): role/scoped preferences, launch evidence, safe corrections | M01–M19 in [Model-routing acceptance](MODEL_ROUTING_VALIDATION.md) |
 | #10 (design) | [Notifications](../skills/hanchou-orchestrator/references/notifications.md): ownership-based aggregation and capability prerequisites | N1–N2 |
 | #11 and completion follow-up | [Cleanup](../skills/hanchou-orchestrator/references/cleanup.md): results, all launch attempts, workspace, service ownership and disposition | C1–C6 |
 | #12 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md): current authority, necessary next steps, role hooks | A1–A3 |
@@ -42,6 +43,11 @@ For #49, [Secret-input acceptance](SECRET_INPUT_VALIDATION.md) separately record
 the test-only synthetic boundary example, semantic cases, author coverage review,
 and unverified live-tool behavior. Its executable example is not a policy engine
 or evidence that a model follows the instructions.
+
+For #50, [Model-routing acceptance](MODEL_ROUTING_VALIDATION.md) records the
+corrected user example, role-by-role synthetic decisions, and the separate
+2026-10-19 author semantic audit. Its static regression tests do not execute a
+router or model; no validation launch or session setting change was performed.
 
 On 2026-10-13 the author compared every issue body/comment and these cases with
 the instructions and installed Orca 1.4.224 live contracts. That semantic coverage

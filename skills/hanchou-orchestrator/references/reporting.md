@@ -12,6 +12,27 @@ potentially secret inputs. An exact raw error/receipt is not required when it
 would disclose those inputs; report only the allowed fields and any verification
 gap. This also covers Inbox messages, reports, and artifacts.
 
+## Model selection evidence
+
+When model/effort routing is relevant, report the applicable preference source,
+scope and role, task difficulty, selected model/effort (or unspecified configured
+default), and one short selection reason under [routing.md](routing.md). Keep
+the coordinator's own setting separate from each worker, descendant, review,
+and retry. Compare the public launch requested/effective fields and identify
+confirmed values, mismatches, and absent/`null` values explicitly as unknown.
+Never report a requested value, accepted prompt, or policy snapshot as an
+applied setting. If no override was requested, say so without guessing which
+model or effort the configured default resolved to.
+
+For a mid-task correction, report the new policy/selection and its effective
+evidence separately from the old attempt's settlement/exit evidence. Name
+preserved results, reconciled external operations, remaining work, current
+owner, and any blocked transition. Do not claim that the old worker ended just
+because a replacement setting was chosen, or that delivery changed a session.
+State evidence limits without unmeasured token savings, prices, performance,
+or quality guarantees. Explicitly distinguish a synthetic decision evaluation
+from a live launch or actual API configuration change.
+
 ## Inbox-triggered reporting
 
 Separate the obligation to process Inbox mail from the decision to narrate it.
