@@ -15,6 +15,13 @@ results when relevant. For data work, use
 use [browser-qa.md](browser-qa.md). Require evidence independent of the claim being
 reviewed. A read-only review does not inherit implementation publication hooks.
 
+Resolve the reviewer's model/effort from the latest scoped role policy in
+[routing.md](routing.md), and include its difficulty and selection reason in the
+Task. Review independence is not permission to inherit the main coordinator's
+setting or exceed the user's ceiling. A review retry or nested reviewer receives
+the same role rules and fresh requested/effective verification, not an automatic
+effort upgrade.
+
 Worker completion means the assigned Task attempt settled; it is not
 automatically user acceptance. Express separate acceptance with the review Task
 or a real parent Task. Route fixes to a worker unless the user explicitly

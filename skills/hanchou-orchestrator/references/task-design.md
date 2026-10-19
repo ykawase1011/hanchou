@@ -30,6 +30,21 @@ identity under [placement.md](placement.md). Recheck this for an independent
 reviewer, retry, or added worker rather than copying a previous `worker-start`
 selector.
 
+Include the [routing policy snapshot](routing.md#scoped-model-and-effort-policy):
+source and scope of model/effort and cost/quality preferences, the assignment's
+role, fixed versus selectable versus unspecified values, allowed alternatives
+and ceilings, and the latest applicable correction. Preserve the role rules for
+descendants as well as the current selection; a nested coordinator does not
+inherit the main coordinator's exception. State task difficulty, the selected
+model/effort or configured-default intent, and a short sufficiency reason. Name
+the required requested/effective receipt comparison, unknown-value handling,
+and any unresolved capability or policy decision. Apply this to investigation,
+implementation, independent review, added workers, follow-ups, and retries.
+On a policy change, also carry preserved results, reconciled external-operation
+status, old-owner settlement/exit evidence, and remaining-work ownership under
+[mid-task corrections](routing.md#mid-task-corrections). The Task snapshot is
+selection intent, not proof that any session's settings changed.
+
 For investigation or authentication, apply [secret-inputs.md](secret-inputs.md)
 before reading inputs. Include in the worker brief the exact input scope,
 authorized authentication route (or none), forbidden full/line/env output,

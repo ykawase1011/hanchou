@@ -20,6 +20,12 @@ Send affected workers the changed scope and confirm application using
 [inbox.md](inbox.md). Carry the current account into a retry or review brief;
 do not turn one user's preference into a global default.
 
+Keep scoped model/effort and cost/quality preferences in this account using
+[routing.md](routing.md#scoped-model-and-effort-policy), with distinct role rules
+and any explicit fixed choices. A correction to worker selection does not
+authorize changing the coordinator or a running session. Use the routing safe
+boundary and ownership checks before applying a change that needs replacement.
+
 At each dispatch, resolve placement from the latest explicit request, then any
 applicable project instructions, then the earlier request scope. Distinguish a
 preference limited to one Task from one stated for this conversation or project.
