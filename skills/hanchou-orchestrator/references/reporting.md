@@ -68,6 +68,15 @@ to reduce visible output.
 
 ## Coordination and completion evidence
 
+For reuse or replacement, report three separate facts: preserved results and
+their destination; the old worker's accepted settlement and release/ownership
+result; and the next Task's actual owner, workspace, and observed start stages.
+Name the session kind, public reuse qualification (including unqualified), and
+whether a refusal was proven preflight or submission effects remain unknown.
+A successful old release is not a successful new start; a new start is not proof
+that old resources were reclaimed. Separate synthetic decision review from live
+reuse success, especially when a structured route has not been qualified.
+
 The Orca Run Inbox and Delivery mechanics are the coordination source of truth.
 Hanchou does not mirror them into files or a second database. An explicitly
 opted-in [local status view](status-view.md) is only a reconstructible human

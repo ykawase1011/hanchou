@@ -1,5 +1,17 @@
 # Orca compatibility
 
+## Issue #52 worker reuse qualification (2026-10-19)
+
+Installed 1.4.224's live same-terminal reuse example must be read with
+worker-start help: some workers are structured sessions without a terminal, and
+terminal verbs do not accept every handle. The bounded public inspection did
+not establish an explicit structured reuse route; common orchestration lifecycle
+support does not qualify that argument. See [worker reuse acceptance](WORKER_REUSE_VALIDATION.md)
+for the inspected evidence, four independent evaluation inputs, and the split
+between proven preflight rejection and unknown submission effects. No live reuse
+experiment was performed; supported structured reuse is a conditional synthetic
+case, not an installed-version success claim.
+
 ## Issue #44 update handoff qualification (2026-10-14)
 
 The installed 1.4.224 public CLI/schema distinguishes independent PTY terminal

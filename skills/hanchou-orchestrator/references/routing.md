@@ -55,6 +55,15 @@ or drop a fixed request to obtain a successful start.
 
 ## Launch evidence and session boundaries
 
+Before choosing reuse, apply the [session-kind qualification gate](worker-evidence.md#reuse-qualification-before-submission).
+Check the start receipt and target version's public route before sending the next
+Task; handle appearance and common lifecycle support do not establish terminal
+compatibility. An unconfirmed structured reuse route is unqualified. Use the
+preservation, settlement/ownership, official release, and authorized fresh-worker
+path there, retaining the designated implementation workspace and distinguishing
+follow-up from retry. A possibly submitted request must first be reconciled under
+[refusal versus unknown outcome](worker-evidence.md#refusal-versus-unknown-outcome).
+
 Use the installed orchestration guide's `references/coordinator-loop.md` for
 launch-preference support, constraints, and terminal reuse, rather than a copied
 model catalog or launch recipe here. The user must have named the model (directly
