@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, #28, #42, #49, #50, #51, and the Hanchou-only portions of #22 and #35.
+#16–#18, #20, #21, #25, #28, #42, #49, #50, #51, #52, and the Hanchou-only portions of #22 and #35.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -12,6 +12,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | Issue | Decision-changing policy | Manual cases |
 | --- | --- | --- |
 | #5 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): stage separation, original-attempt recovery, current owner report | W1–W3 |
+| #52 | [Worker reuse qualification](../skills/hanchou-orchestrator/references/worker-evidence.md#reuse-qualification-before-submission): session kind/public route, refusal versus unknown, preservation/release/next owner | R1–R4 in [Worker reuse acceptance](WORKER_REUSE_VALIDATION.md) |
 | #6 | [Routing](../skills/hanchou-orchestrator/references/routing.md): scoped placement and actual diff transfer | P1–P2 |
 | #20 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md), [routing](../skills/hanchou-orchestrator/references/routing.md), and this repository's `AGENTS.md`: effective preference through Task, selector, and actual receipt | P3–P5 |
 | #35 (instruction only; issue OPEN) | [Placement](../skills/hanchou-orchestrator/references/placement.md), [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency), and [onboarding](ONBOARDING.md): future coordinators, explicit lineage, target consistency, and persistent-child retention | CP1–CP12 |

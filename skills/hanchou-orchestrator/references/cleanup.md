@@ -18,8 +18,9 @@ or services. Check inventory host coverage and truncation; an omitted host or
 unverifiable result is not proof of absence. Lineage locates candidates, not
 deletion authority; do not sweep a whole project or another Run's resources.
 
-After accepted settlement, follow the live lifecycle guide: reuse a proven
-worker for an immediate next Task, retain only on explicit user request, or
+After accepted settlement, follow the live lifecycle guide and
+[session-kind reuse gate](worker-evidence.md#reuse-qualification-before-submission):
+reuse a qualified worker for an immediate next Task, retain only on explicit user request, or
 release through `worker-release`. Avoid accumulating idle retained workers.
 Follow an uncertain release receipt exactly; never substitute raw terminal close.
 

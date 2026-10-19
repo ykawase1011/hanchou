@@ -30,6 +30,17 @@ identity under [placement.md](placement.md). Recheck this for an independent
 reviewer, retry, or added worker rather than copying a previous `worker-start`
 selector.
 
+For reuse or replacement, include the [reuse qualification](worker-evidence.md#reuse-qualification-before-submission)
+evidence: original receipt's session kind, target version/host's public route and
+prerequisites (or unqualified), old settlement/ownership, preserved results and
+remaining work, exact implementation workspace/branch, and release disposition.
+Identify whether this is a next Task after completion or a retry of a proven
+failed/stopped attempt. Carry the original request's known/unknown effects and
+require public request/Task/worker reconciliation before any fresh submission;
+do not turn an unknown outcome into a second Task. State the authorized next
+owner and separate result preservation, old-worker release, and new-owner evidence
+in the report. Keep runtime identities in public Task/report context, not files.
+
 Include the [routing policy snapshot](routing.md#scoped-model-and-effort-policy):
 source and scope of model/effort and cost/quality preferences, the assignment's
 role, fixed versus selectable versus unspecified values, allowed alternatives
