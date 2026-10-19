@@ -4,14 +4,15 @@ All inputs are invented here. The toy parser and auth sink are test-only; no
 workflow/shell source is executed and no real credentials or browser are used.
 """
 import contextlib
-import io
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ACCOUNT = "dummy-account-49"
@@ -103,10 +104,26 @@ def demonstrate_boundary(path, route, authenticate):
 
 
 def observe(action):
-    stdout, stderr = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        action()
-    return stdout.getvalue(), stderr.getvalue()
+    """Observe Python output AND inherited child FDs in these serial tests."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout, \
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr:
+        with contextlib.ExitStack() as stack:
+            for fd, stream in ((1, stdout), (2, stderr)):
+                saved = os.dup(fd)
+                stack.callback(os.close, saved)
+                stack.callback(os.dup2, saved, fd)
+                os.dup2(stream.fileno(), fd)
+            stack.enter_context(contextlib.redirect_stdout(stdout))
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            # Flush before restoring the FDs, including when action raises.
+            stack.callback(stdout.flush)
+            stack.callback(stderr.flush)
+            action()
+        stdout.seek(0)
+        stderr.seek(0)
+        return stdout.read(), stderr.read()
 
 
 def matches_expected(observed, expected):
@@ -182,6 +199,27 @@ class SyntheticSecretBoundary(unittest.TestCase):
                     self.assertFalse(matches_expected(tuple(bad), expected))
         self.assertFalse(matches_expected(("", ""), expected))
         self.assertFalse(matches_expected((json.dumps({"status": "verified"}) + "\n", ""), expected))
+
+    def test_missing_private_child_capture_fails_the_probe(self):
+        run = subprocess.run
+
+        def without_private_capture(*args, **kwargs):
+            kwargs["capture_output"] = False
+            if inherited_stream == "stdout":
+                kwargs["stderr"] = subprocess.PIPE
+            elif inherited_stream == "stderr":
+                kwargs["stdout"] = subprocess.PIPE
+            return run(*args, **kwargs)
+
+        # Mutate the actual child launch, not an already-constructed output.
+        # The hostile child's inherited FDs bypass redirect_stdout/stderr.
+        with mock.patch.object(subprocess, "run", side_effect=without_private_capture):
+            for inherited_stream in ("both", "stdout", "stderr"):
+                for name in SOURCES:
+                    with self.subTest(source=name, inherited_stream=inherited_stream):
+                        with self.assertRaisesRegex(AssertionError, "unexpected boundary output"):
+                            self.check_probe(name, "child_failure", {
+                                "status": "failed", "reason": "child_failed"})
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ the fixed expected target is `staging`. These are not copies of incidents or
 original logs. Documents are parsed as data, never executed as a workflow or
 shell; the dummy authentication sink is local and has no network or login access.
 
-Run the four test methods with `python3 -B -m unittest discover -s tests -p
+Run the five test methods with `python3 -B -m unittest discover -s tests -p
 'test_secret_inputs.py'`, or through `make check`. They exercise:
 
 - all five input shapes through in-process parsing and direct dummy credential
@@ -28,7 +28,18 @@ Run the four test methods with `python3 -B -m unittest discover -s tests -p
   produce failure rather than silent or successful output;
 - negative controls for full display, matching lines, env enumeration, exception
   text, child errors, raw browser returns, and a secret under an allowed key,
-  on both output streams. Empty output and false success are also rejected.
+  on both output streams. Empty output and false success are also rejected;
+- a mutation of the actual child launch to `capture_output=False`, with inherited
+  stdout only, stderr only, and both streams, for each input shape. Every mutated
+  probe must fail the same exact-output assertion used by the positive cases.
+
+The observer redirects OS file descriptors 1 and 2 as well as Python's
+`sys.stdout`/`sys.stderr` into disposable files, so child output that loses private
+capture cannot bypass the oracle. It flushes buffered Python output before
+restoring the descriptors and restores them even if the action raises. These
+tests run serially because descriptor redirection is process-wide. This outer
+test observation is separate from the example's private child capture: any
+inherited child output makes the exact allowed projection fail.
 
 The exact-output oracle checks allowed values and required results, not merely
 absence of a token substring. These tests demonstrate a **test-only example and
@@ -70,7 +81,19 @@ They now defer to the common pre-output boundary; broken-procedure checks remain
 mandatory. This is a coverage review, **not an independent or agent behavioral
 pass**. The implementation PR records the tested commit and actual check results.
 
-The four synthetic tests were run locally. All S1–S10 remain **NOT RUN as
+The five synthetic tests were run locally. A separate Python process reproduced
+the independent review's private-capture regression by loading the test module
+and patching `subprocess.run` in memory to force `capture_output=False`. Running
+the original four test methods at baseline
+`1a68c4aa5f5cfb4d16d11b2ec512aa51248d1b4c` incorrectly passed (exit 0), while the
+outer process captured `dummy-token-49` on both stdout and stderr. With the FD
+observer, the same four methods failed (exit 1, ten failed child failure/timeout
+subcases, zero errors), and neither outer stream contained the dummy token. The
+new fifth method permanently checks rejection of fifteen mutated probes (five
+input shapes times three inherited-stream configurations), without modifying
+repository source or needing real credentials. The normal suite remains green.
+
+All S1–S10 remain **NOT RUN as
 agent/live-tool acceptance**, including authorization decisions, actual browser
 evaluation/errors, tool-side logging, argument retention, and external auth.
 Independent review is separate and must record its own findings. No real secret,
