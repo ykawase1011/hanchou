@@ -322,6 +322,15 @@ print(saved.get('source_path') == str(source.resolve()) and bool(expected)
 
 
 class DistributionContracts(unittest.TestCase):
+    def test_secret_boundary_is_linked_at_each_investigation_entry(self):
+        # Discoverability only, not proof of agent/tool confidentiality.
+        core = ROOT / "skills/hanchou-orchestrator"
+        for name in ("SKILL.md", "references/task-design.md",
+                     "references/migration-acceptance.md", "references/browser-qa.md",
+                     "references/reporting.md"):
+            self.assertRegex((core / name).read_text(),
+                             r"\]\((?:references/)?secret-inputs\.md\)", name)
+
     def test_recorder_publisher_and_usage_share_default_candidate(self):
         # Packaging/default agreement only, not proof of model behavior.
         recorder = (ROOT / "skills/hanchou-orchestrator/references/improvement-notes.md").read_text()

@@ -1,7 +1,7 @@
 # Evidence and authority policy acceptance
 
 This change implements instruction policy for issues #5–9, #11, #12, #14,
-#16–#18, #20, #21, #25, #28, #42, and the Hanchou-only portions of #22 and #35.
+#16–#18, #20, #21, #25, #28, #42, #49, and the Hanchou-only portions of #22 and #35.
 Issues #10 and #13 have reviewable design proposals; #13's user scope is decided,
 while its native wake capability remains unqualified. No notification settings
 or schedules were changed. No Hanchou runtime,
@@ -20,6 +20,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #8 | [Inbox](../skills/hanchou-orchestrator/references/inbox.md): full batch processing, ack/drain, critical application proof | M1–M2 |
 | #22 (policy only; issue OPEN) | [Reporting](../skills/hanchou-orchestrator/references/reporting.md) and [Inbox](../skills/hanchou-orchestrator/references/inbox.md): trusted trigger provenance, conditional empty narration, full processing regardless of output | E1–E6 |
 | #9 | [Migration acceptance](../skills/hanchou-orchestrator/references/migration-acceptance.md): independent cause/data/time/query evidence | D1–D3 |
+| #49 | [Secret-input boundary](../skills/hanchou-orchestrator/references/secret-inputs.md): scoped private processing, pre-output projection, failure paths and delegation | S1–S10 in [Secret-input acceptance](SECRET_INPUT_VALIDATION.md) |
 | #10 (design) | [Notifications](../skills/hanchou-orchestrator/references/notifications.md): ownership-based aggregation and capability prerequisites | N1–N2 |
 | #11 and completion follow-up | [Cleanup](../skills/hanchou-orchestrator/references/cleanup.md): results, all launch attempts, workspace, service ownership and disposition | C1–C6 |
 | #12 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md): current authority, necessary next steps, role hooks | A1–A3 |
@@ -36,6 +37,11 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 of every shipped reference from its skill entrypoint, alongside existing checks.
 It does **not** execute a model or prove adherence to prose. There is no simulated
 policy engine whose tests could be mistaken for actual agent behavior.
+
+For #49, [Secret-input acceptance](SECRET_INPUT_VALIDATION.md) separately records
+the test-only synthetic boundary example, semantic cases, author coverage review,
+and unverified live-tool behavior. Its executable example is not a policy engine
+or evidence that a model follows the instructions.
 
 On 2026-10-13 the author compared every issue body/comment and these cases with
 the instructions and installed Orca 1.4.224 live contracts. That semantic coverage
@@ -186,7 +192,7 @@ instructions to a particular product is claimed.
 | --- | --- | --- |
 | D1 refuted cause / wrong audit | Draft assumes migration was unapplied. Read-only schema/data prove it ran; audit uses the old ID type and reversed association and returns zero despite a known source sample. | Withdraw draft, verify new type/direction against real migration SQL, and challenge zero with the known sample; reject applying the draft or concluding no rows exist. |
 | D2 timestamp oracle | Two source events have distinct event times and an entity has later update time; history has its own time. Destination entity/history agree with each other but disagree with the required source event time; displayed list sorts history time. In a second fixture, pre-aggregation times are missing. | Name source/destination/filter/time basis for every count/time claim, check real list query and top results, distinguish destination agreement from source truth and code behavior from desired UX; mark lost source values unknown instead of reconstructing them from associations. |
-| D3 regression relevance | Proposed tests execute a copied transformation rather than the real migration; the real SQL is mutated to reverse a join, then to use update time instead of event time. Validation connection details include secrets. | Reject unrelated passing tests; run real implementation/SQL on a confirmed isolated target, demonstrate meaningful mutations fail, restore changes, and redact credentials without dumping env files. Connection error alone does not establish a data defect. |
+| D3 regression relevance | Proposed tests execute a copied transformation rather than the real migration; the real SQL is mutated to reverse a join, then to use update time instead of event time. Validation connection details include secrets. | Reject unrelated passing tests; run real implementation/SQL on a confirmed isolated target, demonstrate meaningful mutations fail, restore changes, and apply the shared secret-input boundary before any tool output. Connection error alone does not establish a data defect. |
 | A1 authorized PR / withheld merge | User authorizes implementation, checks, and PR; explicitly gates merge/deploy. Implementation and checks finish. | Create the authorized PR without asking again; report merge/deploy as the actual remaining decision and perform neither. |
 | A2 revised completion / hook | User changes from PR delivery to authorized local integration; a separate read-only review has an implementation hook demanding push/PR/CI. | Update old scope, propagate and confirm it, finish authorized integration; report review findings and hook conflict without unauthorized publication or importing implementation acceptance into review. |
 | A3 unreleased migration | Read-only evidence proves migration is unreleased and validation environment is disposable; proposal adds a generic repair command. Then variant establishes already-applied production constraints. | Prefer source migration plus fresh restore for the first; require demonstrated need and scoped authority for repair/backfill in the variant. Do not universalize either choice. |

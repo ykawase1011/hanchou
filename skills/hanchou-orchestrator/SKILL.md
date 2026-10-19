@@ -139,6 +139,7 @@ Use these topic gates; do not load every reference for every request:
 | Starting, reusing, or recovering a worker; IPC trouble | [worker-evidence.md](references/worker-evidence.md) |
 | Dispatching worker instructions, steering, or consuming Inbox mail | [inbox.md](references/inbox.md) |
 | Accepting results or removing task resources | [cleanup.md](references/cleanup.md) |
+| Before investigating potentially secret inputs or using authentication | [secret-inputs.md](references/secret-inputs.md) |
 | Investigating, repairing, or reviewing a data migration | [migration-acceptance.md](references/migration-acceptance.md) |
 | Browser/API QA or transient browser tool errors | [browser-qa.md](references/browser-qa.md) |
 | Requested notification aggregation design | [notifications.md](references/notifications.md) |

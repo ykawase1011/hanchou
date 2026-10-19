@@ -5,7 +5,12 @@ Keep user updates short and verifiable:
 - intake: what was understood, Task identity when useful, and who owns the next step;
 - progress: only material changes, questions, risks, or requested status;
 - completion: outcome first, important files/artifacts, verification, remaining limits;
-- failure: exact failure, preserved state, and safest next action.
+- failure: verified failure class, preserved state, and safest next action.
+
+Apply [secret-inputs.md](secret-inputs.md) before emitting evidence from
+potentially secret inputs. An exact raw error/receipt is not required when it
+would disclose those inputs; report only the allowed fields and any verification
+gap. This also covers Inbox messages, reports, and artifacts.
 
 ## Inbox-triggered reporting
 

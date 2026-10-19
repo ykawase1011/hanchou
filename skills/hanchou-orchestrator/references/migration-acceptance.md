@@ -2,8 +2,9 @@
 
 Use this for migration diagnosis, repair, and independent audit. Before querying
 or changing data, verify the intended isolated validation target using only
-necessary non-secret connection metadata. Do not print environment files,
-credentials, connection strings, or secrets during connection diagnosis. A
+necessary non-secret connection metadata, under the shared
+[secret-input boundary](secret-inputs.md). Apply it before reading connection
+inputs and to diagnostic failures as well as successful queries. A
 connection error alone does not establish runtime failure or a data defect.
 
 Separate code-derived hypotheses, observed data, and user-observed symptoms.
