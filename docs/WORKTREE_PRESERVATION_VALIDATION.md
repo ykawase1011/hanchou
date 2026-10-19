@@ -66,6 +66,10 @@ and links; it does not execute these scenarios or prove agents obey the policy.
 The implementation task's own verified local child placement and protected
 checkout observations are bounded operational evidence reported separately to
 its coordinator. They do not test concurrent release work, every role, or merge
-behavior. This change does not close or qualify unresolved #10, #13, #22, #35,
+behavior. Issue #35 is closed for the policy delivery completed via PR #36;
+runtime follow-ups #39, #40, and #41 remain open. Remaining live acceptance for
+OC2 concurrent human release work, OC3 integration/shared refs, OC10
+intervening-operation attribution, and other unrun OC variants is tracked through
+existing #40. This change does not close or qualify unresolved #10, #13, #22,
 #39, #40, #41, or #44, update installed skills, bulk-migrate worktrees, or change,
 enable, or test Automations.

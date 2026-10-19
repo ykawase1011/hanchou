@@ -15,7 +15,7 @@ delivery mechanism, scheduler, or private-state integration is introduced.
 | #52 | [Worker reuse qualification](../skills/hanchou-orchestrator/references/worker-evidence.md#reuse-qualification-before-submission): session kind/public route, refusal versus unknown, preservation/release/next owner | R1–R4 in [Worker reuse acceptance](WORKER_REUSE_VALIDATION.md) |
 | #6 | [Routing](../skills/hanchou-orchestrator/references/routing.md): scoped placement and actual diff transfer | P1–P2 |
 | #20 | [Request scope](../skills/hanchou-orchestrator/references/request-scope.md), [routing](../skills/hanchou-orchestrator/references/routing.md), and this repository's `AGENTS.md`: effective preference through Task, selector, and actual receipt | P3–P5 |
-| #35 (instruction only; issue OPEN) | [Placement](../skills/hanchou-orchestrator/references/placement.md), [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency), and [onboarding](ONBOARDING.md): future coordinators, explicit lineage, target consistency, and persistent-child retention | CP1–CP12 |
+| #35 (policy delivery via PR #36 complete; issue CLOSED) | [Placement](../skills/hanchou-orchestrator/references/placement.md), [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency), and [onboarding](ONBOARDING.md): future coordinators, explicit lineage, target consistency, and persistent-child retention; runtime follow-ups #39/#40/#41 remain OPEN | CP1–CP12 |
 | #57 | [Original checkout preservation](../skills/hanchou-orchestrator/references/placement.md#change-work-preserve-the-original-checkout): dedicated change work, coordinator Git/integration, protected branch/files/index throughout | OC1–OC10 in [Checkout preservation acceptance](WORKTREE_PRESERVATION_VALIDATION.md) |
 | #42 | [Worktree names](../skills/hanchou-orchestrator/references/placement.md#names-for-newly-created-worktrees) and [cron setup](../skills/hanchou-cron/references/setup.md#placement-and-target-consistency): new-name defaults, explicit choices, verified reuse, unchanged placement and concurrency boundaries | WN1–WN7 |
 | #7 | [Worker evidence](../skills/hanchou-orchestrator/references/worker-evidence.md): worker-side IPC, actual invocation receipts | I1–I2 |
@@ -145,7 +145,10 @@ Orca 1.4.224: saved workspace/prompt pointed to a child while execution context
 still pointed to main, and combined selector flags were rejected. This change
 does not reproduce or repair that runtime behavior, infer precedence, or qualify
 unattended startup, authentication recovery, overlap prevention, or residual-tab
-backpressure. Cron remains stopped; those actual acceptance gaps keep #35 open.
+backpressure. Cron remains stopped. [Issue #35's closing comment](https://github.com/ykawase1011/hanchou/issues/35#issuecomment-6163814085)
+records the policy delivery via PR #36 as complete, with runtime target
+consistency (#39), live placement acceptance (#40), and unattended startup and
+failure recovery (#41) remaining open; closure does not qualify those behaviors.
 
 ## Worktree naming cases (#42)
 
