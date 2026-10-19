@@ -7,6 +7,16 @@ necessary non-secret connection metadata, under the shared
 inputs and to diagnostic failures as well as successful queries. A
 connection error alone does not establish runtime failure or a data defect.
 
+For feature QA, apply the separate
+[health and readiness gates](browser-qa.md#before-feature-qa-health-and-readiness):
+HTTP or `SELECT 1` success does not prove the actual application target or its
+required tables/views/schema are ready. Require the project-derived read-only
+representative business query under the application's effective permissions.
+Distinguish wrong target, structure mismatch, and permission failure before
+proposing a migration; readiness failure grants no repair, schema/data change,
+grant change, or connection-setting change authority. After an authorized
+correction, recheck target and query, and report functional QA independently.
+
 Separate code-derived hypotheses, observed data, and user-observed symptoms.
 Require read-only evidence supporting the cause and affected population before
 accepting a repair. Withdraw a draft based on a disproven premise; do not apply

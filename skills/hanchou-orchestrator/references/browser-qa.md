@@ -1,5 +1,71 @@
 # Browser and API acceptance
 
+## Before feature QA: health and readiness
+
+Plan three separate judgments before starting QA:
+
+| Layer | Required evidence | What it cannot establish |
+| --- | --- | --- |
+| Health | The scoped service responds and the DB connection works, where applicable. HTTP success and `SELECT 1` are health evidence only. | Intended target, required tables/views/schema, or feature behavior. |
+| Readiness | Intended and actual target match, and a representative read-only business query uses the structures required by the feature and meets its expected postcondition. | Real screen/API feature QA completion. |
+| Functional QA | Actual target screen/API actions satisfy their own observable postconditions below. | Untested paths or deployment verification. |
+
+For a DB-backed feature, establish the following before declaring readiness:
+
+1. Name the intended environment and the project-approved source for that intent.
+   Compare it with the actual connection used by the application under test,
+   using only authorized non-secret metadata. A separate diagnostic connection
+   or a matching configuration file alone does not prove the application's
+   effective target. Include relevant database/schema/tenant identity only when
+   needed and authorized; keep the comparison private if only its boolean may
+   be disclosed. Missing, ambiguous, mismatched, or unverifiable identity cannot
+   pass readiness. Stop feature QA on that target and report the gap.
+2. Derive the representative query from the target project's actual feature
+   query/schema or approved verification procedure. Name its source, required
+   tables/views/schema, read-only scope, expected predicate, and bounded execution
+   limits in the Task. Use the application's effective DB identity/permissions
+   and relevant schema resolution, not an elevated diagnostic account. Verify
+   that the query and any functions it calls are read-only; a `SELECT` prefix is
+   not proof. Do not hard-code project-specific SQL in the distributed skill.
+3. Once the target is verified, execute that query through an authorized safe
+   route and check the expected predicate inside the processing context. HTTP,
+   `SELECT 1`, a catalog listing, or a connection exit code cannot substitute
+   for using the feature's required structures. Define whether an empty result
+   is valid beforehand; do not infer a data defect from emptiness alone. If the
+   query, authorization, or safe route is unavailable, mark readiness unverified
+   and request the missing decision rather than inventing a universal probe.
+
+Apply [secret-inputs.md](secret-inputs.md) before reading connection inputs or
+running checks. Predeclare allowed fields and values, for example a fixed check
+identifier, `target_matches: true/false/unknown`, and bounded health, readiness,
+representative-query, and functional-QA results. Project inside the process
+before stdout/stderr or tool return, including exceptions and child failures.
+Do not emit credentials, full connection strings, raw query results, row data,
+raw errors, or unapproved identifiers; even metadata needs disclosure approval.
+
+On failure, distinguish evidence of target mismatch, missing/incompatible
+table/view/schema, and insufficient permissions. Separate these from connection
+failure, tool failure, and unknown cause; classify only what safe evidence
+supports. A missing relation on a wrong target is not proof that the intended
+database needs a migration. Stop at diagnosis within existing authority: failure
+does not authorize switching targets/accounts, repairing data, applying migrations,
+creating structures, or changing grants/configuration. After an authorized
+correction, repeat target comparison and the representative query; preserve the
+earlier failure in the acceptance report. Use
+[migration-acceptance.md](migration-acceptance.md) for any separately authorized
+migration investigation or repair.
+
+Report each layer as passed, failed, unperformed, or inconclusive with only its
+minimal approved evidence. Readiness passes only with positive target and query
+evidence; a passed representative query with functional QA unperformed remains
+**readiness passed / functional QA unperformed**. Do not collapse this into QA
+PASS. Recheck readiness when the effective target, identity, schema, or deployed
+feature changes. For a feature with no DB dependency, document that scope and
+its applicable readiness checks; do not invent a DB requirement or count an
+omitted required check as passed.
+
+## Browser selection and feature postconditions
+
 Choose the browser for each QA task before opening or changing a tab. Honor the
 user's explicit browser choice first. Otherwise use the target workspace's Orca
 embedded browser when its live guide, connection, and current capabilities can
