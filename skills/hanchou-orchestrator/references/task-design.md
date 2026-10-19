@@ -30,6 +30,16 @@ identity under [placement.md](placement.md). Recheck this for an independent
 reviewer, retry, or added worker rather than copying a previous `worker-start`
 selector.
 
+For investigation or authentication, apply [secret-inputs.md](secret-inputs.md)
+before reading inputs. Include in the worker brief the exact input scope,
+authorized authentication route (or none), forbidden full/line/env output,
+the allowed non-secret metadata/boolean schema, and safe failure outputs.
+Name stdout/stderr, exceptions, child-process failures, and browser evaluation
+returns as boundaries to check; specify how a broken procedure is distinguished
+from success. Carry these constraints into steering and independent review,
+without embedding credentials, source excerpts, or raw failure receipts in the
+Task. A generic “do not output secrets” instruction is insufficient.
+
 Before creating transient resources, name their intended disposition and cleanup
 owner in the Task spec: remove after acceptance, reuse for named follow-up work,
 or retain for a stated reason and next action. Reconcile that intent with each

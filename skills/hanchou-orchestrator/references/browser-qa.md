@@ -11,6 +11,13 @@ capability and page identity rather than assuming a browser is usable because
 its tab exists. A browser choice does not authorize logging in, changing an
 account, or using a different identity.
 
+Before authenticated inspection, apply [secret-inputs.md](secret-inputs.md).
+Define safe postcondition fields before evaluation; project them inside the
+browser evaluation before its return crosses the tool boundary. Do not return
+raw DOM, storage, cookies, headers, response bodies, or exception text and then
+redact them in chat. Keep the same boundary for snapshots and error receipts;
+when the tool cannot constrain them, report that verification unavailable.
+
 Define observable postconditions before the action and retain a minimal baseline
 of existing objects/relationships and the exact test-created targets. Use the
 official browser guide and page identity; re-observe after navigation or state
@@ -32,7 +39,8 @@ agreement alone cannot qualify application behavior. For UI count labels, verify
 what relation and filter the label counts against the product specification and
 implementation; similar associations are not interchangeable.
 
-On transient `runtime_unavailable` or a browser error, preserve the exact receipt
+On transient `runtime_unavailable` or a browser error, preserve only the receipt's
+pre-authorized non-secret fields under [secret-inputs.md](secret-inputs.md)
 and inspect official status, tab inventory, and a fresh snapshot of the same
 page where reachable. Follow the live browser recovery contract. Browser failure
 does not by itself prove Orca, the worker, or the application stopped. If current
