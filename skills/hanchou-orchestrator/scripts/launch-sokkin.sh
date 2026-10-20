@@ -116,7 +116,7 @@ model=$(jq -r '.sokkin.model // empty' <<<"$effective")
 effort=$(jq -r '.sokkin.effort // empty' <<<"$effective")
 [[ -z $model || $model =~ ^[a-zA-Z0-9][a-zA-Z0-9._:/+-]{0,99}$ ]] || fail invalid_model 'Model must be a native model identifier.'
 command -v "$kind" >/dev/null 2>&1 || fail missing_agent 'The selected official agent CLI is not available.'
-herdr() { "$herdr_bin" --session "$session" "$@"; }
+herdr() { command "$herdr_bin" --session "$session" "$@"; }
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-launch.XXXXXX")
 herdr workspace list > "$tmp/workspaces.json" 2> "$tmp/error" || fail herdr_unavailable 'Start the selected Herdr session before launching a sokkin.'
 jq -e '.result.workspaces|type=="array"' "$tmp/workspaces.json" >/dev/null || fail herdr_contract 'Herdr did not return a workspace inventory.'
