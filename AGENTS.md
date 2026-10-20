@@ -1,44 +1,36 @@
 # Hanchou repository instructions
 
-This repository distributes optional Orca skills: the Hanchou orchestrator and
-its improvement-issue publishing and scoped update helpers. Do not add a Hanchou CLI,
-runtime, daemon, database, scheduler, dashboard, agent launcher, project registry,
-or copied Orca command reference.
+This repository distributes Hanchou v2 Agent Skills: `hanchou-orchestrator`,
+`hanchou-sokkin`, `hanchou-init`, and `hanchou-update`. Keep the orchestrator
+provider-neutral, explicitly triggered, and focused on requests, results, and
+usage supervision. Sokkin owns execution, workers, verification, and integration.
 
-Use public Orca CLI contracts and the installed binary's live guides. Keep
-`hanchou-orchestrator` provider-neutral and narrowly triggered. Repository tests
-are allowed; production code is not, except the narrowly scoped, opt-in read-only
-static presentation template in `skills/hanchou-orchestrator/assets/status-view.html`
-and its associated instructions/tests. This reconstructible local snapshot may
-contain embedded HTML/CSS/JS for rendering only; it is not an authoritative store
-or permission for a runtime, server, exporter service, DB/cache, scheduler, control
-UI, or other dashboard production code. See the status-view reference.
+The only production executable allowed is the narrowly scoped, one-shot shell
+`skills/hanchou-orchestrator/scripts/launch-sokkin.sh`. It wraps existing Git,
+Herdr, and official agent CLIs, always creates and verifies a fresh branch and
+worktree before starting a new sokkin, and exits after returning launch identity.
+Do not add a runtime, daemon, database, scheduler, generic launcher, dashboard,
+registry, or copied CLI command reference. Repository tests are allowed.
+Use public CLI contracts and installed-version help; do not claim untested
+capabilities. Read `docs/HANCHOU_V2_DESIGN.md` for accepted requirements and
+`docs/VALIDATION.md` for bounded verification status.
 
-This repository's standing preference is to keep main for human work and fixed
-reference sources. Place future Hanchou interactive coordinators, independent
-cron coordinators, implementation, investigation, independent review, added
-workers, and retries in explicit Orca child worktrees of a verified parent in
-this project, unless the user explicitly overrides that preference. Supervised
-workers use dedicated workspaces separate from their coordinator and other
-workers, within the same Orchestration Run. Carry the preference and intended
-parent, host, and project into each Task/configuration, compare them with the
-public launch selector, and verify receipt plus actual path, parent lineage,
-host, and project before accepting placement. A distinct path alone is not
-proof of a child relationship.
+Preserve the human checkout, index, uncommitted changes, and existing resources.
+Pin project policy/config sources independently of execution placement; do not
+copy ignored files or silently change sources. Missing native identity or usage
+measurement blocks real work. Claude Code uses subscription authentication only.
+Do not revive removed cron, improvement publishing, status-view, Orca Run, or
+mandatory automatic handoff features. Existing installed data is not deleted
+merely because its old feature is removed from this repository.
 
-When changing execution placement, preserve the current conversation and its
-bound Run; do not silently move, clone, or rebind them. This placement rule is
-not a no-close restriction on an explicitly authorized `hanchou-update` handoff.
-An actual keep-open or same-Run requirement still applies to that handoff.
-A future independent interactive coordinator follows
-normal startup in its verified child, not a worker dispatch into the old Run.
-Keep selected policy/definition sources pinned independently of execution
-placement; do not copy ignored files or switch sources implicitly. A designated
-persistent cron child can host fresh independent occurrences; record retention
-reason, owner, and next review. Temporary workers follow existing result
-preservation and cleanup safeguards. Do not infer permission to schedule,
-enable, or test cron from this placement preference; a stop instruction remains
-in force. This repository preference is not a default for other Hanchou users.
+For work on this repository, keep main for human work and fixed reference sources.
+Unless explicitly overridden, use verified Orca child worktrees of the intended
+parent for coordinators, implementation, investigation, reviews, workers, and
+retries. Verify actual path, parent lineage, host, and project; a distinct path
+alone is insufficient. Supervised workers use separate dedicated workspaces.
+This contributor placement preference does not make Orca a v2 product dependency.
+Preserve the current conversation and any bound Run when changing placement;
+do not silently move, clone, or rebind them. It grants no scheduling authority.
 
 ```bash
 make check

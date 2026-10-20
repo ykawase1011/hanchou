@@ -1,131 +1,42 @@
-# Installation
+# 導入
 
-## Prerequisites
+Git、Bash、jq、Herdr、利用する公式Codex／Claude Code CLIを用意します。
+必要な版・起動オプションは同梱スクリプトと導入したCLIのhelpで確認してください。
+OrcaやOrcaのorchestrationスキルはv2製品の前提ではありません。
+Claude Codeは許可済みサブスク認証を確認し、API・追加課金経路へ切り替えません。
 
-Install Orca and its official `orca-cli` and `orchestration` skills. Use the
-installed version's Settings → Orchestration page for coverage/depth policy.
-Only if an older build explicitly reports a disabled Experimental feature,
-follow that build's manual guidance. Hanchou never changes Orca settings.
+Agent Skills対応ホストへ以下の4ディレクトリを、ホストの導入方法に従って配置します。
+スキル内のscripts・references・assetsも含めて保持してください。
 
-```bash
-npx skills add https://github.com/stablyai/orca \
-  --skill orca-cli orchestration --agent codex claude-code --global
+```text
+skills/hanchou-orchestrator/
+skills/hanchou-sokkin/
+skills/hanchou-init/
+skills/hanchou-update/
 ```
 
-## Global install (default)
+導入先、scope、link／copy、既存のlocal変更を確認します。以前のinstaller操作の成功を
+v2の導入確認として流用しません。v2の4スキル選択・同梱シェルの保持を含む正確な
+installerコマンドは未検証です。利用するinstallerの現在のhelpを確認してから実行してください。
 
-Install for both Codex and Claude Code on Orca, without relying on provider
-auto-detection. All six skills are optional; the five helpers can also be
-installed or removed separately by their names.
+対象projectで`$hanchou-init`（Claude Codeでは`/hanchou-init`）を明示的に呼びます。
+設定例:
 
-```bash
-npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
-  --agent codex claude-code --global
-npx skills list --global --agent codex claude-code
+```json
+{
+  "version": 2,
+  "sokkin": { "agent": "codex", "model": null }
+}
 ```
 
-Inspect actual target paths and links in the installer output. With the verified
-`skills` 1.7.2 defaults, Codex uses `~/.agents/skills` and Claude Code has its
-placement at `~/.claude/skills`; environment overrides and versions can alter
-paths. Global Universal placement is not a substitute for explicitly selecting
-Codex. Installation creates skill files/aliases and installer metadata, not
-Hanchou runtime state. It does not activate orchestration or edit existing
-`AGENTS.md`, `CLAUDE.md`, Orca settings, sessions, or Automations.
-Adding `hanchou-cron` does not choose scheduled work or authorize writing a
-job definition, creating even a disabled Automation, running a trial, or
-enabling a schedule. If the user wants to configure a job later, installation
-is complete without cron onboarding; the job stays unconfigured until they
-select concrete work and approve its scope. See [Scheduled work](CRON.md).
+`.hanchou/config.json`は機械向け起動値、`.hanchou/policy.md`は人間向け責務・権限です。
+設定元は対象project rootに固定します。Git管理外の設定を新worktreeへ無断コピーせず、
+認証情報を設定・依頼・報告に書きません。共有・Git管理は明示的に選択します。
 
-## Project-local install (optional)
+導入・設定だけでは起動しません。[README](../README.md)の明示的な依頼から開始します。
+実作業の前に[検証状況](VALIDATION.md)を確認し、native ID・使用量・Claude認証の
+未確認項目が残る経路で自律実行を開始しません。
 
-To restrict availability to a project or dedicated workspace, run the same
-selection there without `--global` (the installer's project default):
-
-```bash
-cd /absolute/path/to/project-or-workspace
-npx skills add https://github.com/ykawase1011/hanchou \
-  --skill hanchou-orchestrator hanchou-kaizen hanchou-publish-issues hanchou-update hanchou-cron hanchou-init \
-  --agent codex claude-code
-npx skills list --agent codex claude-code
-```
-
-Expected default placements are `.agents/skills` plus `.claude/skills` aliases.
-For a core-only installation, select only `hanchou-orchestrator`. If both local
-and global copies exist, inspect which one the agent loads; a local copy may
-shadow the global update. Never remove a local customized copy automatically.
-
-## Invoke, update and remove
-
-Codex uses `$hanchou-orchestrator`, `$hanchou-kaizen`, `$hanchou-update`,
-`$hanchou-publish-issues`, `$hanchou-cron`, and `$hanchou-init`; Claude Code uses the same names
-prefixed with `/`.
-See [Onboarding](ONBOARDING.md), [Improvement workflow](IMPROVEMENTS.md), and
-[Scheduled work](CRON.md), and [Initialization](INITIALIZATION.md). Install alone never activates Hanchou; configuration
-requests to helpers create no Run. A manual cron trial of an approved concrete
-job may run that job.
-
-Ask `hanchou-update` to update the installed Hanchou subset. It verifies source,
-local modifications, scope, provider targets, and the resulting files, using the
-official installer. It does not install absent helpers or update Orca. Avoid
-bare `npx skills update`, which can update unrelated skills. Manual updates
-should follow the same targeted reinstall procedure after checking local edits;
-there is no Hanchou updater executable, managed checkout or rollback database.
-
-Activated Hanchou checks for applicable updates at activation and each new user
-task, once per task, through the installed optional helper. Missing helper,
-unknown baseline, local edits or network failure are reported without blocking
-unrelated work; no helper is installed automatically. Only the installed skill
-trees and their pins matter, not unrelated repository commits. A check grants
-no update or rotation authority; standing installation-only permission stays
-installation-only.
-
-An ordinary explicit Hanchou update request includes scoped installation,
-verified adoption in a fresh visible agent tab, then old-self close without
-another permission question. Check-only, files-only, keep-open/no-close, scope
-limits and applicable contrary standing instructions override this default.
-Unchanged selected content without demonstrated stale session content needs
-neither reinstall nor a fresh tab; an explicit reload is a separate request.
-Repeated task wakes reuse prior attempt/receipt evidence instead of opening tabs.
-The workflow follows the helper's public-capability and quiescence gates and verifies the new
-conversation's actual installed paths/content/revision and handoff acknowledgment
-before exact closure. Orca 1.4.224's inspected public CLI does not qualify
-independent structured-session rotation or current-Run ownership transfer.
-Settled old business permits an independent new conversation/Run; same-Run
-transfer is an additional requirement only when requested. The rotation operation
-can remain pending without requiring its own close result before launch.
-On an unsupported path, retain the current conversation and provide a manual
-fresh-tab recovery after work settles. See [update acceptance and capability
-limits](UPDATE_VALIDATION.md); installing files does not itself refresh a running
-agent, close its session or enable cron.
-
-The final update report separates verified file installation, fresh-tab adoption,
-and old-session closure. For example, files may be current while adoption is
-blocked and the old session is retained. A missing structured operation in the
-inspected public CLI is a bounded finding, not proof that Orca has no such
-internal feature. Full automation is not established until the requested
-endpoint path has been exercised and verified. A helper that updates its own
-instructions also distinguishes the initially loaded workflow from the installed
-one; new text alone cannot broaden installation-only authority. Capability
-findings do not authorize external Issue/PR/comment publication.
-An ordinary Codex/Claude terminal is a valid successor when the user accepts
-that surface. Its launch and content acknowledgment can succeed even when the
-old structured chat's CLI close operation is unavailable; report the retained
-old chat explicitly. Automatic handoff uses public CLI operations only, without
-Computer Use or a GUI fallback. An explicit request to implement and track
-blocked work authorizes the corresponding in-scope issue follow-up; exclusions
-on destinations still apply.
-
-Remove through the installer/UI that created the copy, with explicit skill
-names, matching agents and scope. For example, for an unmodified global core:
-
-```bash
-npx skills remove hanchou-orchestrator --agent codex claude-code --global
-```
-
-The contract was checked against `npx skills --help` version 1.7.2 and the
-[official CLI docs](https://skills.sh/docs/cli) and
-[official installer repository](https://github.com/vercel-labs/skills).
-Read the installed version's help before acting; do not assume older `--local`
-examples or newer named-update options apply to every installed version.
+更新は`hanchou-update`へ明示的に依頼し、導入済みsubset・scope・local変更を保全します。
+新しい内容の採用は次の明示的な起動で確認します。現在の会話を自動終了する契約はありません。
+削除は導入に使った仕組みで対象スキルだけを指定し、projectの設定や成果は別に保全します。
