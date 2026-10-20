@@ -11,6 +11,23 @@
 - 39回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
 - `skills@1.7.4`を一時Git projectで実行。Codex/Claude Code向けに4スキルだけを選択し、全ファイルの一致、launcher実行権限、references/assetsの保持、導入先での`--help`を確認。global/userインストールは変更しない。[正確な導入コマンド](INSTALLATION.md)。
 
+### 初期化時のツール導入確認
+
+`hanchou-init`に導入状況・PATH・版・管理元の確認と、不足時に導入方法を
+ユーザーが選んでからインストールする手順を追加した。既存の互換導入と明示済みの
+選択は再利用し、server・agent・scheduleは初期化だけで起動しない。
+これはスキル指示の変更であり、全OS・全導入分岐の実機受入ではない。
+
+macOS 26.4.1 arm64では、Homebrew metadataを更新後にHerdr 0.9.5と
+ccusage 20.0.37のbottleを導入した。ccusageはMach-O arm64で、
+Nodeを含まないPATHでも既存Codex子threadを集計できた。nativeの
+input 78,595（cache 71,168込み）+ output 294 = **78,889 tokens**と一致し、
+先に導入したnpm版との内訳も一致した。
+エージェントのいない専用named sessionをbrew版Herdrで起動し直し、
+pane内のbrew実行path、CodexのChatGPT認証、同じ使用量、通知設定の適用を確認した。
+今回作成した直接導入のbinary・npm prefix・symlinkのみ削除し、既存session dataと
+共有設定を保持した。新規推論・班長・側近・worker・旧cronは起動していない。
+
 ## 使用量
 
 `ccusage@20.0.37`の限定受入、再現手順、native子の範囲、resume/fork/compactionの検証差分は[使用量検証](USAGE_TOOL_VALIDATION.md)に記録。

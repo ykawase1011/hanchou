@@ -1,6 +1,6 @@
 # 導入
 
-Git、Bash、jq、Herdr、利用する公式Codex／Claude Code CLIを用意します。
+Git、Bash、jq、Herdr、ccusage、利用する公式Codex／Claude Code CLIを用意します。
 必要な版・起動オプションは同梱スクリプトと導入したCLIのhelpで確認してください。
 OrcaやOrcaのorchestrationスキルはv2製品の前提ではありません。
 Claude Codeは許可済みサブスク認証を確認し、API・追加課金経路へ切り替えません。
@@ -59,6 +59,16 @@ symlink、launcherの実行権限と`--help`を公開sourceと照合しました
 他版のinstallerはこの試験の対象外です。
 
 対象projectで`$hanchou-init`（Claude Codeでは`/hanchou-init`）を明示的に呼びます。
+初期化では実行先hostのツールの導入状況・版・PATH・管理元を確認します。
+不足があれば、利用可能なHomebrewまたは公式の直接導入などから導入方法を選んでもらい、
+選択後に不足分をproject外へ導入します。すでに明示された選択は聞き直しません。
+既存の互換性のある導入は再利用し、古いpackage情報だけで版の提供有無を断定しません。
+Homebrew版ccusageはnative binaryでNode不要、npm経由ではNode wrapperを使用します。
+Herdr 0.9.5／ccusage 20.0.37は検証基準であり、導入方法や最低版の固定ではありません。
+別版は必要なCLI契約・ログ集計の互換性を確認して採用します。
+認証・Herdr内PATH・native使用量の未確認事項は準備待ちとして報告し、
+初期化だけでserver・agent・service・旧cronを起動しません。
+
 設定例:
 
 ```json

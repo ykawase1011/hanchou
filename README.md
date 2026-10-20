@@ -13,7 +13,7 @@ Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herd
 
 - `hanchou-orchestrator`: 薄い班長。依頼、成果の受入、使用量監督。
 - `hanchou-sokkin`: 実行担当。分解、worker・model選択、検証、統合。
-- `hanchou-init`: 対象projectの設定と人間向け方針を初期化。
+- `hanchou-init`: 対象projectの設定・方針とツール導入状況を確認。不足分は導入方法を選んでからインストール。
 - `hanchou-update`: 導入済みHanchouだけを明示的に更新。
 
 対象repositoryで`$hanchou-init`を呼び、`.hanchou/config.json`と
