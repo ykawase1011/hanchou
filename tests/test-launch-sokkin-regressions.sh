@@ -11,12 +11,26 @@ trap 'rm -rf -- "$fixture"' EXIT
 repo="$fixture/project"
 mkdir -p "$repo" "$fixture/bin" "$repo/.hanchou"
 export MOCK_REVIEW_CALLS="$fixture/calls.jsonl" MOCK_REVIEW_CWD="$fixture/cwd"
+export MOCK_REVIEW_CALLER_AUTH=pro MOCK_REVIEW_PANE_AUTH=pro
 : > "$MOCK_REVIEW_CALLS"
 cat > "$fixture/bin/claude" <<'CLAUDE'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ $# == 3 && $1 == auth && $2 == status && $3 == --json ]] || exit 93
-printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"pro"}'
+if [[ ${MOCK_REVIEW_AUTH_CONTEXT:-caller} == pane ]]; then
+  auth=$MOCK_REVIEW_PANE_AUTH
+else
+  auth=$MOCK_REVIEW_CALLER_AUTH
+fi
+case $auth in
+  api)
+    printf '%s\n' '{"loggedIn":true,"authMethod":"api_key","apiProvider":"firstParty","subscriptionType":null}';;
+  unknown)
+    printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"unrecognized"}';;
+  pro|max)
+    jq -cn --arg subscription "$auth" '{loggedIn:true,authMethod:"claude.ai",apiProvider:"firstParty",subscriptionType:$subscription}';;
+  *) exit 95;;
+esac
 CLAUDE
 cat > "$fixture/bin/codex" <<'CODEX'
 #!/usr/bin/env bash
@@ -41,7 +55,7 @@ case "$1 $2" in
   'pane run')
     # The launcher produces a read-only auth-status command targeting fixture files.
     [[ $3 == mock-pane && $# == 4 ]]
-    /bin/bash -c "$4"
+    MOCK_REVIEW_AUTH_CONTEXT=pane /bin/bash -c "$4"
     printf '%s\n' '{"ok":true,"result":{}}';;
   'agent start')
     kind=
@@ -178,5 +192,62 @@ if [[ $rc == 0 ]] && jq -e \
 else
   fail 'Claude default model must reach mock agent start and emit a successful receipt under /bin/bash'
 fi
+# R12: caller auth must reject before creation; a different actual-pane auth
+# must reject after creation and preserve the exact resources for reconciliation.
+# These fixtures return only public auth-status fields, never account secrets.
+assert_claude_auth_rejected() {
+  local caller=$1 actual_pane=$2 phase=$3 label="$1-$2-auth-$3"
+  local rc=0 before_count after_count retained_path
+  export MOCK_REVIEW_CALLER_AUTH=$caller MOCK_REVIEW_PANE_AUTH=$actual_pane
+  before_count=$(git -C "$repo" worktree list --porcelain | awk '/^worktree / { n++ } END { print n+0 }')
+  : > "$MOCK_REVIEW_CALLS"
+  run_launch "$fixture/claude-default.json" > "$fixture/$label.json" \
+    2> "$fixture/$label.err" || rc=$?
+  after_count=$(git -C "$repo" worktree list --porcelain | awk '/^worktree / { n++ } END { print n+0 }')
+  if [[ $rc == 0 ]] || ! jq -e \
+      '.version==2 and .ok==false and (.error|type=="object")' \
+      "$fixture/$label.json" >/dev/null 2>&1 ||
+      [[ $(jq -s 'length' "$fixture/$label.json") != 1 ]] ||
+      jq -se 'any(.[]; .[2]=="agent" and .[3]=="start")' \
+        "$MOCK_REVIEW_CALLS" >/dev/null; then
+    fail "$label must emit one failed receipt and never start an agent"
+    return
+  fi
+  if [[ $phase == preflight ]]; then
+    if [[ $after_count == "$before_count" ]] && jq -e \
+        '.stage=="preflight" and .resources==[] and .herdr.workspaceId==null' \
+        "$fixture/$label.json" >/dev/null &&
+        ! jq -se 'any(.[]; .[2]=="workspace" and .[3]=="create")' \
+          "$MOCK_REVIEW_CALLS" >/dev/null; then
+      pass "$label"
+    else
+      fail "$label must reject caller auth before creating resources"
+    fi
+  else
+    retained_path=$(jq -r '.worktree.path // empty' "$fixture/$label.json")
+    if [[ $after_count == "$((before_count + 1))" && -d $retained_path ]] &&
+        jq -e --arg path "$retained_path" \
+          '.stage=="subscription_check" and .herdr.workspaceId=="mock-workspace" and
+           .herdr.tabId=="mock-tab" and .herdr.paneId=="mock-pane" and
+           any(.resources[]; .kind=="worktree" and .path==$path and .state=="retained") and
+           any(.resources[]; .kind=="workspace" and .id=="mock-workspace" and .state=="retained")' \
+          "$fixture/$label.json" >/dev/null &&
+        jq -se 'any(.[]; .[2]=="workspace" and .[3]=="create") and
+                any(.[]; .[2]=="pane" and .[3]=="run")' \
+          "$MOCK_REVIEW_CALLS" >/dev/null; then
+      pass "$label"
+    else
+      fail "$label must retain the created worktree and returned workspace IDs"
+    fi
+  fi
+}
+assert_claude_auth_rejected api pro preflight
+assert_claude_auth_rejected unknown pro preflight
+for caller in pro max; do
+  assert_claude_auth_rejected "$caller" api pane
+  assert_claude_auth_rejected "$caller" unknown pane
+done
+export MOCK_REVIEW_CALLER_AUTH=pro MOCK_REVIEW_PANE_AUTH=pro
+
 [[ $failures == 0 ]] || exit 1
 printf 'launch-sokkin regressions: ok\n'
