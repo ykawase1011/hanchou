@@ -9,9 +9,40 @@ Install explicitly through the existing package manager, outside the project;
 the launcher does not install a usage tool.
 
 This version uses one `ccusage` binary with `codex` and `claude` subcommands.
-The old `@ccusage/codex` commands and JSON shapes are different. Verify `--version`
-and help. Use offline mode to avoid price downloads; never use price estimates
+The old `@ccusage/codex` commands and JSON shapes are different. Verify `--version`;
+consult relevant help on a mismatch or unknown option, not the full command tree.
+Use offline mode to avoid price downloads; never use price estimates
 as a subscription-budget measure.
+
+## Supervisor preparation
+
+Bind the supervisor too, before broad discovery. Use a host-supplied native ID
+when available and corroborate it with log metadata; otherwise search only the
+actual provider log home and relevant start-time window, matching exact physical
+cwd, provider and the current request marker. Never scan unrelated temporary
+directories or select the globally latest log. If attribution remains ambiguous,
+stop expanding the search and report the missing scope.
+
+Record a start snapshot if continuing an existing conversation: mission usage is
+the verified increase, not all earlier conversation usage. Keep session cumulative
+and mission delta distinct. If the start boundary is unavailable, label the
+cumulative scope rather than inventing a delta.
+
+Before launch or another discovery round, compare remaining allowance with the
+remaining supervisor work. Estimate the required request count for launch,
+bootstrap qualification, result acceptance and release, using the latest full
+request input (including cache) plus expected output and context growth. Keep the
+final verification/report reserve as a floor, not the entire estimate. A small
+output or low effort does not make repeated cached input free.
+If the remaining work does not fit, stop new assignments and report what is
+missing; do not launch optimistically or raise the budget silently.
+
+A running supervisor can observe only its last completed request's counters;
+the current tool-using request and final reply can add usage afterwards.
+Report this boundary and reserve for it. Do not repeatedly query for a settled
+total of the still-running conversation. When host usage is unavailable, report
+the missing supervisor scope; if a supervisor/total budget requires measurement,
+do not launch under an uncheckable budget. Sokkin qualification remains mandatory.
 
 ## Binding and read
 
