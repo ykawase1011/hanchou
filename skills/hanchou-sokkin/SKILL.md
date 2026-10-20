@@ -24,10 +24,13 @@ old snapshot. Integrate and verify results inside your Herdr execution context.
 
 ## Execution and cost
 
-Use approved provider/model candidates appropriate to task difficulty. Start
-with the least costly sufficient choice; raise effort/model only for a concrete
-unresolved gap within the approved policy. Do not inherit a high model from the
-supervisor or automatically increase effort for transport failures. Record the
+For workers, use approved provider/model candidates appropriate to task difficulty.
+Start with the least costly sufficient choice, considering Sol when available;
+raise effort/model only for a concrete unresolved gap within the approved policy.
+The sokkin's configured model prioritizes planning and integration judgment;
+do not copy it to every worker or automatically downgrade your own assignment.
+Complete small missions directly when another worker would add unnecessary cost.
+Do not automatically increase effort for transport failures. Record the
 requested and observed choice separately; null evidence is unknown.
 
 Set finite worker concurrency and retry limits from the mission. Size final

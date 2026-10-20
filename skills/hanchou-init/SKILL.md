@@ -65,18 +65,27 @@ missing choices; settled instructions need no second confirmation.
 
 Write `.hanchou/config.json` with `version: 2` and `sokkin.agent` (`codex` or
 `claude`) plus optional `sokkin.model` (null means the CLI's configured default).
-Select the agent with the user; never infer consent to API billing from a model
-choice. Claude is subscription-only. Configuration is JSON data, not shell code.
+For a new configuration without a user preference, use the copyable
+[config template](assets/config-template.json): Codex, `gpt-6-astra`, `medium`.
+This prioritizes sokkin's planning, delegation, verification and integration
+judgment; it is not a measured guarantee of lower total usage.
+Explicit user choices and existing settings, including null or omitted optional
+values, take precedence. Do not replace them with the template on reinitialization.
+For another provider, choose its supported model/effort rather than carrying
+Codex model names across. Never infer consent to API billing from a model choice.
+Claude is subscription-only. Configuration is JSON data, not shell code.
 Budget and allowed model choices may be recorded in `policy.md` or the mission.
 Optional `sokkin.effort` is `low`, `medium`, `high` or null; null/omission uses the
-CLI default. Pin a supported low effort for routine work rather than inheriting
-a costly default without checking. Verify the actual model/effort after startup.
+CLI default. A bounded routine mission may explicitly choose a lighter sokkin,
+such as Sol/low. Worker selection is separate: prefer the least costly approved
+model sufficient for the assigned work, with Sol as a candidate when available.
+Verify model availability before launch and observed model/effort after startup;
+do not silently substitute an unavailable default or start inference during init.
 
-Example:
-
-```json
-{"version":2,"sokkin":{"agent":"codex","model":null}}
-```
+Keep the supervisor focused on purpose, acceptance criteria, authority and budget.
+Sokkin owns the execution plan; do not make the supervisor pre-plan every worker
+assignment just to support a lighter sokkin. Evaluate total mission usage and
+rework, not just the sokkin's own token count.
 
 Keep local configuration ignored by default through the repository's actual
 `git rev-parse --git-path info/exclude`; preserve an explicit versioned/shared

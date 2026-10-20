@@ -69,16 +69,21 @@ Herdr 0.9.5／ccusage 20.0.37は検証基準であり、導入方法や最低版
 認証・Herdr内PATH・native使用量の未確認事項は準備待ちとして報告し、
 初期化だけでserver・agent・service・旧cronを起動しません。
 
-設定例:
+新規設定の既定値（[コピー用JSON](../skills/hanchou-init/assets/config-template.json)）:
 
 ```json
 {
   "version": 2,
-  "sokkin": { "agent": "codex", "model": null }
+  "sokkin": { "agent": "codex", "model": "gpt-6-astra", "effort": "medium" }
 }
 ```
 
 `.hanchou/config.json`は機械向け起動値、`.hanchou/policy.md`は人間向け責務・権限です。
+テンプレートは新規設定用です。明示指定や既存設定を優先し、再実行で上書きしません。
+`model`／`effort`のnull・省略は引き続きCLI既定値を意味します。
+側近は判断品質を優先し、workerは作業に十分な低消費の候補を選ぶ方針です。
+単純な依頼では側近にもSol／low等を明示指定できます。利用可能なmodelを確認し、
+既定モデルが使えない場合に別モデル・課金経路へ無断で切り替えません。
 設定元は対象project rootに固定します。Git管理外の設定を新worktreeへ無断コピーせず、
 認証情報を設定・依頼・報告に書きません。共有・Git管理は明示的に選択します。
 

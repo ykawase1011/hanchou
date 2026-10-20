@@ -17,16 +17,23 @@ Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herd
 - `hanchou-update`: 導入済みHanchouだけを明示的に更新。
 
 対象repositoryで`$hanchou-init`を呼び、`.hanchou/config.json`と
-`.hanchou/policy.md`を準備します。最小の起動設定は次の形です。
+`.hanchou/policy.md`を準備します。新規設定で指定がなければ、側近はCodexの
+Astra／mediumです。[コピー用設定テンプレート](skills/hanchou-init/assets/config-template.json):
 
 ```json
-{"version":2,"sokkin":{"agent":"codex","model":null}}
+{"version":2,"sokkin":{"agent":"codex","model":"gpt-6-astra","effort":"medium"}}
 ```
 
 `agent`は`codex`または`claude`、`model: null`は公式CLIの設定済み既定値です。
 `sokkin.effort`には任意で`low`・`medium`・`high`を指定できます。省略時はCLI既定値なので、
-定型作業の費用を抑えるにはmodelと併せて設定し、起動後の実際値を確認します。
+modelと併せて設定し、起動後の実際値を確認します。既存設定と明示指定を優先し、
+再初期化でテンプレートへ上書きしません。定型の小作業にはSol／low等も選べます。
 Claude Codeは本人の許可済みサブスク認証だけを使います。
+
+班長は目的・完了条件・権限・予算を整理し、解き方は側近に委ねます。
+側近の判断品質を確保し、workerはSolなど承認済み候補から必要な品質を満たす
+低消費のモデルを選びます。側近と同じモデルを一律に使いません。
+最適化の対象は全階層の総使用量・完遂率・手戻りです。Astra既定による削減率は未測定です。
 
 Codexへの依頼例:
 
