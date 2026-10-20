@@ -23,6 +23,14 @@ cwd, provider and the current request marker. Never scan unrelated temporary
 directories or select the globally latest log. If attribution remains ambiguous,
 stop expanding the search and report the missing scope.
 
+Native metadata can embed the entire instructions/context. Select identity fields,
+never print the whole `session_meta` object. For a verified Codex log, for example:
+
+```bash
+jq -c 'select(.type=="session_meta") | .payload |
+  {id,timestamp,cwd,model_provider,cli_version}' "$NATIVE_LOG"
+```
+
 Record a start snapshot if continuing an existing conversation: mission usage is
 the verified increase, not all earlier conversation usage. Keep session cumulative
 and mission delta distinct. If the start boundary is unavailable, label the
@@ -36,6 +44,10 @@ final verification/report reserve as a floor, not the entire estimate. A small
 output or low effort does not make repeated cached input free.
 If the remaining work does not fit, stop new assignments and report what is
 missing; do not launch optimistically or raise the budget silently.
+When stopping before resources exist, save the evidence already collected and a
+short report in one batch. Mark unverified facts as unknown; do not continue
+optional environment discovery or chase a newer self-counter to fill the report.
+When resources do exist, retain the checks necessary for their safe disposition.
 
 A running supervisor can observe only its last completed request's counters;
 the current tool-using request and final reply can add usage afterwards.
