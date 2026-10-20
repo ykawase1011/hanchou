@@ -8,13 +8,18 @@
 - 配布対象は4スキルと単発のBash起動スクリプト。旧cron、kaizen、issue公開helper、status-view、Orca用参照、旧テストを削除。
 - `make check`: 構造、リンク、shell構文、実Gitとmock Herdrによる起動試験、Bash 3.2回帰試験。ネットワーク・認証・実agentを必要としない。
 - 起動試験は新規branch/worktree、元checkoutのstaged/unstaged/untracked保全、設定override、異常値、cwd/provider不一致、途中失敗時の資源保全を検査する。mock成功はHerdr実機成功とは別。
-- 回帰試験はClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数を検査する。
+- 39回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
 - `skills@1.7.4`を一時Git projectで実行。Codex/Claude Code向けに4スキルだけを選択し、全ファイルの一致、launcher実行権限、references/assetsの保持、導入先での`--help`を確認。global/userインストールは変更しない。[正確な導入コマンド](INSTALLATION.md)。
 
 ## 使用量
 
 `ccusage@20.0.37`の限定受入、再現手順、native子の範囲、resume/fork/compactionの検証差分は[使用量検証](USAGE_TOOL_VALIDATION.md)に記録。
 既存実ログの完了thread、fork、子thread、Claude子込みsession、重複・途中書込みを確認した。新規resume/reset/compactionの全経路を実機保証するものではない。
+
+旧main `9e2e4f9`の班長`SKILL.md`は10,590 bytes、v2は4,424 bytes。
+常時読む入口の文量は約58%減ったが、実token消費や週次枠の削減率ではない。
+今回のホストは班長自身のsession別使用量を帰属できず、実機数値は側近以下の小計である。
+同じ仕事のv1/v2全階層比較は未測定で、実コスト改善の定量的保証は行わない。
 
 ## Herdr実機
 
@@ -87,6 +92,32 @@ retry probeは失敗を仮定した境界入力であり、実障害からの自
 通常の削除で解放、専用serverのexit 0を確認した。元fixtureのdiff/index/statusは、
 先の人間役による並行変更を含む期待値と再び一致した。
 
+### native側近の競合統合と並行編集
+
+別の一時repositoryとOrca拒否環境のnamed serverで、Claude Code 2.1.304／
+Haiku 5.5 low／Maxを起動した。attempt `6289d8f52048f7a1`、
+native session `43ac6ce9-e2b0-4aaf-b2fc-e7d46a0352d0`。
+launcherの新規worktree内で側近がincoming branchをmergeし、実際に`UU`と
+index stages 1/2/3の競合状態になった地点でいったん止めた。
+その時点で元checkoutの保全を確認したうえで、人間役が追記と新規untrackedファイルを追加した。
+
+続行した側近は指定した2行へ競合を解決し、merge commit
+`ba11420fdb23aff0fcca42bdee5c4877d6ed687b`を専用branchへ作成した。
+両親commit、期待する38 bytes、clean状態を独立に検証した。人間側のbranch・HEAD・index、
+staged/unstaged/untrackedと並行編集、incoming branch、無関係な共有tagは保持され、
+動いたrefは専用branchだけだった。実Git/mock試験でのdirtyな失敗checkoutを残した
+新規置換の確認と合わせ、R03/R04の受入根拠とする。
+
+usageはbootstrap **50,810** → 競合地点 **157,364** → 最終 **269,695**で、
+各地点のnative値とccusageが一致した。最終内訳はinput 10、cache creation 27,636、
+cache read 239,510、output 2,539。500,000枠（報告予備枠150,000）以内で、
+5 request・2 Bash tool・追加workerなし・retryなしだった。
+
+側近の「46 bytes」という報告は誤りだったため、報告だけで合格にせず実ファイルで訂正した。
+明示したinline指示の役割受領と実行を検証したもので、スキルの自動発見は検証していない。
+成果bundleの完全性を確認し、CLIと付随MCPの全記録PIDの終了、workspace閉鎖、
+clean worktree削除、専用serverのexit 0とsocket消滅、元checkoutの再照合まで完了した。
+
 ### 旧運用の撤去
 
 旧Automation `d03aafa6-530c-47a2-8d75-e7a46ed3b8df`はdisabledであることを再確認。
@@ -102,14 +133,31 @@ bootstrap失敗のみだった。対応する進行中のRun・worker・子works
 これは旧運用の終了・回収であり、Orca自体の設定不一致や認証起動の不具合修正ではない。
 導入済み旧スキルの置換とGitHub Issueの処置は別途残る。
 
-## 残る受入
+## 必須要件との対応と公開移行
 
-次を完了するまで、v2全体の出荷判定は未完了。
+固定した版・検証環境における技術受入を次の根拠で確認した。任意のprovider/model、
+実障害・並列競合・OS通知設定の全組合せを保証するものではない。
 
-- native側近によるより広い成果統合・共有ref保全。実Gitとmock Herdrのfixtureでは、起動結果の専用worktreeで競合merge・解決を行い、並行変更後の人間側branch・HEAD・index・ファイルと無関係な共有tagが各操作後も保持されることを確認した。dirtyな失敗checkoutを保持した新規置換も確認した。これはlauncherと明示したGit操作の試験であり、native側近自身による統合行動の実証ではない。
-- worker/model選択、欠測・予算・retry境界、役割受領と予備枠は上記範囲で確認済み。任意のprovider/model組合せ・実障害・並列競合に対する網羅保証はない。
-- 通知は上記の制御した環境で確認済み。利用者のCLI/OS/remote-control等に別の通知設定があれば採用時に照合する。
-- 旧Issueの処置、旧運用の所有・停止状態、公開参照先の確定。新仕様だけで旧障害を修正済みにしない。
+| 要件 | 主な根拠 |
+| --- | --- |
+| R01 薄い構成 | 配布4スキル、唯一の単発shell、構造検査 |
+| R02 Orca非依存 | Orca CLI・socket等へのアクセスを拒否した子プロセスで起動・実行・回収・会計・解放 |
+| R03 新規worktree/branch | 両providerの実起動、実Git/mockの異常系・置換・設定試験 |
+| R04 人間の作業場所の保全 | native競合地点・並行編集後・統合後・cleanup後の照合、共有ref確認 |
+| R05 専用workspace | receiptのworkspace/最初のpaneと実cwd/providerの照合 |
+| R06 Herdr内の実行 | viewerなしで側近とnative workerが実行、Orca Run/workerなし |
+| R07 設定 | provider/model/effortの設定・override試験と実プロセス/native観測 |
+| R08 session識別 | 両providerの固有cwd/marker/ID、実Codex親子関係と別計上 |
+| R09 欠測・重複 | native照合、確定prefix、重複・fork/compaction試料、resume/reset/欠損offline試験。不明経路はunavailable |
+| R10 使用量による割当制御 | native欠測・超過時拒否、実workerの予備枠付き会計、retry 0境界拒否 |
+| R11 自律選択 | 側近がroutine workにSol lowを選択し理由と実modelを照合 |
+| R12 サブスク限定 | caller/実pane Max認証、実argv、API/不明認証拒否の6回帰ケース |
+| R13 成果による受入 | ファイル・merge commit・検証・使用量を独立照合。誤ったbyte報告を訂正 |
+| R14 報告集約 | 制御したquiet sessionで重要結果を班長が回収。Orcaへのworker通知転送なし。採用環境の別設定は要照合 |
+| R15 保全と解放 | bundle/ファイル保全後に所有PID終了・workspace閉鎖・通常worktree削除を実確認 |
+
+公開移行では、PRのマージ、公開sourceからの導入確認、導入済み旧スキルの置換、
+旧Issueの処置と公開参照先の確定が残る。新仕様だけで旧障害を修正済みにしない。
 
 [#39](https://github.com/ykawase1011/hanchou/issues/39)と[#41](https://github.com/ykawase1011/hanchou/issues/41)の旧運用は上記のとおり終了・回収した。公開された移行内容と対応づけて`not planned`で整理できる。上流障害を解決済みとする根拠にはしない。
 

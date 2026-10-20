@@ -3,7 +3,7 @@
 Use native logs and a qualified existing tool; do not implement another collector
 or treat Herdr's display, context percentage, dollar estimate, or weekly quota as
 session tokens. The current bounded qualification is **ccusage 20.0.37** with
-Codex CLI 0.162.1 / Claude Code 2.1.299, plus a tool-free bootstrap on 2.1.304.
+Codex CLI 0.162.1 / Claude Code 2.1.299, plus bootstrap and integration on 2.1.304.
 Requalify changed log/tool formats.
 Install explicitly through the existing package manager, outside the project;
 the launcher does not install a usage tool.

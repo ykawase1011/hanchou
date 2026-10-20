@@ -11,6 +11,11 @@ and session for subsequent calls; workspace/pane IDs are scoped to that server.
 Check its current inventory before creating resources. Never silently fall back
 to the default server or a remote host. A viewer is optional and closing it does
 not terminate the server's agents.
+Check the selected session's effective notification settings before dispatch.
+Use an authorized quiet Herdr session and inspect provider hooks/remote-control
+settings so routine worker activity does not notify the human separately.
+Keep approvals and important results reachable through the supervisor; do not
+silently rewrite shared/global settings or claim all OS/mobile alerts are muted.
 
 ## Configuration and call
 
