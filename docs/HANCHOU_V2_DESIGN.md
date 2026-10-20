@@ -58,17 +58,12 @@ Git worktreeは作業場所の分離であり、ファイルアクセスの強�
 flowchart TD
     Human[人間] <--> Leader[班長：任意のホスト上のスキル]
     Leader -->|設定・起動要求| Launch[側近起動シェルスクリプト]
-    Launch -->|新規worktree・workspace作成と起動| Sokkin
+    Launch -->|新規worktreeを作業場所にして側近を起動| Workspace
     Launch -->|識別情報を返す| Leader
-    Leader -->|戻り値の接続先へ依頼| Sokkin
-    Sokkin -->|結果・使用量・判断要求| Leader
+    Leader -->|戻り値の接続先へ依頼| Workspace
+    Workspace -->|結果・使用量・判断要求| Leader
     subgraph Herdr[Herdr管理]
-        subgraph Workspace[側近専用workspace]
-            Sokkin[最初のタブ：設定された側近]
-            Worktree[このworkspaceの作業場所：新規worktree]
-            Sokkin -->|作業・検証・成果の統合| Worktree
-        end
-        Sokkin --> Workers[側近が管理する作業・worker]
+        Workspace["側近専用workspace<br/>最初のタブ：sokkin<br/>作業場所：新規Git worktree<br/>ここで作業・検証・成果の統合"]
     end
     Human -. 状況確認 .-> Viewer[任意のブラウザviewer]
     Viewer -. 接続 .-> Herdr
@@ -94,7 +89,7 @@ flowchart TD
 
 既存の`.hanchou/policy.md`は、人間が読む責務・権限・報告方針として継続する。機械が読む起動設定を`.hanchou/config.json`に追加する。設定はJSONのデータとして読み、シェルコードとして`source`や`eval`しない。
 
-最小設定例（提案形式）:
+最小設定例:
 
 ```json
 {
@@ -106,7 +101,7 @@ flowchart TD
 }
 ```
 
-`sokkin.agent`は`codex`または`claude`とし、後者は公式Claude Codeを指す。`model`がnullまたは省略の場合はそのCLIの設定済み既定値を使い、要求した値と実際の値を区別して報告する。Claudeのサブスク限定要件は側近にもworkerにも適用し、設定でAPI課金へ解除する項目は設けない。provider固有の推論設定などは、対応を確認した項目だけを追加する。
+`sokkin.agent`は`codex`または`claude`とし、後者は公式Claude Codeを指す。`model`がnullまたは省略の場合はそのCLIの設定済み既定値を使い、要求した値と実際の値を区別して報告する。Claudeのサブスク限定要件は側近にもworkerにも適用し、設定でAPI課金へ解除する項目は設けない。任意の`sokkin.effort`には`low`・`medium`・`high`またはnullを指定できる。null／省略時はCLI既定値を使う。要求値と観測値を分け、対応しないmodel／effortで黙って別候補へ切り替えない。
 
 設定元は、依頼で選んだ対象project rootに固定する。新しく作ったworktreeのcwdから別の`.hanchou`を自動探索しない。実行時に確定した設定と元pathを側近へ渡すため、Git管理外の`.hanchou`を新規worktreeへコピーする必要はない。既存のローカルpolicy運用と同様に、共有・Git管理するかは明示的な選択とし、認証情報は保存しない。
 
@@ -114,7 +109,7 @@ flowchart TD
 
 ### 5.2 新規依頼の起動順序
 
-班長は対象・依頼・設定を確定し、スキルに同梱する`launch-sokkin.sh`（仮称）を呼ぶ。以下の配置・起動処理はスクリプトにまとめ、新規worktree作成を省略するオプションは設けない。JSONの読取り・生成には`jq`を使い、文字列連結でJSONや実行コマンドを組み立てない。引数を適切に引用して既存CLIへ渡す。対応shellと最低バージョンは実装時に固定し、依存ツールは資源作成前に検証する。起動処理にPython／TypeScriptの実行環境は要求しない。
+班長は対象・依頼・設定を確定し、スキルに同梱する`launch-sokkin.sh`を呼ぶ。以下の配置・起動処理はスクリプトにまとめ、新規worktree作成を省略するオプションは設けない。JSONの読取り・生成には`jq`を使い、文字列連結でJSONや実行コマンドを組み立てない。引数を適切に引用して既存CLIへ渡す。対応shellはBash 3.2以上とし、依存ツールは資源作成前に検証する。起動処理にPython／TypeScriptの実行環境は要求しない。
 
 1. 対象repository、実行host、起点commit、作業目的、権限、使用量予算を確定する。元のcheckoutのbranch・HEAD・差分状態を観測する。
 2. 一意なmission IDを付け、既存branch／既存directoryを再利用せず、新しいbranchとGit worktreeを作る。起点は動くbranch名だけでなくcommit IDとして固定する。
@@ -144,7 +139,7 @@ stdoutにバージョン付きJSONを1件返し、診断ログはstderrへ分け
 
 班長はこの戻り値の接続先に対して依頼・状態取得・結果回収を行う。側近起動後、スクリプトは常駐しない。起動完了・計測準備完了の両方が確認できるまでは実作業を送らない。
 
-事前検証で失敗した場合は資源を作らない。部分失敗では自分が作成した未使用資源だけを安全に取り消し、起動済みか不明なものは残して識別情報を返す。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
+事前検証で失敗した場合は資源を作らない。部分失敗では作成済み資源を残して識別情報を返す。起動スクリプト内で自動削除せず、班長が所有・実稼働・成果を照合して回収する。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
 
 ### 5.4 再開
 
@@ -228,7 +223,7 @@ Claude Codeは公式CLIのサブスク認証を利用する。API keyや追加�
 
 ## 9. 通知とviewer
 
-現行リポジトリには任意の静的状況ビューのテンプレート`skills/hanchou-orchestrator/assets/status-view.html`と更新手順があり、調査時点では対象projectの`.hanchou/index.html`も存在する。これは自動更新されるライブdashboardではない。**v2では班長独自の状況ビューを対象外とし、生成・更新・移行を必須にしない。** 既存ファイルを今回削除することもない。以下のHerdr viewerはこの状況ビューとは別の任意機能である。
+旧版には任意の静的状況ビューのテンプレート`skills/hanchou-orchestrator/assets/status-view.html`と更新手順があり、調査時点では対象projectの`.hanchou/index.html`も存在する。旧テンプレートは自動更新されるライブdashboardではなく、v2の配布から削除する。**v2では班長独自の状況ビューを対象外とし、生成・更新・移行を必須にしない。** 利用者が生成済みのファイルは自動削除しない。以下のHerdr viewerはこの状況ビューとは別の任意機能である。
 
 人間への通常の窓口は班長とする。側近からの細かな進捗、workerの開始・終了、試行ごとのログは集約し、完了、判断が必要な事象、予算問題、継続不能を報告する。重複した状態変化で繰り返し通知しない。
 
@@ -258,9 +253,9 @@ Herdrでもworkspaceの閉鎖とworktreeの削除は別の操作である。実�
 
 | 項目 | 現時点の判定 | 本運用までに必要なこと |
 | --- | --- | --- |
-| Herdr workspaceの最初のタブに設定された側近を置く | 公開仕様に沿って構成可能、実機未検証 | Codex／Claude Codeそれぞれで新規起動・受領・終了を通す |
-| 側近起動シェルスクリプト | 今回採用した設計、未実装 | 対応shellと依存ツールの確認、設定検証、戻り値、途中失敗・二重起動防止の試験 |
-| `.hanchou`の側近設定 | 既存policy運用を拡張する設計、未実装 | 設定元の固定、一時指定、未対応設定の拒否、実際のagent／modelとの照合 |
+| Herdr workspaceの最初のタブに設定された側近を置く | 両CLIの起動とbootstrapを実機確認。詳しくは[検証状況](VALIDATION.md) | Codex／Claude Codeそれぞれで新規起動・受領・終了を通す |
+| 側近起動シェルスクリプト | Bash 3.2対応で実装、異常系を試験 | 対応shellと依存ツールの確認、設定検証、戻り値、途中失敗・二重起動防止の試験 |
+| `.hanchou`の側近設定 | 設定検証と起動時overrideを実装 | 設定元の固定、一時指定、未対応設定の拒否、実際のagent／modelとの照合 |
 | 新規worktreeへの配置と元branchの維持 | 既存Gitで実現可能 | 失敗・dirty親・並列・再起動の試験、起動後cwd確認 |
 | Orca非依存の操作 | 設計上可能 | Orcaを停止した環境で全経路を通す |
 | Codex／Claudeのセッション集計 | ローカル試料で部分確認 | native IDの取得、採用集計ツール、子・再開・fork・圧縮・欠測の受入試験。未完了ならR08–R10未達 |
@@ -301,9 +296,9 @@ Orcaを停止した状態で一連の操作を通す。viewerの有無で作業�
 
 ## 13. 実装時の変更範囲
 
-本書の次に変更するものは、班長のスキル、側近起動シェルスクリプト、`.hanchou/config.json`の定義と初期化手順、側近へ渡す指示、依頼・報告の形式、既存ツールの使い方に関する最小限の参照、受入用テストである。既存のOrca必須起動、Run／Task前提、workerへの直接介入を新設計へ置き換える。旧仕様への互換層は要求しない。現行のproduction code禁止に関する指針・検査は、単発の起動スクリプトを許す範囲に限定して更新する。
+本書に沿って変更するものは、班長のスキル、側近起動シェルスクリプト、`.hanchou/config.json`の定義と初期化手順、側近へ渡す指示、依頼・報告の形式、既存ツールの使い方に関する最小限の参照、受入用テストである。既存のOrca必須起動、Run／Task前提、workerへの直接介入を新設計へ置き換える。旧仕様への互換層は要求しない。現行のproduction code禁止に関する指針・検査は、単発の起動スクリプトを許す範囲に限定して更新する。
 
-今回の成果はこの設計書のみであり、既存スキルの動作・既存の自動化・ユーザーの実行環境は切り替えない。特に計測ツールの採用とHerdr実機試験を終えるまでは、自律実行と予算制御を実現済みと案内しない。
+v2実装として4スキルと起動スクリプトへ置換し、旧配布物と検査を削除する。既存利用者のインストールや稼働資源は別の移行対象である。実施済み検証と出荷までの残件は[検証状況](VALIDATION.md)を正本とし、設計上の必須要件と実機で確認済みの範囲を区別する。
 
 ## 14. v1から活かすもの・簡素化するもの・捨てるもの
 
@@ -314,24 +309,24 @@ Orcaを停止した状態で一連の操作を通す。viewerの有無で作業�
 | v1の要素・参照元 | v2で活かす形 | 残す理由 |
 | --- | --- | --- |
 | 明示的な起動と非侵襲的な導入（[導入](INSTALLATION.md)） | インストールや設定だけでは実作業を始めない。通常のagent利用とHanchou利用を分ける | ホストが変わっても意図しない起動を避けるために必要 |
-| `.hanchou/policy.md`の責務・権限（[初期化](INITIALIZATION.md)） | 読む元を固定し、今回の依頼の権限と合わせてsokkinへ渡す。許可済みの内容を繰り返し質問しない | 自律実行の範囲を短い文書で共有できる |
-| 実行先と実結果の照合（[証拠・権限の受入](POLICY_ACCEPTANCE.md)） | 起動要求、入力受領、実稼働、成果、停止を区別する。未知の状態は未知として返す | Herdrに移しても二重起動や誤った完了報告は起こり得る |
+| `.hanchou/policy.md`の責務・権限（[初期化](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/INITIALIZATION.md)） | 読む元を固定し、今回の依頼の権限と合わせてsokkinへ渡す。許可済みの内容を繰り返し質問しない | 自律実行の範囲を短い文書で共有できる |
+| 実行先と実結果の照合（[証拠・権限の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/POLICY_ACCEPTANCE.md)） | 起動要求、入力受領、実稼働、成果、停止を区別する。未知の状態は未知として返す | Herdrに移しても二重起動や誤った完了報告は起こり得る |
 | 元checkoutと成果の保全（[#40](https://github.com/ykawase1011/hanchou/issues/40)） | sokkin起動前の新規worktree、元branch・index・人間の変更の保護、部分失敗からの回収 | 今回の必須要件そのものであり、Orca固有ではない |
-| 秘密情報を出力へ載せない判断（[秘密情報の受入](SECRET_INPUT_VALIDATION.md)） | 設定・戻り値・使用量報告から認証情報と不要な本文を除く。必要な作業だけに情報を渡す | agentやホストの変更で弱めてよい性質ではない |
-| 不明結果からの再試行と成果保全（[再利用の受入](WORKER_REUSE_VALIDATION.md)） | 再送前に元の試行を照合する。未コミット成果・実行中処理を保全する | timeoutと未実行を取り違えないために必要。Orca固有のhandle判定は持ち込まない |
-| 検証済み範囲を限定する報告（[QA受入](QA_READINESS_VALIDATION.md)） | スクリプト試験、指示の評価、実機での業務成功を分ける | v1のテスト成功をv2の動作保証へ流用しないため |
+| 秘密情報を出力へ載せない判断（[秘密情報の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/SECRET_INPUT_VALIDATION.md)） | 設定・戻り値・使用量報告から認証情報と不要な本文を除く。必要な作業だけに情報を渡す | agentやホストの変更で弱めてよい性質ではない |
+| 不明結果からの再試行と成果保全（[再利用の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/WORKER_REUSE_VALIDATION.md)） | 再送前に元の試行を照合する。未コミット成果・実行中処理を保全する | timeoutと未実行を取り違えないために必要。Orca固有のhandle判定は持ち込まない |
+| 検証済み範囲を限定する報告（[QA受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/QA_READINESS_VALIDATION.md)） | スクリプト試験、指示の評価、実機での業務成功を分ける | v1のテスト成功をv2の動作保証へ流用しないため |
 
 ### 14.2 簡素化して活かすもの
 
 | v1の要素・参照元 | v2での変更 | 簡素化する理由 |
 | --- | --- | --- |
-| 班長による分解・委任・レビュー・統合（[構成](ARCHITECTURE.md)） | 作業遂行をsokkinへ移し、班長は依頼・結果報告・使用量監督に集中する | 班長が全workerの会話と細かな状態を抱えると、階層を増やしても消費が減らない |
-| model／effort方針（[モデル選択の受入](MODEL_ROUTING_VALIDATION.md)） | 方針の適用範囲と要求値／実際値の区別は残す。承認済み候補内の選択をsokkinに任せ、使用量を判断材料にする | 毎回人間へ選択を戻す運用や、親の高コスト設定を一律継承する運用を避ける |
-| `hanchou-init`（[初期化](INITIALIZATION.md)） | policyに加え、`config.json`の`sokkin.agent`・modelを設定できるようにする | 人間向け方針と機械向け起動値を分けると、起動スクリプトが短くなる |
-| レビュー・browser QA・データ移行QA（[受入方針](POLICY_ACCEPTANCE.md)） | 必要な案件でsokkinが該当する手順を参照する。全依頼の必須読込にはしない | 作業種別ごとの専門手順を班長の基本動作へ常に積み増さない |
+| 班長による分解・委任・レビュー・統合（[構成](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/ARCHITECTURE.md)） | 作業遂行をsokkinへ移し、班長は依頼・結果報告・使用量監督に集中する | 班長が全workerの会話と細かな状態を抱えると、階層を増やしても消費が減らない |
+| model／effort方針（[モデル選択の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/MODEL_ROUTING_VALIDATION.md)） | 方針の適用範囲と要求値／実際値の区別は残す。承認済み候補内の選択をsokkinに任せ、使用量を判断材料にする | 毎回人間へ選択を戻す運用や、親の高コスト設定を一律継承する運用を避ける |
+| `hanchou-init`（[初期化](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/INITIALIZATION.md)） | policyに加え、`config.json`の`sokkin.agent`・modelを設定できるようにする | 人間向け方針と機械向け起動値を分けると、起動スクリプトが短くなる |
+| レビュー・browser QA・データ移行QA（[受入方針](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/POLICY_ACCEPTANCE.md)） | 必要な案件でsokkinが該当する手順を参照する。全依頼の必須読込にはしない | 作業種別ごとの専門手順を班長の基本動作へ常に積み増さない |
 | 通知集約（[#10](https://github.com/ykawase1011/hanchou/issues/10)、[#22](https://github.com/ykawase1011/hanchou/issues/22)） | 重要な変化だけを人間へ報告する方針を残し、Orca Inboxを経由しないsokkinとの連携に置き換える | 通知問題は残るが、旧配送機構を再現する必要はない |
-| 成果保全とcleanup（[受入方針](POLICY_ACCEPTANCE.md)） | 所有と成果を確認して解放する基準を残し、sokkinの起動結果とHerdr／Gitの実状態を使う | Run／Dispatch／terminal別の旧分岐を持ち込まずに、必要な保全を維持できる |
-| 対象を限定した更新（[更新の検証](UPDATE_VALIDATION.md)） | 明示的な更新、導入先・local変更・版の確認を残す。更新版の採用は次の明示的な起動時に確認する | ファイル更新に、現ホストの会話終了と完全自動交代を必ず結び付けると複雑になる |
+| 成果保全とcleanup（[受入方針](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/POLICY_ACCEPTANCE.md)） | 所有と成果を確認して解放する基準を残し、sokkinの起動結果とHerdr／Gitの実状態を使う | Run／Dispatch／terminal別の旧分岐を持ち込まずに、必要な保全を維持できる |
+| 対象を限定した更新（[更新の検証](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/UPDATE_VALIDATION.md)） | 明示的な更新、導入先・local変更・版の確認を残す。更新版の採用は次の明示的な起動時に確認する | ファイル更新に、現ホストの会話終了と完全自動交代を必ず結び付けると複雑になる |
 
 ### 14.3 v2初版では捨てるもの
 

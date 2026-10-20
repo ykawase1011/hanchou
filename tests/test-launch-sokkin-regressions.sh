@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# Regression probes use real temporary Git repositories and mock provider/Herdr CLIs.
+# No real agent, inference, account state or installed settings are accessed.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+launcher=${HANCHOU_LAUNCHER:-"$root/skills/hanchou-orchestrator/scripts/launch-sokkin.sh"}
+[[ -f $launcher ]] || { printf 'launcher missing: %s\n' "$launcher" >&2; exit 1; }
+command -v jq >/dev/null
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-launch-regressions.XXXXXX")
+trap 'rm -rf -- "$fixture"' EXIT
+repo="$fixture/project"
+mkdir -p "$repo" "$fixture/bin" "$repo/.hanchou"
+export MOCK_REVIEW_CALLS="$fixture/calls.jsonl" MOCK_REVIEW_CWD="$fixture/cwd"
+: > "$MOCK_REVIEW_CALLS"
+cat > "$fixture/bin/claude" <<'CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# == 3 && $1 == auth && $2 == status && $3 == --json ]] || exit 93
+printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","subscriptionType":"pro"}'
+CLAUDE
+cat > "$fixture/bin/codex" <<'CODEX'
+#!/usr/bin/env bash
+# Dependency check only. Direct inference is prohibited by this fixture.
+exit 93
+CODEX
+cat > "$fixture/bin/herdr" <<'HERDR'
+#!/usr/bin/env bash
+set -euo pipefail
+jq -cn --args '$ARGS.positional' -- "$@" >> "$MOCK_REVIEW_CALLS"
+[[ $1 == --session && $2 == regression ]]; shift 2
+case "$1 $2" in
+  'workspace list')
+    printf '%s\n' '{"ok":true,"result":{"workspaces":[]}}';;
+  'workspace create')
+    while [[ $# -gt 0 ]]; do
+      if [[ $1 == --cwd ]]; then printf '%s' "$2" > "$MOCK_REVIEW_CWD"; break; fi
+      shift
+    done
+    cwd=$(cat "$MOCK_REVIEW_CWD")
+    jq -cn --arg cwd "$cwd" '{ok:true,result:{workspace:{workspace_id:"mock-workspace"},tab:{tab_id:"mock-tab"},root_pane:{pane_id:"mock-pane",cwd:$cwd,foreground_cwd:$cwd}}}';;
+  'pane run')
+    # The launcher produces a read-only auth-status command targeting fixture files.
+    [[ $3 == mock-pane && $# == 4 ]]
+    /bin/bash -c "$4"
+    printf '%s\n' '{"ok":true,"result":{}}';;
+  'agent start')
+    kind=
+    while [[ $# -gt 0 ]]; do
+      if [[ $1 == --kind ]]; then kind=$2; break; fi
+      shift
+    done
+    cwd=$(cat "$MOCK_REVIEW_CWD")
+    jq -cn --arg cwd "$cwd" --arg kind "$kind" '{ok:true,result:{agent:{agent:$kind,agent_status:"idle",pane_id:"mock-pane",cwd:$cwd,foreground_cwd:$cwd,agent_session:{kind:"id",value:"mock-native-id"}}}}';;
+  *) exit 94;;
+esac
+HERDR
+chmod +x "$fixture/bin/"*
+export HERDR_BIN="$fixture/bin/herdr" PATH="$fixture/bin:$PATH"
+git -C "$repo" init -q
+git -C "$repo" config user.name Fixture
+git -C "$repo" config user.email fixture@example.invalid
+printf 'base\n' > "$repo/tracked.txt"
+git -C "$repo" add tracked.txt
+git -C "$repo" commit -qm base
+
+failures=0
+pass() { printf 'PASS: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1" >&2; failures=$((failures + 1)); }
+run_launch() {
+  local config=$1; shift
+  /bin/bash "$launcher" --project "$repo" --mission regression --session regression \
+    --worktree-root "$fixture/worktrees" --config "$config" "$@"
+}
+assert_config_rejected() {
+  local label=$1 path=$2 code=$3 rc=0 before_count
+  shift 3
+  before_count=$(git -C "$repo" worktree list --porcelain | awk '/^worktree / { n++ } END { print n+0 }')
+  : > "$MOCK_REVIEW_CALLS"
+  run_launch "$path" "$@" > "$fixture/$label.json" 2> "$fixture/$label.err" || rc=$?
+  if [[ $rc != 0 && $(git -C "$repo" worktree list --porcelain | awk '/^worktree / { n++ } END { print n+0 }') == "$before_count" ]] && jq -e --arg code "$code" \
+      '.version==2 and .ok==false and .stage=="preflight" and .error.code==$code' \
+      "$fixture/$label.json" >/dev/null 2>&1 &&
+      [[ $(jq -s 'length' "$fixture/$label.json") == 1 ]] &&
+      ! jq -se 'any(.[]; join(" ") | test("workspace create|agent start"))' \
+        "$MOCK_REVIEW_CALLS" >/dev/null; then
+    pass "$label"
+  else
+    fail "$label must fail before resource creation with one valid JSON receipt"
+  fi
+}
+printf '{broken' > "$fixture/malformed.json"
+assert_config_rejected malformed-json "$fixture/malformed.json" invalid_config
+printf '%s\n' '{"version":2,"sokkin":{"agent":"codex","model":false}}' > "$fixture/false-model.json"
+assert_config_rejected false-model "$fixture/false-model.json" invalid_config
+
+# Valid JSON scalars/arrays are malformed launch configurations too. They must
+# still produce a valid failure receipt instead of breaking receipt generation.
+for literal in true false null 42 '[]' '"string"'; do
+  printf '%s\n' "$literal" > "$fixture/scalar.json"
+  assert_config_rejected "scalar-$literal" "$fixture/scalar.json" invalid_config
+done
+
+# Validate effort before any resource creation for both provider branches.
+for provider in codex claude; do
+  for effort_json in false '[]' '{}' 42 '"xhigh"' '""'; do
+    jq -cn --arg provider "$provider" --argjson effort "$effort_json" \
+      '{version:2,sokkin:{agent:$provider,model:null,effort:$effort}}' \
+      > "$fixture/effort-invalid.json"
+    assert_config_rejected "$provider-config-effort-$effort_json" \
+      "$fixture/effort-invalid.json" invalid_config
+  done
+  jq -cn --arg provider "$provider" \
+    '{version:2,sokkin:{agent:$provider,model:null,effort:"high"}}' \
+    > "$fixture/effort-valid.json"
+  for override in false '[]' xhigh 42; do
+    assert_config_rejected "$provider-override-effort-$override" \
+      "$fixture/effort-valid.json" invalid_effort --effort "$override"
+  done
+done
+
+assert_low_effort_mapping() {
+  local provider=$1 mode=$2 rc=0 label="$1-$2-low-effort" expected_args
+  if [[ $mode == config ]]; then
+    jq -cn --arg provider "$provider" \
+      '{version:2,sokkin:{agent:$provider,model:null,effort:"low"}}' \
+      > "$fixture/effort-valid.json"
+  else
+    jq -cn --arg provider "$provider" \
+      '{version:2,sokkin:{agent:$provider,model:null,effort:"high"}}' \
+      > "$fixture/effort-valid.json"
+  fi
+  cp "$fixture/effort-valid.json" "$fixture/effort-before.json"
+  : > "$MOCK_REVIEW_CALLS"
+  if [[ $mode == config ]]; then
+    run_launch "$fixture/effort-valid.json" > "$fixture/$label.json" \
+      2> "$fixture/$label.err" || rc=$?
+  else
+    run_launch "$fixture/effort-valid.json" --effort low > "$fixture/$label.json" \
+      2> "$fixture/$label.err" || rc=$?
+  fi
+  if [[ $provider == codex ]]; then
+    expected_args='["--no-daemon","-c","model_reasoning_effort=\"low\""]'
+  else
+    expected_args='["--effort","low"]'
+  fi
+  if [[ $rc == 0 ]] && jq -e --arg provider "$provider" \
+      '.version==2 and .ok==true and .sokkin.agent==$provider and
+       .sokkin.requestedEffort=="low" and .config.effective.sokkin.effort=="low"' \
+      "$fixture/$label.json" >/dev/null 2>&1 &&
+      jq -se --argjson expected "$expected_args" \
+        'any(.[]; .[2]=="agent" and .[3]=="start" and
+         (. as $call | index("--") as $separator |
+          $separator!=null and $call[($separator+1):]==$expected))' \
+        "$MOCK_REVIEW_CALLS" >/dev/null &&
+      cmp "$fixture/effort-valid.json" "$fixture/effort-before.json" >/dev/null; then
+    pass "$label"
+  else
+    fail "$label must map to the native provider arguments and preserve config"
+  fi
+}
+for provider in codex claude; do
+  assert_low_effort_mapping "$provider" config
+  assert_low_effort_mapping "$provider" override
+done
+
+# /bin/bash is macOS Bash 3.2: set -u rejects an unguarded empty array expansion.
+printf '%s\n' '{"version":2,"sokkin":{"agent":"claude","model":null}}' > "$fixture/claude-default.json"
+: > "$MOCK_REVIEW_CALLS"
+rc=0
+run_launch "$fixture/claude-default.json" > "$fixture/claude-default.receipt.json" \
+  2> "$fixture/claude-default.err" || rc=$?
+if [[ $rc == 0 ]] && jq -e \
+    '.version==2 and .ok==true and .sokkin.agent=="claude" and
+     .sokkin.requestedModel==null and .sokkin.nativeSessionId=="mock-native-id"' \
+    "$fixture/claude-default.receipt.json" >/dev/null 2>&1 &&
+    jq -se 'any(.[]; join(" ") | contains("agent start"))' "$MOCK_REVIEW_CALLS" >/dev/null; then
+  pass claude-default-model-bash32
+else
+  fail 'Claude default model must reach mock agent start and emit a successful receipt under /bin/bash'
+fi
+[[ $failures == 0 ]] || exit 1
+printf 'launch-sokkin regressions: ok\n'

@@ -24,6 +24,8 @@ Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herd
 ```
 
 `agent`は`codex`または`claude`、`model: null`は公式CLIの設定済み既定値です。
+`sokkin.effort`には任意で`low`・`medium`・`high`を指定できます。省略時はCLI既定値なので、
+定型作業の費用を抑えるにはmodelと併せて設定し、起動後の実際値を確認します。
 Claude Codeは本人の許可済みサブスク認証だけを使います。
 
 Codexへの依頼例:

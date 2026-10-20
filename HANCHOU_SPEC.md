@@ -5,7 +5,7 @@ Hanchouは4つのスキルと単発の側近起動シェルで構成する。
 
 | 項目 | 契約 |
 | --- | --- |
-| 設定 | 対象project rootの`.hanchou/config.json`を固定して読む。`version: 2`、`sokkin.agent: codex / claude`、任意の`model`。JSONをshellコードとして実行しない |
+| 設定 | 対象project rootの`.hanchou/config.json`を固定して読む。`version: 2`、`sokkin.agent: codex / claude`、任意の`model`と`effort: low / medium / high`。JSONをshellコードとして実行しない |
 | 方針 | `.hanchou/policy.md`に責務・権限・報告方針を置く。依頼の一時指定を永続設定へ自動反映しない |
 | 起動 | `skills/hanchou-orchestrator/scripts/launch-sokkin.sh`は必ず新規branch・worktreeを作成・照合してから専用Herdr workspaceの最初のタブへ側近を起動する |
 | 保全 | 元checkoutのbranch切替・reset・stash・未コミット変更の移送を行わない。失敗時に元checkoutで代替実行しない |

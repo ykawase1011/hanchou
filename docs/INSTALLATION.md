@@ -5,8 +5,8 @@ Git、Bash、jq、Herdr、利用する公式Codex／Claude Code CLIを用意し�
 OrcaやOrcaのorchestrationスキルはv2製品の前提ではありません。
 Claude Codeは許可済みサブスク認証を確認し、API・追加課金経路へ切り替えません。
 
-Agent Skills対応ホストへ以下の4ディレクトリを、ホストの導入方法に従って配置します。
-スキル内のscripts・references・assetsも含めて保持してください。
+Agent Skills installerの`skills@1.7.4`で、v2 checkoutからCodexとClaude Codeへの
+project-local導入を2026-10-20に確認しました。導入対象は次の4スキルです。
 
 ```text
 skills/hanchou-orchestrator/
@@ -15,9 +15,41 @@ skills/hanchou-init/
 skills/hanchou-update/
 ```
 
-導入先、scope、link／copy、既存のlocal変更を確認します。以前のinstaller操作の成功を
-v2の導入確認として流用しません。v2の4スキル選択・同梱シェルの保持を含む正確な
-installerコマンドは未検証です。利用するinstallerの現在のhelpを確認してから実行してください。
+ローカルsourceからの確認済み手順です。`hanchou_source`にはv2を含むcheckoutの絶対pathを
+指定します。以下の試験は一時Git project内だけで実施し、globalなスキルやユーザー設定を変更していません。
+
+```bash
+hanchou_source=/absolute/path/to/hanchou
+install_project=$(mktemp -d)
+git -C "$install_project" init -q
+cd "$install_project"
+npx --yes skills@1.7.4 --help
+npx --yes skills@1.7.4 --version
+npx --yes skills@1.7.4 add "$hanchou_source" \
+  --agent codex claude-code \
+  --skill hanchou-orchestrator hanchou-sokkin hanchou-init hanchou-update --yes
+npx --yes skills@1.7.4 list --agent codex claude-code --json
+```
+
+実利用では`cd`先を導入対象projectへ変更します。`--global`を付けないこの手順では、
+`.agents/skills/`へ4スキルの本体を配置し、`.claude/skills/`に4つのsymlinkを作成しました。
+`skills-lock.json`もproject内へ作成されます。source checkoutへのsymlinkではなく、
+配置された本体へのlinkです。導入済み全ファイルをsourceと比較し、内容一致と、
+launcherの実行権限、`--help`の動作を確認しました。scripts、references、assetsを含み、
+無関係なスキルは導入されていません。
+
+公開repositoryへv2がマージされた後の同等のproject-localコマンドは次のとおりです。
+**公開sourceからのv2導入は未検証**です。マージ前の公開版をv2として導入しないでください。
+
+```bash
+npx --yes skills@1.7.4 add https://github.com/ykawase1011/hanchou \
+  --agent codex claude-code \
+  --skill hanchou-orchestrator hanchou-sokkin hanchou-init hanchou-update --yes
+```
+
+実際の導入先・scope・link／copy・既存のlocal変更を確認します。localとglobalの重複が
+ある場合はagentが読む実体を確認し、既存のcustom copyを自動削除しません。
+他版のinstallerやglobal導入はこの試験の対象外です。
 
 対象projectで`$hanchou-init`（Claude Codeでは`/hanchou-init`）を明示的に呼びます。
 設定例:
