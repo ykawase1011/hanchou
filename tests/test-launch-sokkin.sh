@@ -157,6 +157,10 @@ export MOCK_HERDR_DOWN=0
 
 # The same mission must create separate branches and linked worktrees.
 for attempt in first second; do
+  # Exercise both ordinary PATH discovery and the explicit binary override.
+  # Bound accidental shell-function recursion so a regression fails promptly.
+  export FUNCNEST=40
+  if [[ $attempt == first ]]; then unset HERDR_BIN; else export HERDR_BIN="$bin/herdr"; fi
   : > "$MOCK_LOG"
   run_launch --base "$base" --worktree-root "$fixture/sokkin worktrees" > "$fixture/$attempt.json" 2> "$fixture/$attempt.err"
   [[ "$(jq -s 'length' "$fixture/$attempt.json")" == 1 ]] || fail 'stdout must contain exactly one JSON object'
