@@ -94,5 +94,16 @@ settings merely to initialize a project. Never store credentials in `.hanchou`.
 
 Report source paths, chosen agent/model, delegated authority, tool versions and
 installation methods, plus completed and pending readiness checks.
+Include a compact reusable readiness handoff with observation time, host, resolved
+tool paths/versions, selected named Herdr session and its configuration source
+(when checked), provider log-home provenance, authentication route and pending
+checks. Omit credentials, full configuration and CLI command listings. If
+observed host restrictions require individual approval for Herdr or shared Git
+metadata, record the restriction and successful connection route with host/time
+evidence. This records a route, not permission for future operations.
+When local setup is requested, keep this report at `.hanchou/readiness.md` under the
+same local-only policy; preserve unrelated/custom content. It is optional evidence,
+not a registry or a claim of future readiness: later missions verify actual
+placement, changed sources, live launcher state and new native identity/usage.
 Initialization does not create a worktree, start an agent, activate a schedule
 or delete old `.hanchou` artifacts.

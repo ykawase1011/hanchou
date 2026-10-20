@@ -8,20 +8,28 @@ change global agent settings, submit a mission, or install integrations.
 
 Use this launch contract directly; inspect the script source only when diagnosing
 an actual failure or developing it. Do not load repository design/history or the
-companion's references as routine supervisor preparation. Read companion content
-once when supplying the bootstrap. Applicable project instructions still govern
+companion's references as routine supervisor preparation. The qualified launcher
+reads its bundled companion once; manual bootstrap needs its exact content.
+Applicable project instructions still govern
 placement, authority and preservation.
 
 Select an already-running **local named Herdr session**. Keep the same executable
 and session for subsequent calls; workspace/pane IDs are scoped to that server.
-Check its current inventory before creating resources. Never silently fall back
-to the default server or a remote host. A viewer is optional and closing it does
-not terminate the server's agents.
-Check the selected session's effective notification settings before dispatch.
-Use an authorized quiet Herdr session and inspect provider hooks/remote-control
-settings so routine worker activity does not notify the human separately.
-Keep approvals and important results reachable through the supervisor; do not
-silently rewrite shared/global settings or claim all OS/mobile alerts are muted.
+The launcher checks current connectivity/inventory. Never silently fall back to
+the default server or a remote host. A viewer is optional and closing it does
+not terminate the server's agents. Reuse the caller/init readiness handoff for
+tool paths/versions, log-home provenance and session configuration location;
+verify changed/mutable facts directly instead of touring the CLI command tree.
+
+Use the selected session's notification configuration to limit routine progress.
+Check it at the known source and record its scope; do not inspect unrelated
+panes to infer the new agent's environment. After launch, inspect the returned
+pane's actual process/environment for unexpected wrappers, hooks or remote control.
+An installed hook is not evidence that it sends human alerts. Report unverified
+external notification behavior without claiming complete OS/mobile silence;
+only a specific conflicting behavior or an explicit all-alerts-off requirement
+needs resolution before work. Keep approvals and important results reachable.
+Do not rewrite shared/global settings or disable integrations speculatively.
 
 ## Configuration and call
 
@@ -52,6 +60,11 @@ commit (default: selected checkout HEAD). `--worktree-root` is an absolute
 destination outside existing checkouts; default is a sibling
 `.hanchou-worktrees/<project-name>`. Use `--help` for the full small interface.
 `HERDR_BIN` selects the executable, not a shell command.
+For an explicitly authorized update-notice skip (or centrally managed CLI updates),
+`--skip-update-check` passes Codex's process-local
+`-c check_for_update_on_startup=false`; it does not change global configuration.
+It is rejected for Claude. Keep the default check otherwise; see the official
+[Codex configuration reference](https://developers.openai.com/codex/config-reference/).
 
 The launcher always creates a new branch and Git worktree, verifies repository,
 branch and HEAD, creates a dedicated Herdr workspace using that cwd, then starts
@@ -66,9 +79,38 @@ resolution. Inspect the actual process arguments and observed model/effort durin
 bootstrap. Unrequested billing, permission or notification behavior is a
 configuration discrepancy to resolve before work, not a reason to rewrite the
 user's shell files. The launcher does not set bypass-permission flags.
-Keep verified executable paths, versions and help in the mission evidence, so a
-later stage can reuse them. Check current session inventory/notification state
-and actual pane identity; old receipts do not prove those mutable facts.
+Keep verified executable paths, versions and evidence in the mission report for
+reuse. The successful launcher receipt covers its current inventory/readiness
+checks. Use the bounded startup qualification below where supported; otherwise
+independently bind the new pane's native identity and settled usage.
+
+### Qualified startup
+
+For **Codex 0.162.1 / ccusage 20.0.37**, add `--qualify-startup` and a sufficient
+finite `--timeout-ms` (for example 60000). The mode checks dependency versions
+before creation, observes the pane's startup log home/version, sends exactly one
+fixed tool-free companion-role bootstrap, then corroborates native identity
+using fresh cwd/time/bootstrap evidence. It reconciles initial ccusage counters
+against native cumulative counters for that fresh, nonforked session.
+The bootstrap permits no tools or real work and its tokens count in the budget.
+The receipt also contains the actual foreground PID/cwd and observed arguments,
+verified against this launch's arguments. Unexpected arguments block qualification
+without copying their potentially sensitive values into the receipt. Reuse this
+evidence for assignment; do not run a separate process-discovery round unless a
+specific discrepancy remains. Process liveness must be checked again at cleanup.
+No arbitrary prompt/file argument, retry, cleanup or continued accounting is added.
+
+A `startup_qualified` receipt with `usageReadiness.status: ready` supplies the
+baseline needed for immediate assignment. Reuse its observed model/effort, log
+path and counters instead of writing another identification/ACK parser or
+resending bootstrap. It covers one observation boundary, not subsequent usage,
+wrapper permissions, notifications or final mission acceptance. After intervening
+activity or delay, refresh usage before assigning. Unsupported versions/provider
+are refused before creation; uncertain completion or conflicting evidence after
+creation retains the same resources and blocks work. Use the manual procedure
+for other already-qualified provider/tool combinations; never silently bypass a
+failed qualification. Claude subscription checks and default launch behavior
+remain unchanged.
 
 ## Receipt and partial failure
 
@@ -77,17 +119,26 @@ Capture stdout and exit status separately. Stdout contains one JSON receipt:
 | Field | Meaning |
 | --- | --- |
 | `version`, `ok`, `stage` | Schema version 2, readiness result, last launch stage |
+| `startedAt` | UTC launch start, for bounded native-log attribution |
+| `sourceSnapshot` | Pre-launch source HEAD/branch/common Git directory and Git diff/status hashes |
 | `missionId`, `attemptId` | Human mission slug and unique launch attempt |
 | `config.source`, `config.effective` | Pinned config path and effective values |
 | `worktree` | Source repository, new path/branch, fixed base and verified HEAD |
 | `herdr` | Local host, named session, returned workspace/tab/pane IDs |
-| `sokkin` | Provider/name, requested model, observed model and native IDs if available |
-| `usageReadiness` | Always pending at launch; not a usage qualification receipt |
+| `sokkin` | Provider/name, requested model/effort/update-skip, observed model/native IDs and qualified process evidence |
+| `usageReadiness` | Default pending; opt-in qualified startup returns initial native/tool evidence and its boundary |
 | `error`, `resources` | Failure category and resources retained for reconciliation |
 
-`ok:true` means interactive readiness and launch identity were verified, not
-that the mission finished. A null native ID/model is unknown. Confirm actual
-native identity and observed choice in the bounded bootstrap below.
+`ok:true` means the selected startup mode succeeded, not that the mission finished.
+Default `agent_ready` does not qualify usage. Opt-in `startup_qualified` includes
+the settled bootstrap; a null native ID/model remains unknown.
+Reuse the successful receipt's configuration, fresh-worktree, pane-cwd and
+agent-readiness checks. Requested settings are not observed process arguments.
+The source snapshot hashes staged/unstaged binary diffs and NUL-delimited status
+using Git's object hash without writing objects. It is not a backup: untracked
+and ignored file contents are not covered. Pin policy/config content separately
+and preserve any additional content at risk. Compare at mission end as needed;
+the launch-time snapshot alone cannot prove preservation throughout execution.
 
 On failure after creation the script retains resources and returns known IDs.
 Read the same pane and inventory; inspect process identity before any start or
@@ -103,14 +154,22 @@ automatic rollback guarantee is offered. Never force-delete retained resources.
 
 ## Bootstrap and mission
 
+The following manual bootstrap is needed only when the launcher did not already
+return qualified evidence. Do not repeat it after `startup_qualified`.
+
 Allow one short bootstrap turn for role/instruction receipt only. Supply the
 already-verified launch metadata and the exact pinned sokkin instructions in
 that message, and request an acknowledgment without tools, file reads or worker
 dispatch. The supervisor resolves native identity and measures the settled
 response before real work. This avoids repeated full-context responses and
-approval turns just to read instructions or run `pwd`. A bootstrap token
-allowance is an estimate, not a hard cap; include its actual usage in the total
-and stop assignments when it is exceeded. Qualify usage with [usage.md](usage.md).
+approval turns just to read instructions or run `pwd`. Estimate bootstrap from
+observed context costs and include actual usage in the mission total. Do not
+invent a separate hard limit smaller than the known initial context. Stop on
+the user's budget or a concrete inability to finish within it; an internal
+estimate overrun alone does not create another authority gate. Qualify usage
+with [usage.md](usage.md).
+Match the assistant's acknowledgment/completion and settled counters, not a
+terminal substring that can merely echo the bootstrap prompt.
 
 Resolve native identity from Herdr's observed `agent_session`, if available, and
 cross-check provider and native log metadata. Without integrations, resolve the

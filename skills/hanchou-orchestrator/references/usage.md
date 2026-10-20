@@ -22,6 +22,11 @@ actual provider log home and relevant start-time window, matching exact physical
 cwd, provider and the current request marker. Never scan unrelated temporary
 directories or select the globally latest log. If attribution remains ambiguous,
 stop expanding the search and report the missing scope.
+A caller that already created the conversation can pass its exact native ID,
+log path/home, physical cwd, provider, start time and observation source in the
+mission handoff. This is optional current-session evidence, not project config.
+Corroborate it against this request and live counters; do not rediscover the same
+identity or reuse an earlier conversation's ID from a readiness report.
 
 Native metadata can embed the entire instructions/context. Select identity fields,
 never print the whole `session_meta` object. For a verified Codex log, for example:
@@ -36,12 +41,17 @@ the verified increase, not all earlier conversation usage. Keep session cumulati
 and mission delta distinct. If the start boundary is unavailable, label the
 cumulative scope rather than inventing a delta.
 
-Before launch or another discovery round, compare remaining allowance with the
-remaining supervisor work. Estimate the required request count for launch,
-bootstrap qualification, result acceptance and release, using the latest full
-request input (including cache) plus expected output and context growth. Keep the
-final verification/report reserve as a floor, not the entire estimate. A small
-output or low effort does not make repeated cached input free.
+Before launch or another discovery round, compare the budget with settled usage
+plus the estimated current in-flight request, remaining operational requests and
+`max(estimated end-work, required reserve)`. Count every request exactly once.
+Estimate from latest full request input (including cache), expected output and
+context growth. Count actual planned model boundaries, not CLI commands or
+checklist steps. Qualification needs evidence review; independent checks and
+mechanical dependent commands can share a tool batch. Consolidate avoidable
+rounds before declaring a small mission unaffordable. Do not invent a fixed
+minimum request count, or add a reserve on top of the same acceptance/reporting
+requests already counted. A small output or low effort does not make repeated
+cached input free.
 If the remaining work does not fit, stop new assignments and report what is
 missing; do not launch optimistically or raise the budget silently.
 When stopping before resources exist, save the evidence already collected and a
@@ -63,6 +73,20 @@ time and parent relationship from launch/bootstrap evidence. Treat each
 independently started worker as another entry. The native-log home must come
 from the actual agent environment; never assume the supervisor's home matches.
 Resolve the matching native log before interpreting a zero or an empty result.
+For Codex 0.162.1, the current request text is in
+`response_item.payload` with `role == "user"` and `content[].text`.
+Do not require an `event_msg/user_message` event: it may be absent. A compact
+request-marker check on the already-bound log is:
+
+```bash
+jq -es --arg marker "$REQUEST_MARKER" \
+  'any(.[]; .type=="response_item" and .payload.role=="user" and
+    any(.payload.content[]?; (.text // "" | contains($marker))))' "$NATIVE_LOG"
+```
+
+Combine this with selected metadata/counters and the existing usage read in the
+same execution; a successful marker check is not another reason to reread user
+messages or embedded instructions.
 
 Examples below assume quoted, verified paths/IDs and a shell with `pipefail`.
 They select output fields, not prove completeness by themselves:

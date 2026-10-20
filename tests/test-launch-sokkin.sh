@@ -79,7 +79,8 @@ git -C "$repo" init -q
 git -C "$repo" config user.email fixture@example.invalid
 git -C "$repo" config user.name Fixture
 printf 'base\n' > "$repo/tracked.txt"
-git -C "$repo" add tracked.txt
+printf 'unchanged\n' > "$repo/stat-only.txt"
+git -C "$repo" add tracked.txt stat-only.txt
 git -C "$repo" commit -qm base
 base=$(git -C "$repo" rev-parse HEAD)
 original_branch=$(git -C "$repo" symbolic-ref HEAD)
@@ -90,11 +91,14 @@ printf 'human untracked\n' > "$repo/untracked.txt"
 mkdir -p "$repo/.hanchou"
 cp "$root/skills/hanchou-init/assets/config-template.json" "$repo/.hanchou/config.json"
 printf 'Human policy remains here.\n' > "$repo/.hanchou/policy.md"
+# A stat-only change must not cause the launcher to refresh the human index.
+touch -t 202001010000 "$repo/stat-only.txt"
 
 snapshot() {
-  git -C "$repo" diff --binary > "$fixture/$1.unstaged"
-  git -C "$repo" diff --cached --binary > "$fixture/$1.staged"
-  git -C "$repo" status --porcelain=v1 --untracked-files=all > "$fixture/$1.status"
+  git --no-optional-locks -C "$repo" diff --binary > "$fixture/$1.unstaged"
+  git --no-optional-locks -C "$repo" diff --cached --binary > "$fixture/$1.staged"
+  git --no-optional-locks -C "$repo" status --porcelain=v1 --untracked-files=all > "$fixture/$1.status"
+  cp "$repo/.git/index" "$fixture/$1.index"
   cp "$repo/untracked.txt" "$fixture/$1.untracked"
   cp "$repo/.hanchou/config.json" "$fixture/$1.config"
   cp "$repo/.hanchou/policy.md" "$fixture/$1.policy"
@@ -102,7 +106,7 @@ snapshot() {
 snapshot before
 assert_parent_preserved() {
   snapshot after
-  for part in unstaged staged status untracked config policy; do
+  for part in unstaged staged status index untracked config policy; do
     cmp "$fixture/before.$part" "$fixture/after.$part" >/dev/null || fail "human checkout changed: $part"
   done
   [[ "$(git -C "$repo" rev-parse HEAD)" == "$base" ]] || fail 'parent HEAD changed'
@@ -133,6 +137,13 @@ bash "$launcher" --help > "$fixture/help" 2> "$fixture/help.err"
 [[ ! -s "$MOCK_LOG" ]] || fail 'help contacted Herdr'
 [[ "$(count_worktrees)" == "$before_count" ]] || fail 'help created worktree'
 assert_preflight_failure invalid-agent --agent invalid
+assert_preflight_failure claude-update-skip --agent claude --skip-update-check
+assert_json "$fixture/claude-update-skip.json" '.error.code == "unsupported_option"'
+printf '#!/bin/sh\nexit 1\n' > "$bin/date"
+chmod +x "$bin/date"
+assert_preflight_failure timestamp-failure
+assert_json "$fixture/timestamp-failure.json" '.ok == false and .startedAt == null and .resources == []'
+rm "$bin/date"
 assert_preflight_failure unknown-flag --unknown-launch-flag
 assert_preflight_failure missing-value --model
 assert_preflight_failure missing-config --config "$fixture/absent.json"
@@ -162,12 +173,31 @@ for attempt in first second; do
   export FUNCNEST=40
   if [[ $attempt == first ]]; then unset HERDR_BIN; else export HERDR_BIN="$bin/herdr"; fi
   : > "$MOCK_LOG"
-  run_launch --base "$base" --worktree-root "$fixture/sokkin worktrees" > "$fixture/$attempt.json" 2> "$fixture/$attempt.err"
+  extra_args=()
+  [[ $attempt != second ]] || extra_args+=(--skip-update-check)
+  run_launch --base "$base" --worktree-root "$fixture/sokkin worktrees" ${extra_args[@]+"${extra_args[@]}"} > "$fixture/$attempt.json" 2> "$fixture/$attempt.err"
   [[ "$(jq -s 'length' "$fixture/$attempt.json")" == 1 ]] || fail 'stdout must contain exactly one JSON object'
   assert_json "$fixture/$attempt.json" '.version == 2 and .ok == true and .missionId == "sample" and (.attemptId | type == "string" and length > 0)'
   assert_json "$fixture/$attempt.json" '.herdr.workspaceId == "fixture-workspace" and .herdr.tabId == "fixture-tab" and .herdr.paneId == "fixture-pane"'
   assert_json "$fixture/$attempt.json" '.sokkin.agent == "codex" and .sokkin.nativeThreadId == "fixture-native-thread" and .sokkin.nativeSessionId == null and .usageReadiness.status == "pending"'
   assert_json "$fixture/$attempt.json" '.sokkin.requestedModel == "gpt-6-astra" and .sokkin.requestedEffort == "medium"'
+  assert_json "$fixture/$attempt.json" '(.startedAt|test("Z$")) and .sourceSnapshot.untrackedContentVerified == false'
+  [[ $(jq -r .sourceSnapshot.head "$fixture/$attempt.json") == "$base" ]] || fail 'source snapshot HEAD differs'
+  [[ $(jq -r .sourceSnapshot.branch "$fixture/$attempt.json") == "${original_branch#refs/heads/}" ]] || fail 'source snapshot branch differs'
+  for scope in staged unstaged status; do
+    case $scope in
+      staged) hash=$(git --no-optional-locks -C "$repo" diff --cached --binary --no-ext-diff --no-textconv | git -C "$repo" hash-object --stdin); field=stagedDiffHash;;
+      unstaged) hash=$(git --no-optional-locks -C "$repo" diff --binary --no-ext-diff --no-textconv | git -C "$repo" hash-object --stdin); field=unstagedDiffHash;;
+      status) hash=$(git --no-optional-locks -C "$repo" status --porcelain=v1 -z --untracked-files=all | git -C "$repo" hash-object --stdin); field=statusHash;;
+    esac
+    [[ $(jq -r --arg field "$field" '.sourceSnapshot[$field]' "$fixture/$attempt.json") == "$hash" ]] || fail "source snapshot $scope differs"
+  done
+  expected_skip=false
+  [[ $attempt != second ]] || expected_skip=true
+  assert_json "$fixture/$attempt.json" ".sokkin.requestedSkipUpdateCheck == $expected_skip"
+  jq -se --argjson expected "$expected_skip" \
+    'any(.[]; index("check_for_update_on_startup=false") != null) == $expected' "$MOCK_LOG" >/dev/null ||
+    fail 'update-check override does not match opt-in'
   jq -se 'any(.[]; (index("start") != null) and
     (index("--model") as $i | $i != null and .[$i+1] == "gpt-6-astra") and
     (index("model_reasoning_effort=\"medium\"") != null))' "$MOCK_LOG" >/dev/null ||

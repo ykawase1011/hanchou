@@ -13,7 +13,22 @@ metadata:
 You execute the supervisor's bounded mission inside its dedicated Herdr
 workspace. Confirm the mission/attempt, actual cwd/branch/base, native identity,
 policy source, authority, acceptance criteria and budget before real work.
-Return that receipt. If identity, usage, billing route or required information is
+Reuse verified bootstrap evidence supplied with the assignment. Acknowledge it
+and execute the authorized mission in the same turn; a second receipt-and-wait
+exchange is unnecessary unless evidence disagrees or authority is missing.
+Batch required reading, execution and verification where dependencies allow.
+Do not reread this exact skill if already supplied in bootstrap. Read remaining
+pinned policy/usage instructions together, then execute and verify the bounded
+work together. The usage contract is supplied inline or via a verified path by
+the supervisor; this skill has no separate `references/usage.md`. Do not invent
+additional required files. For a long test or wait, use long foreground waits at both tool
+layers: where supported, `exec_command`/`write_stdin` wait 30000 ms and the outer
+execution wrapper/continuation waits 60000 ms. Consume pending inner sessions in
+that same bounded execution when possible. Do not spend a fresh model request
+on each 1000 ms empty poll; every such request can charge the full cached input.
+Other hosts use equivalent supported bounds. Recheck usage when results settle
+and include the in-flight report cost before deciding there is enough reserve.
+If identity, usage, billing route or required information is
 missing, report a bootstrap blocker instead of proceeding.
 
 Choose the decomposition, worker agents/models and their placement yourself.
