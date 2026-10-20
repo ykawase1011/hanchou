@@ -1,302 +1,164 @@
-# Validation
+# v2 検証状況
 
-Current instruction-policy checks and synthetic/manual scenarios are documented
-in [Policy acceptance](POLICY_ACCEPTANCE.md), including the
-[scheduled-work scenarios](CRON.md) for issue #21. They do not claim live behavioral
-qualification from the historical results below. For #21, repository packaging
-and installer checks, independent policy review, and one manual Orca Automation
-smoke are recorded separately in [Scheduled work](CRON.md). That single run
-does not qualify automatic scheduled execution or the untested acceptance cases.
+検証日: 2026-10-20。旧版の検査結果はv2の合格根拠に流用しない。
+本書は実施済みの根拠と残件を分ける。設計上の出荷条件は[設計書](HANCHOU_V2_DESIGN.md)のR01–R15。
 
-This is historical v3 migration evidence from 2026-09-02/03, not validation of
-the later helper skills or current installer behavior. See
-[maintenance validation](MAINTENANCE_VALIDATION.md) for those additions and
-[Installation](INSTALLATION.md) for the current global default.
+## 配布と起動スクリプト
 
-Run repository checks with:
+- 配布対象は4スキルと単発のBash起動スクリプト。旧cron、kaizen、issue公開helper、status-view、Orca用参照、旧テストを削除。
+- `make check`: 構造、リンク、shell構文、実Gitとmock Herdrによる起動試験、Bash 3.2回帰試験。ネットワーク・認証・実agentを必要としない。
+- 起動試験は新規branch/worktree、元checkoutのstaged/unstaged/untracked保全、設定override、異常値、cwd/provider不一致、途中失敗時の資源保全を検査する。mock成功はHerdr実機成功とは別。
+- 39回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
+- `skills@1.7.4`を一時Git projectで実行。Codex/Claude Code向けに4スキルだけを選択し、全ファイルの一致、launcher実行権限、references/assetsの保持、導入先での`--help`を確認。global/userインストールは変更しない。[正確な導入コマンド](INSTALLATION.md)。
 
-```bash
-make check
-```
+## 使用量
 
-On the final host pass, the selected Xcode developer path was broken, so the
-same command was executed as
-`DEVELOPER_DIR=/Library/Developer/CommandLineTools make check`. This selects
-the already-installed Command Line Tools for that process only.
+`ccusage@20.0.37`の限定受入、再現手順、native子の範囲、resume/fork/compactionの検証差分は[使用量検証](USAGE_TOOL_VALIDATION.md)に記録。
+既存実ログの完了thread、fork、子thread、Claude子込みsession、重複・途中書込みを確認した。新規resume/reset/compactionの全経路を実機保証するものではない。
 
-## Evidence matrix
+旧main `9e2e4f9`の班長`SKILL.md`は10,590 bytes、v2は4,424 bytes。
+常時読む入口の文量は約58%減ったが、実token消費や週次枠の削減率ではない。
+今回のホストは班長自身のsession別使用量を帰属できず、実機数値は側近以下の小計である。
+同じ仕事のv1/v2全階層比較は未測定で、実コスト改善の定量的保証は行わない。
 
-| Area | Automated evidence | Runtime E2E |
-| --- | --- | --- |
-| one core skill and narrow activation | repository tests | Codex + Claude activation passed |
-| no legacy runtime/CLI/dependencies | repository tests and tracked-file scan | not applicable |
-| local installer layout/isolation | passed with `skills` in clean and current workspaces; explicit Universal + Claude Code placements verified | `skills list` confirmed both Codex and Claude Code visibility |
-| live official guide loading | skill contract assertions | passed for v1.4.195 and v1.4.188 packaged CLIs |
-| Run/Task/Dispatch/inbox lifecycle | policy assertions | worker_done/question/escalation, acknowledgement, retain, and desktop release passed |
-| two isolated Hanchou Runs | no registry/state in repository | distinct same-project Runs plus separate Tasks, messages, and Deliveries passed |
-| cross-repository/remote worker | policy assertions | three local repositories and connected Linux placement passed; authenticated remote completion is conditional on an available server |
-| restart/native idle delivery | no custom watcher present | native wake was unavailable on tested releases; required bounded `check --wait` fallback and restart preservation passed |
-| Automations lifecycle | no scheduler state present | simple lifecycle and installed-skill Temporary Hanchou manual run passed |
+## Herdr実機
 
-Runtime rows must be executed against the installed Orca version before a
-release is called fully E2E-qualified. A missing runtime is not a passing result.
+macOS arm64、Herdr 0.9.5、Codex 0.162.1、Claude Code 2.1.299。
+専用のnamed local serverと一時Git repositoryを使用。Hanchou/OrcaのworkerやRunを使わず、公開Herdr CLIで操作した。Orcaアプリ自体は停止していない。
 
-The official v1.4.195 packaged CLI was also exercised from an isolated temporary
-HOME. It served complete version-matched `orca-cli` and `orchestration --full`
-guides with SHA-256 values
-`68aa7bf3ef3deaa19c90c47990ec712b3c8e8dd927aa35cfa98993da82bc1e18` and
-`f20a752dd471f23984d71cc6fac69d8860c5ea32b52939d9c7280bbe6fe94bbd`.
-`status --json` reported a non-running runtime, and `run-current --json`
-returned `runtime_unavailable` without creating files in the isolated HOME.
+| 確認 | 観測した結果 |
+| --- | --- |
+| Codex起動 | launcherの新規worktreeが最初のpaneのcwdと一致。初回の起動未確定を同じpaneで調査し、更新案内をskipして再照合。別の側近へ無条件に再送しない |
+| Claude起動 | callerと実paneのauth statusがfirst-party Claude Max。初回trust画面を確認後、同じpaneで続行。API fallbackを使わない |
+| Codex bootstrap | exact cwdとbootstrap markerからnative threadを一意に特定。要求model `gpt-6.1-sol`とnative観測値が一致。effortは既定のhighだったためoptional effort指定を追加 |
+| Codex usage | native input 19,061（cache 13,056込み）、output 18、total **19,079**。ccusage noncached input 6,005 + cache 13,056 + output 18で一致 |
+| Claude bootstrap | exact cwdとmarkerからnative sessionを一意に特定。`haiku`の実modelは`claude-haiku-5-5` |
+| Claude usage | input 2 + cache creation 22,384 + cache read 26,558 + output 28 = **48,972**。ccusage sessionと一致 |
+| 明示effort | 別の新規worktreeで`--effort low`を指定。実プロセスのCodex設定引数とCLI表示のSol lowが一致 |
 
-A v1.4.195 runtime attempt was not accepted as E2E evidence. Packaged
-`orca serve` exited its startup path with `AppEnvironment not initialized`, the
-same regression recorded in official issue #16761. Commit
-`18e8fe47705ebd17917a194c33fd10bc7bb5723d` fixes that issue but is not an
-ancestor of release commit `bc2f593ebba70a0ee6ff900129e4918f57b143aa`.
-The desktop launch remained in `runtime.state: starting` and never became
-reachable.
+いずれもnative IDは今回Herdrの`agent_session`に現れず、固有cwd・起動時刻・bootstrap marker・native metadataを照合した。Herdr integrationをユーザー環境へ自動導入していない。
 
-The official v1.4.188 arm64 zip was then downloaded. Its SHA-256
-`b991ea213a6ef594c8f7f41a37d6b98fa8d8e7a494c8af38c9d3fc88384be347`
-matched release metadata, and `orca serve` reached `orca_server_ready`. Its
-packaged live guides were 412 and 408 lines with SHA-256 values
-`bc171edfb40862e1b646f0c6b50af4813c7eea15ed00225408c7e2c3b94eb766`
-and `b342388d8fd7c2aaee28ebece5d5f2512064e455ed69de990aaa22ae08eba974`.
+### 小さな成果の回収と解放
 
-## Live Orca E2E result
+Codexは`smoke.txt`、Claudeは`claude-smoke.txt`を作成し、指定した内容と改行を検証して専用branchにcommitした。supervisor側からcommit内容・変更対象・clean状態を再確認した。Codexのcommitは`8ae27f515029ef809ae91531c0b6245fe765fd2a`、Claudeは`b7cc8bd2287878495cdc0612c0414970d31c7b35`（いずれも一時fixture内）。
 
-The bounded v1.4.188 runtime test produced these public-Orca results:
+人間役の元checkoutにはstaged・unstaged・untrackedを用意し、Codex実行中にも追記した。両試験後とcleanup後のdiff/index/statusは、その並行変更後の期待値と一致し、main HEADも維持した。共有Git metadataへのcommit書込みはCodex sandboxの個別承認を要した。許可済みの当該commitだけを承認し、sandboxを無効化しなかった。
 
-- two coordinator terminals in one repository created distinct Run IDs;
-- one Project Run created a read-only Task and a supervised Codex worker;
-- the worker asked `Confirm expected version is 3.0.0?`, received the
-  coordinator reply, and sent one successful `worker_done`;
-- Orca marked the Task and Dispatch completed/succeeded;
-- a dependent independent review worker also completed successfully;
-- `worker-retain` settled one worker as retained;
-- `worker-release` stopped the exact review terminal and archived output, but
-  returned `release_unknown: tab_not_found` because the headless runtime had no
-  renderer tab;
-- the same Run dispatched a successful worker in `hanchou-skills`;
-- after a full runtime and daemon stop/restart, `run-list` and `task-list`
-  recovered all Runs and three completed Tasks through public v1.4.188 CLI;
-- a new v1.4.188 version-matched Run dispatched another successful worker in
-  `hanchou-kingdom`;
-- a disabled Automation ran manually and history reported `completed`, manual
-  trigger, and no error; it was edited while disabled and then removed, leaving
-  the Automation list empty.
+最終報告後のCodex合計は**210,214 tokens**。200,000のcheckpoint予算を**10,214超過**した。途中観測157,742の後に最終応答等が加わったためであり、厳密な予算停止の合格ではない。直近の入力全量・cache・残りtool turn数から報告予備枠を見積もる指示を追加した。修正後の境界停止試験は次節に記録する。Claudeは**256,975 tokens**で350,000以内だった。
 
-A second restart/recovery pass exercised two-way isolation directly:
+Claudeは単に指示ファイルを「読む」という依頼を役割の起動とは解釈しなかった。引渡しを「このmissionのsokkinとして、その指示に従う」と明示する手順へ修正した。修正後は次節の両providerで役割受領を確認した。
 
-- fresh terminal handles rebound `run_ca9ddf40d502` and `run_a3116f917aa5`
-  through public `run-use`, advancing each consumer generation from 1 to 2;
-- unique Task markers `task_f10f79b1fa9d` and `task_4f0660603749` were created
-  and listed only under their respective Runs, then settled as test evidence;
-- unique messages `msg_516b2cec019b` and `msg_e8194cbf74c2` produced separate
-  one-message Deliveries, with no opposite marker in either result, and were
-  acknowledged independently;
-- tracked Dispatch `ctx_ddd6e48e04eb` emitted escalation
-  `msg_9fb5415270a9`; the owner Run received and acknowledged it before the test
-  Dispatch was stopped.
+成果をGit bundleとファイルに保全してからCLIを終了し、Herdrのprocess-infoと元PIDの消滅で停止を確認した。Claudeに付随したMCPプロセスも終了した。所有する4つの試験workspaceを閉鎖し、cleanな3つの新規worktreeを通常の`git worktree remove`で削除した。最初の一時fixtureと成果bundleは保持し、試験専用serverの終了も確認した。ユーザーの実projectや共有serverは停止・削除していない。
 
-A fresh desktop v1.4.188 profile then provided renderer-backed evidence:
+### 起動環境の差
 
-- its version-matched `computer-use` guide was 167 lines with SHA-256
-  `0fec3df85f7f4cbb6ee250f1a3da78f31991b07fca663f30ab9da8ab95568826`;
-- Computer Use capabilities loaded, but both Accessibility and screenshot
-  permissions reported `not-granted`; no Settings UI or permission was changed;
-- a visible Codex worker completed Task `task_3c79b8593d2c` and Dispatch
-  `ctx_c6144b5ab379` with `worker_done` and no file changes;
-- `worker-release` returned `state: released`,
-  `processAction: closed_agent_terminal`, archive `captured`, and no error;
-- two idle Codex coordinator terminals were bound to ordinary Runs. A targeted
-  status message and two tracked escalations remained unread in those Runs and
-  were visible through public `check`, but no native delivery pointer was
-  injected during bounded observations exceeding 30 seconds. The messages were
-  then checked and acknowledged explicitly, and all test Dispatches/terminals
-  were settled.
+試験環境のshell wrapperはClaudeへremote-controlとpermission関連の引数を追加していた。launcher自身の指定ではない。実プロセスの引数をbootstrapで確認する手順を明記し、paneの認証確認も実起動と同じshellのcommand解決を使うよう修正した。同じshellからの`claude auth status --json`はClaude Max／first-partyであることを確認済み。ユーザーのshell設定は変更していない。全てのwrapperや追加課金設定をこの1件で保証するものではない。
 
-A later user-installed Orca v1.4.195 desktop provided a second
-renderer-backed pass on the normal profile:
+### OrcaへアクセスできないHerdr環境での再確認
 
-- `status --json` reported runtime `ready`, desktop window `available`, and app
-  version 1.4.195;
-- the installed binary served both version-matched core guides before state
-  operations;
-- the official Computer Use helper reported Accessibility and screenshots
-  permissions both `granted`;
-- a fresh Codex coordinator created Run `run_e36d686e6f8c`, Task
-  `task_1bc65dddc553`, and supervised Dispatch `ctx_f552888c2bbf`;
-- the read-only worker reported `worker_done` successfully and Orca settled the
-  Task and Dispatch;
-- after more than 35 seconds idle, the coordinator had received no native
-  pointer. Non-consuming `check --peek` proved message `msg_0f885ff19791` was
-  still unread and had no delivery timestamp;
-- one official bounded `check --wait` returned Delivery
-  `delivery_797a3ac43961`; `worker-release` returned `state: released` and
-  `processAction: closed_agent_terminal`, and the coordinator acknowledged the
-  Delivery afterward;
-- the test coordinator terminal and temporary top-level worktree were removed.
+別のnamed server `hanchou-v2-gates`を使用し、Orca環境変数を除去した。
+macOS sandboxでOrcaの実行、データディレクトリ、Unix socket、localhost宛通信を拒否し、
+Orca CLI実行とsocket接続が`Operation not permitted`になることを確認した。
+この制限をHerdr serverと子プロセスへ継承し、viewerは開かなかった。
+Orcaアプリを物理的に終了した試験ではなく、試験対象から利用不能にした非依存性の試験である。
+Herdrのtoast deliveryはoff、soundはfalse、shellは個人のaliasを読まないBashに固定した。
+ユーザーの通常server・shell設定は変更していない。
 
-A final v1.4.195 installed-skill pass created a disposable Orca worktree whose
-local Universal and Claude Code placements came from the standard installer.
-Temporary Hanchou Run `run_8cb0c22a6743` dispatched read-only Task
-`task_efb1bf4df819` as `ctx_86b19029c6a8`, then ended the coordinator turn with
-no Inbox command. The worker succeeded at 02:33:27 UTC. More than 90 seconds of
-passive coordinator-terminal observation produced no new output. External
-`check --peek` found unread message `msg_1dbbc74f7b86`, marker
-`HANCHOU_NATIVE_WAKE_20260903`, and `delivered_at: null`. The bounded fallback,
-worker release, and Delivery `delivery_a102b19bc2fe` acknowledgement all passed.
+| 確認 | 結果 |
+| --- | --- |
+| 欠測時停止 | Codex側近はnative IDと計測が未確定のbootstrapでblockを返し、worker・ファイル作業を開始しなかった |
+| 予算到達時停止 | 読取りtoolと個別承認を含むbootstrapは見積60,000に対し99,608となった。実測を渡して延長を認めない依頼に対し、worker起動を拒否。拒否応答後は120,508。超過分を隠さず合算した |
+| 起動時の往復削減 | 上記を受け、検証済みmetadataと固定した指示本文を一度渡すtool-free acknowledgmentへ変更。Claude Code 2.1.304／haiku lowは役割を受領し、実作業を止めて待機。tool callは0 |
+| Claude計測 | session `cf026c7b-e2d4-4e63-b73b-9d019038e8af`。input 2 + cache creation 22,395 + cache read 28,058 + output 251 = **50,706**。重複native行を除いた値とccusageが一致。実modelは`claude-haiku-5-5` |
+| 実worker選択 | Codex側近がroutine writeを理由に`gpt-6.1-sol`／lowを選び、1 workerだけ起動。native metadataでも同じmodel/effortと親子関係を確認 |
+| 実成果 | workerが`worker-result.txt`を作成。側近は内容`hanchou-v2-worker\n`を独立に検査し、workerの誤った17-byte報告を18 bytesへ訂正。元checkoutへ変更せず専用worktreeに成果を残した |
+| 親子会計と予備枠 | 上限を明示的に700,000、最終検証・報告予備枠150,000へ設定して実作業を許可。最終応答後の親582,523 + 子78,889 = **661,412**。各native累積値とccusageが一致し、コピーされた親履歴を加算していない |
+| retry上限 | 別の境界probeで上限850,000を明示し、検証失敗を仮定してretry／worker置換を要求。retry limit 0を維持した側近は両方拒否。該当turnにtool call・新規worker・成果変更はなかった。probe後の親615,362 + 子78,889 = **694,251** |
+| 通知・報告経路 | viewerなしで実行、判断要求と最終結果をHerdrのpublic readから班長が回収。通常worker出力をOrcaへ転送する処理はない。Herdr側のtoast/sound無効化を確認。全OS・mobile・個別provider hookの設定を横断して検証したものではない |
 
-The same installed-skill workspace then ran a disabled Automation manually.
-After avoiding a host login-shell `ssh-add` prompt with `SHELL=/bin/bash`, the
-Automation's Codex session explicitly activated Temporary Hanchou, created Run
-`run_39c3962e5e5e`, Task `task_fb0b5ee6ce68`, and Dispatch
-`ctx_97d1a21880af`, received marker `HANCHOU_AUTOMATION_20260903` through
-bounded Delivery `delivery_246dd5bea8ae`, released the worker, acknowledged the
-Delivery, and reported `filesModified: []`. Automation history recorded a
-manual completed run with no error. It marked dispatch completion before the
-terminal workflow settled, so terminal and Orchestration state were
-independently inspected. The Automation, terminals, Orca worktree, and
-temporary project setups were removed.
+親threadは`01a1575b-0b45-7a23-8571-97518cc27c7a`、
+子threadは`01a15760-32cd-7a13-8c02-6ef582f70fe1`。
+子のnative累積値はinput 78,595（cache 71,168込み）+ output 294 = 78,889。
+Claudeの実プロセス引数は`--model haiku --effort low`で、先の個人shell wrapperが追加した
+remote-control／permission引数はない。
 
-This removes missing Computer Use permission as an explanation for the prior
-idle-wake result. A later semantic Computer Use inspection reached the dedicated
-Settings → Orchestration page. The page exposed skill coverage and nested-worker
-depth, but no enable/disable toggle; public status supplied the positive
-`orchestration.contract.v1` availability signal.
+外側のmacOS sandboxによりCodex内側のsandbox初期化が失敗し、許可済みの読取り・
+fixture書込みには個別承認が必要だった。外側のOrca拒否は維持した。この承認往復を含む
+token数は通常環境の効率比較ではなく、会計と停止判断の証拠として扱う。
+retry probeは失敗を仮定した境界入力であり、実障害からの自動復旧を保証するものではない。
 
-The first worker attempt is retained as failure evidence: a login-shell
-`ssh-add` prompt stalled Codex input, so Orca returned
-`agent_prompt_stalled`. Restarting the disposable runtime with a noninteractive
-shell configuration removed that host-specific obstacle. Because a temporary
-bundle cannot install its CLI globally, worker specs used the exact packaged
-CLI path; the final `hanchou-kingdom` proof used v1.4.188 CLI and runtime
-end-to-end.
+成果ファイルを試験用resultsへコピーして一致を確認後、元の試験worktreeから回収した。
+両CLIとClaudeの付随MCPプロセスの終了を確認し、所有する2 workspaceと2 worktreeを
+通常の削除で解放、専用serverのexit 0を確認した。元fixtureのdiff/index/statusは、
+先の人間役による並行変更を含む期待値と再び一致した。
 
-A second local macOS server using a separate requested user-data path was
-rejected by Electron's single-instance lock. The official v1.4.188 Linux arm64
-AppImage was therefore run in a disposable Ubuntu 24.04 arm64 container. Its
-SHA-256
-`edb96cf68e4c5d9442b913e82cad5b6c23a6399f8398e8f4798955bbb9c94918`
-matched release metadata. Pairing produced a ready connected environment named
-`hanchou-docker-remote`; Orca registered `/workspace`, reused its remote
-worktree, and created the requested worker terminal on that server. The
-container intentionally received no host credentials and had no Codex CLI, so
-input dispatch ended with `agent_prompt_stalled`. Connected-server discovery,
-repository/worktree routing, and placement are qualified; remote agent
-completion is not. The container and all test-created Docker image tags were
-removed afterward.
+### native側近の競合統合と並行編集
 
-A fresh default profile allowed orchestration inspection. The installed
-v1.4.195 Settings → Orchestration page was later captured through official
-Computer Use: it exposes skill coverage and nested-worker depth, with no
-enable/disable toggle. Public status advertises `orchestration.contract.v1`.
+別の一時repositoryとOrca拒否環境のnamed serverで、Claude Code 2.1.304／
+Haiku 5.5 low／Maxを起動した。attempt `6289d8f52048f7a1`、
+native session `43ac6ce9-e2b0-4aaf-b2fc-e7d46a0352d0`。
+launcherの新規worktree内で側近がincoming branchをmergeし、実際に`UU`と
+index stages 1/2/3の競合状態になった地点でいったん止めた。
+その時点で元checkoutの保全を確認したうえで、人間役が追記と新規untrackedファイルを追加した。
 
-All exact Orca processes from the earlier disposable passes were stopped.
-Test-created macOS profiles were moved intact to
-`/tmp/orca-e2e-recovery-20260902T1928`,
-`/tmp/orca-v3-e2e-evidence-20260902T2012`, and
-`/tmp/orca-v3-fresh-profile-20260902T2013`. The renderer-backed pass is archived
-at `/tmp/orca-v3-desktop-evidence-20260902T2105`. Those passes left the normal
-Orca paths absent. The later v1.4.195 normal installation and its retained Run
-belong to the user's current Orca profile; only the test terminals and temporary
-worktree were removed.
+続行した側近は指定した2行へ競合を解決し、merge commit
+`ba11420fdb23aff0fcca42bdee5c4877d6ed687b`を専用branchへ作成した。
+両親commit、期待する38 bytes、clean状態を独立に検証した。人間側のbranch・HEAD・index、
+staged/unstaged/untrackedと並行編集、incoming branch、無関係な共有tagは保持され、
+動いたrefは専用branchだけだった。実Git/mock試験でのdirtyな失敗checkoutを残した
+新規置換の確認と合わせ、R03/R04の受入根拠とする。
 
-## Installer test result
+usageはbootstrap **50,810** → 競合地点 **157,364** → 最終 **269,695**で、
+各地点のnative値とccusageが一致した。最終内訳はinput 10、cache creation 27,636、
+cache read 239,510、output 2,539。500,000枠（報告予備枠150,000）以内で、
+5 request・2 Bash tool・追加workerなし・retryなしだった。
 
-On 2026-09-02, the standard installer was run from Node 22.20 against this local
-repository with `--skill hanchou-orchestrator --local -y`. It found exactly one
-skill and copied only that skill tree plus its standard `skills-lock.json` into
-the temporary target. Pre-existing `README.md`, `AGENTS.md`, `CLAUDE.md`, and
-local policy hashes were unchanged. No Orca installation or userData existed in
-this environment to mutate.
+側近の「46 bytes」という報告は誤りだったため、報告だけで合格にせず実ファイルで訂正した。
+明示したinline指示の役割受領と実行を検証したもので、スキルの自動発見は検証していない。
+成果bundleの完全性を確認し、CLIと付随MCPの全記録PIDの終了、workspace閉鎖、
+clean worktree削除、専用serverのexit 0とsocket消滅、元checkoutの再照合まで完了した。
 
-A second test used sibling `project-a` and `project-b` directories. Installation
-into A left all pre-existing files in both projects byte-identical, added the
-skill only below A, left B without an `.agents` directory, and left the normal
-Orca userData path absent before and after.
+### 旧運用の撤去
 
-On 2026-09-03, installer 1.5.23 was repeated in the current repository. Agent
-auto-detection created the Universal `.agents/skills/hanchou-orchestrator`
-placement but omitted Claude Code. Re-running with
-`--agent universal claude-code` created that canonical tree plus
-`.claude/skills/hanchou-orchestrator` as the provider alias. `skills list` then
-reported the skill for both Codex and Claude Code. Pre-existing README,
-AGENTS, CLAUDE, and policy hashes remained unchanged, and Orca's Automation
-inventory remained empty. This is why the documented commands name both
-targets explicitly. The test placements were removed with the same standard
-installer after validation.
+旧Automation `d03aafa6-530c-47a2-8d75-e7a46ed3b8df`はdisabledであることを再確認。
+10端末は起動occurrence 92および116–124のPTY IDと一致し、全出力は認証要求または
+bootstrap失敗のみだった。対応する進行中のRun・worker・子workspaceはなかった。
+旧checkoutはstaged/unstaged/untracked/ignored差分がなく、HEADはmainの祖先で
+固有commitもなかった。所有・履歴・Git状態・各操作receiptを旧workspace外へ保全した。
 
-## Activation tests
+公開Orca CLIでこの10端末だけを閉じ、全件`ptyKilled:true`を確認した。
+停止済みAutomationを削除し、cleanな`hanchou-issue-work`をforceなしで削除した。
+旧workspace・process一覧・物理path・Git worktree登録・対応するmerge済みlocal branchが
+なくなったことを再照合した。他projectのAutomationや現在の作業workspaceは変更していない。
+これは旧運用の終了・回収であり、Orca自体の設定不一致や認証起動の不具合修正ではない。
+導入済み旧スキルの置換とGitHub Issueの処置は別途残る。
 
-Codex CLI 0.152.1 and Claude Code 2.1.234 were run in read-only/non-persistent
-mode from a project with the locally installed skill and no Hanchou-specific
-project instruction. An ordinary arithmetic request returned its answer without
-Hanchou startup in both providers. The natural-language request「Hanchouとして
-開始してください」selected the skill in both providers, read its startup policy,
-resolved the official executable search to unavailable, reported the exact
-blocker, and created no Run. This proves activation routing and fail-closed
-behavior through the missing-executable boundary; it does not prove behavior
-after a live Orca runtime is reached.
+## 必須要件との対応と公開移行
 
-The explicit exclusion for a generic「launch another agent」request was also
-forward-tested in both providers. Each returned the requested ordinary
-acknowledgement without Hanchou startup or tool execution.
+固定した版・検証環境における技術受入を次の根拠で確認した。任意のprovider/model、
+実障害・並列競合・OS通知設定の全組合せを保証するものではない。
 
-With `ORCA_CLI_COMMAND` set to the verified v1.4.195 packaged CLI, both Codex
-and Claude activation sessions retrieved `orca-cli` and `orchestration --full`
-before checking status. Both observed `runtime.state: not_running`, stopped at
-that boundary, did not inspect Run binding, and created no Run. This proves the
-mandatory live-guide order in both providers through the runtime-status gate.
+| 要件 | 主な根拠 |
+| --- | --- |
+| R01 薄い構成 | 配布4スキル、唯一の単発shell、構造検査 |
+| R02 Orca非依存 | Orca CLI・socket等へのアクセスを拒否した子プロセスで起動・実行・回収・会計・解放 |
+| R03 新規worktree/branch | 両providerの実起動、実Git/mockの異常系・置換・設定試験 |
+| R04 人間の作業場所の保全 | native競合地点・並行編集後・統合後・cleanup後の照合、共有ref確認 |
+| R05 専用workspace | receiptのworkspace/最初のpaneと実cwd/providerの照合 |
+| R06 Herdr内の実行 | viewerなしで側近とnative workerが実行、Orca Run/workerなし |
+| R07 設定 | provider/model/effortの設定・override試験と実プロセス/native観測 |
+| R08 session識別 | 両providerの固有cwd/marker/ID、実Codex親子関係と別計上 |
+| R09 欠測・重複 | native照合、確定prefix、重複・fork/compaction試料、resume/reset/欠損offline試験。不明経路はunavailable |
+| R10 使用量による割当制御 | native欠測・超過時拒否、実workerの予備枠付き会計、retry 0境界拒否 |
+| R11 自律選択 | 側近がroutine workにSol lowを選択し理由と実modelを照合 |
+| R12 サブスク限定 | caller/実pane Max認証、実argv、API/不明認証拒否の6回帰ケース |
+| R13 成果による受入 | ファイル・merge commit・検証・使用量を独立照合。誤ったbyte報告を訂正 |
+| R14 報告集約 | 制御したquiet sessionで重要結果を班長が回収。Orcaへのworker通知転送なし。採用環境の別設定は要照合 |
+| R15 保全と解放 | bundle/ファイル保全後に所有PID終了・workspace閉鎖・通常worktree削除を実確認 |
 
-A previous conservative forward test stopped when a fixture exposed no feature
-signal. Current Hanchou instead requires the public Orchestration contract and a
-read-only current-Run probe. It fails closed on an explicit disabled/unavailable
-result, while allowing formally shipped releases such as installed v1.4.195
-that expose the contract and no UI toggle.
+公開移行では、PRのマージ、公開sourceからの導入確認、導入済み旧スキルの置換、
+旧Issueの処置と公開参照先の確定が残る。新仕様だけで旧障害を修正済みにしない。
 
-The current policy was also forward-tested against a deterministic CLI fixture
-that advertised `orchestration.contract.v1` but returned
-`orchestration_feature_disabled` from the read-only current-Run probe. Codex
-loaded both official live-guide surfaces, checked status, stopped without
-calling Run creation, repeated the fixture's manual Settings guidance, and made
-no setting change. This qualifies the explicit-disabled compatibility branch;
-the installed v1.4.195 UI itself has no such toggle.
+[#39](https://github.com/ykawase1011/hanchou/issues/39)と[#41](https://github.com/ykawase1011/hanchou/issues/41)の旧運用は上記のとおり終了・回収した。公開された移行内容と対応づけて`not planned`で整理できる。上流障害を解決済みとする根拠にはしない。
 
-## Runtime checklist
-
-1. Start ordinary Codex and Claude sessions; confirm no Hanchou activation/Run.
-2. Explicitly activate one of each; verify both load live guides.
-3. **Not applicable to installed v1.4.195:** its dedicated Orchestration page
-   has no enable/disable toggle. The skill retains fail-closed handling for an
-   older runtime that explicitly reports disabled/unavailable.
-4. **Passed:** two coordinator panes had different Run IDs; independent Tasks,
-   messages, Deliveries, and acknowledgements did not cross Runs.
-5. **Passed:** question/reply, completion, review, retain, and renderer-backed
-   clean release all passed.
-6. **Passed for available environments:** three local repositories and
-   connected Linux worker placement passed. Authenticated remote completion is
-   outside the criterion and remains conditional on a connected server with an
-   installed/authenticated provider; the current profile has none.
-7. **Passed via unavailable-native fallback:** Inbox persistence and
-   `check --wait` passed, while two v1.4.188
-   coordinators and two installed-v1.4.195 coordinators did not receive native
-   injection. The final pass used the candidate Hanchou distribution skill in
-   an Orca-created workspace and observed no coordinator output for more than
-   90 seconds after worker completion. Open upstream Orca issue
-   [#12953](https://github.com/stablyai/orca/issues/12953) documents that
-   lightweight-Run lifecycle mail currently reaches coordinators through
-   `check --wait`. Hanchou uses that official bounded path as criterion 20.7
-   requires and adds no daemon or polling loop.
-8. **Passed:** restart preservation and public `run-use` recovery binding both
-   passed without private state access; takeover was unnecessary.
-9. **Passed:** disabled Automation creation/manual run/history/edit/removal for
-   the simple path, plus an installed-skill Temporary Hanchou manual run through
-   Run/Task/Dispatch/worker release/Delivery ack.
-
-## Optional static status view
-
-See [status view validation](STATUS_VIEW_VALIDATION.md) for synthetic security,
-browser, and publication-policy coverage and the limits of those checks.
+週次枠のsession別正確な配賦、providerが強制する厳密なtoken cap、全ホスト共通の自動復帰、24時間TTL解放は設計で保証しない項目であり、上記未実施検証とは区別する。

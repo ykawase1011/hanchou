@@ -1,83 +1,26 @@
-# Hanchou v3 specification
+# Hanchou v2 仕様
 
-Hanchouは既存Orca環境へ任意で追加する、provider-neutralなOrchestrator policy skillです。
-独立runtimeではなく、Orca上の1 coordinator pane、1 Codex/Claude session、
-`hanchou-orchestrator`、そのpaneにbindされた1 Runから成ります。
+Hanchouは4つのスキルと単発の側近起動シェルで構成する。
+班長は依頼・結果報告・使用量監督に集中し、側近が作業遂行を担当する。
 
-## Invariants
-
-1. 1つのOrca runtime上でHanchou sessionを任意個数動かせる。
-2. 1 coordinator paneが同時に所有するcurrent Runは1つ。1 Runのactive coordinatorも
-   同時に1つ。元の対話を復元できない場合の後任・takeoverは継続設計の対象外。
-3. 各Taskのowner Runは1つ。workerの実行repositoryとは別の概念である。
-4. Hanchouが所有するruntime永続状態、process、port、registry、launcherはない。
-   任意のignore済み改善メモ、最小限の公開receipt、明示opt-inの再生成可能な
-   読み取り専用status snapshotは利用者のlocal文書である。
-5. Orca-managed stateはpublic CLIと公式skill contractだけで操作する。
-6. Hanchouは名前付きskill呼び出し、明示的な依頼、または専用workspace local
-   instructionでだけactivateする。利用者向けpromptは名前付き呼び出しを標準とする。
-7. 通常のOrca session、既存project、agent/model既定値、Automationには介入しない。
-8. 有効なHanchouの変更作業は専用worktreeと作業branchを既定とし、元の人間用checkoutの
-   開始時branch・作業ファイル・indexを途中も含めて保持する。coordinator自身のGit操作と
-   マージ前後の統合作業にも適用し、明示的な例外はその範囲だけ優先する。
-   読み取り・Issue公開のみ、または既に検証済みの専用workspaceには不要な新規作成を求めない。
-   操作対象の分離は現在の会話やbound Runの移動・再作成を意味しない。
-
-## Ownership
-
-| Responsibility | Owner |
+| 項目 | 契約 |
 | --- | --- |
-| project/workspace/worktree/terminal/agent lifecycle | Orca + `orca-cli` |
-| Run/Task/Dispatch/message/gate/worker lifecycle | Orca + `orchestration` |
-| schedule/timezone/history/rerun | Orca Automations |
-| VM/cloud/per-workspace environment | `orca-per-workspace-env` |
-| task decomposition/routing/review/reporting policy | `hanchou-orchestrator` |
-| local improvement capture | `hanchou-orchestrator` reference |
-| explicit improvement-intent routing | optional `hanchou-kaizen` |
-| requested sanitized issue publication and verified cleanup | optional `hanchou-publish-issues` |
-| requested scoped skill updates | optional `hanchou-update` + official installer |
-| activated-session/task update check; authorized fresh-session handoff gates | optional `hanchou-update` + public Orca lifecycle |
-| scheduled-job configuration and management policy | optional `hanchou-cron` + Orca Automations |
-| requested static project responsibility setup | optional `hanchou-init` |
+| 設定 | 対象project rootの`.hanchou/config.json`を固定して読む。`version: 2`、`sokkin.agent: codex / claude`、任意の`model`と`effort: low / medium / high`。JSONをshellコードとして実行しない |
+| 方針 | `.hanchou/policy.md`に責務・権限・報告方針を置く。依頼の一時指定を永続設定へ自動反映しない |
+| 起動 | `skills/hanchou-orchestrator/scripts/launch-sokkin.sh`は必ず新規branch・worktreeを作成・照合してから専用Herdr workspaceの最初のタブへ側近を起動する |
+| 保全 | 元checkoutのbranch切替・reset・stash・未コミット変更の移送を行わない。失敗時に元checkoutで代替実行しない |
+| 接続 | 版付きJSONでmission・attempt、設定元、worktree、Herdr接続先、provider・native ID、計測準備状態、失敗・残存資源を返す |
+| 作業開始 | 起動結果と側近の受領を照合し、native IDと計測元が対応してから実作業を渡す |
+| 使用量 | 入力・出力・cacheと親子実行を区別し、resume・fork・重複を扱う。欠測は不明。起動時点からの使用量も含める |
+| 制御 | 許可済みagent・model・認証経路と有限の予算・並列数・再試行上限を守る。計測不能・上限到達時は新規割当を止める |
+| Claude | 公式Claude Codeの許可済みサブスク認証限定。API・追加課金経路へ自動fallbackしない |
+| 報告 | 通常のworker通知を集約し、完了・判断要求・予算問題・継続不能を班長から人間へ伝える |
+| 完了・解放 | 成果、検証、未解決事項、使用量を確認して受入。停止・workspace閉鎖・worktree削除を分け、未保存成果を残す |
 
-HanchouはCodexまたはClaudeで動作し、具体的なprovider/modelはユーザーpolicyと
-実行時にOrcaが提供する選択肢へ従います。
+新しい側近への置換・再起動でも新規branch・worktreeを作る。同じ生存中の側近への
+追加指示やviewer再接続は新規起動ではない。側近の再帰起動は行わない。
+タイムアウト時は元試行の状態と受領を照合してから再送する。
 
-配布は1つのcoreと5つの任意helperから成り、原則としてproduction codeを含みません。
-明示opt-inの読み取り専用static HTML/CSS/JS表示templateだけを限定的な例外とします。手順はorchestratorの
-[status-view reference](skills/hanchou-orchestrator/references/status-view.md)に置きます。
-埋込snapshotは破棄・再生成できる派生文書で、Orca/GitHubの正本、唯一の依頼原文、
-受入済み成果、Inbox/ackを所有しません。DB/cache、runtime/server/CLI、scheduler、
-操作・承認・編集UIは追加しません。
-新規installはCodex/Claude Codeへのglobal配置を標準とし、local配置も選択できます。
-helperだけの呼び出しはorchestratorをactivateせず、Runやworkerを作りません。
-`hanchou-cron`の設定操作も同様です。独立した定期業務の明示的な手動試行や
-スケジュール実行では、指定されたジョブのためにTemporary Hanchouを起動できます。
-元の対話とRunを対象とする継続点検は別の用途であり、公開wake契約の確認前に
-fresh sessionで代用しません。PJの静的ジョブ定義は業務内容を示す文書で、
-schedule・timezone・有効状態・履歴はOrca Automationsが所有します。
-Project責任方針の任意の既定sourceは対象project rootの`.hanchou/policy.md`です。
-明示された別sourceも選べます。対象projectを特定してから読み、選択済みsourceが
-欠けたら停止して報告します。既定sourceがない場合は通常の明示依頼を続けます。
-実行権限は現在の依頼と方針の条件で判断し、方針だけでTaskやscheduleを作りません。
-workerのTaskには有効な方針をsnapshotとして伝えます。
-
-## Session contract
-
-activate時に実行中binaryを解決し、`orca-cli`と`orchestration --full`の
-version-matched guideを読み、runtimeの公開Orchestration contractを確認します。
-旧版がfeature disabledを明示した場合は、その版の手動Settings案内で停止します。
-初回起動時に既存bindingがなければRunを1つ作り、その対話の全依頼をTaskとして
-同じRunへ入れます。復元後は元の対話・Runが所有する依頼、Task、worker、CI、権限を
-照合します。同一projectというだけで他Runを引き継ぎません。
-
-起動・別依頼の開始時の読み取り専用更新確認は、導入済みの任意helperで依頼ごとに
-一回だけ行います。更新・新会話への交代・旧自分の終了の権限はそれぞれ区別します。
-明示的な更新交代は同一会話の継続ではなく、安全な区切りと新会話の実path・内容・revision・
-受領確認が必要です。current Runの移譲には公開された所有権移譲契約が必要で、
-通常のrun-useやworker-startでは代用しません。未資格なら現行会話とRunを保持し、
-全依頼とresourceのsettle後に将来の仕事用の独立した入口を案内します。
-
-通常はcoordinatorからleaf workerへ直接委譲します。複雑な案件だけTask spec内で
-mission-lead相当の責務を与えます。独立reviewが必要なら後続Taskにします。
-worker lifecycleとcompletion authorityは公式orchestration preambleに従います。
+worktreeは強制的なファイルアクセス隔離ではない。厳密なトークン上限の即時停止や、
+全ホストでの班長の自動復帰は保証しない。実機の対応範囲は[検証状況](docs/VALIDATION.md)、
+要件と受入基準の詳細は[設計書](docs/HANCHOU_V2_DESIGN.md)を参照する。
