@@ -115,8 +115,8 @@ flowchart TD
 2. 一意なmission IDを付け、既存branch／既存directoryを再利用せず、新しいbranchとGit worktreeを作る。起点は動くbranch名だけでなくcommit IDとして固定する。
 3. `git worktree list`等の既存Git機能で登録されたpath、branch、HEAD、共通Git directoryを照合する。記録上の親依頼と実際の起点も一致させる。異なるpathだけで正しいrepository由来とは判断しない。
 4. 新規worktreeをcwdとしてHerdr workspaceを作り、返されたworkspace／tab／pane IDを使う。初期タブに設定された公式CLIで側近を起動する。
-5. 実際のcwd・branch・HEAD、起動したagent、取得できたnative thread/session IDを照合し、起動結果を返してスクリプトを終了する。native IDの取得が未完了ならその事実を返し、使用量の計測準備まで完了したとは扱わない。
-6. 班長は戻り値を使って側近の受領と計測可能性を確認してから実作業を渡す。起動時点からの使用量も含める。任意のviewerを開く場合も、返された接続先を使う。
+5. 実際のcwd・branch・HEAD、起動したagentを照合する。既定は`agent_ready`／usage pendingで終了する。検証済みCodex／ccusage版向けの任意`--qualify-startup`は、同梱側近指示のtool-free受領を1回だけ送信し、固有cwd・時刻・marker・native metadataと初回使用量を照合して`startup_qualified`／readyを返す。実作業・任意prompt・再送・継続集計は行わず終了する。不明・不一致は資源を残して失敗し、作業を許可しない。
+6. 班長は戻り値の観測範囲・鮮度・予算を確認してから実作業を渡す。qualified receiptの確認処理を毎回書き直さない。他provider等の手動bootstrapでも受領と計測可能性を先に確定する。起動時点からの使用量も含める。任意のviewerを開く場合も、返された接続先を使う。
 
 Herdrはworkspace作成時に最初のtab／paneを作成し、`agent start`は既存paneを使う。この公開契約に沿って操作し、CLIの結果からIDを取得する。コマンド構文は導入した版のhelpを参照する。[Herdr agent automation](https://herdr.dev/docs/agent-automation/)
 
@@ -218,6 +218,17 @@ Claudeの公式telemetryでも、子処理の完了イベントの`total_tokens`
 読み込み済みの本文や、出典・版・host/session・観測時刻の明らかな固定情報は再利用する。
 現在のinventory・認証・通知設定などの変動状態は再確認する。設計書・過去の検証履歴の
 全文読取りを製品利用の前提にしない。開発時の配置・保全・受入条件は引き続き適用する。
+初期化済み環境では、任意のローカル`.hanchou/readiness.md`にツールpath・版・host・
+観測時刻・設定元・log homeの根拠と未確認項目を残し、会話間で再利用できるようにする。
+これは初期化の報告でありregistryや実行許可ではない。欠落しても再初期化を必須にせず、
+必要な不足事実だけをまとめて確認する。新規paneのnative identity/model/usageは毎回確認する。
+launcher成功receiptの接続・inventory・fresh worktree検証は重複せず再利用し、
+実processの確認は返された新規paneで行う。既存の別paneから推測しない。
+
+予算見積りはCLIコマンド数でなく実際のモデル往復数で数える。確定使用量に、
+未確定の現在requestと残りの通常往復、`max(終了処理の見積り, 指定留保)`を加え、
+検証・報告の往復を留保と二重計上しない。機械的な依存確認は同じtool batchで
+assertion付きで順次実行できる。往復の削減でidentity・権限・保全条件を弱めない。
 
 班長は「何を達成するか」と権限・予算を明確にし、側近は「どう達成するか」を引き受ける。
 側近の判断品質を優先し、実行量の多いworkerは必要な品質を満たす低消費の候補を選ぶ。
@@ -249,6 +260,9 @@ Claude Codeは公式CLIのサブスク認証を利用する。API keyや追加�
 人間への通常の窓口は班長とする。側近からの細かな進捗、workerの開始・終了、試行ごとのログは集約し、完了、判断が必要な事象、予算問題、継続不能を報告する。重複した状態変化で繰り返し通知しない。
 
 Orcaのworkerとして起動しないことで、その経路の通知を構成から外す。ただしOS、Herdr、公式CLI、ブラウザ各自の通知設定は別であり、完全な無通知は実機確認なしに約束しない。
+通知hookの存在だけでは人間へのalert発生を示さない。既存integrationを推測で無効化せず、
+確認できた設定の範囲と未検証の外部通知を区別する。実際に競合する動作や明示的な全通知禁止条件が
+ある場合に解決を要求し、不明な全経路の無通知証明を通常起動の追加条件にしない。
 
 ブラウザ表示には既存の[herdr-web-ui](https://github.com/devswha/herdr-web-ui/blob/main/docs/guide.md)を候補とする。これはHerdr本体と別の第三者pluginであり、初版の必須依存にはしない。Orcaでは新しいブラウザタブ、他ホストでは通常のブラウザ等で表示する。workspaceを直接開く方法・導入手順・組織の許可は未検証である。
 
