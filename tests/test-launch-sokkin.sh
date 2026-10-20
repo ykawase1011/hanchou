@@ -221,4 +221,104 @@ for mode in create-failure create-cwd agent-kind agent-cwd; do
   fi
   assert_parent_preserved
 done
+# Integration-conflict acceptance uses Git only; this proves placement and
+# preservation under explicit commands, not autonomous native-agent behavior.
+export MOCK_FAIL_CREATE=0 MOCK_MISMATCH=none
+sokkin_wt=$(jq -r '.worktree.path' "$fixture/second.json")
+sokkin_branch=$(jq -r '.worktree.branch' "$fixture/second.json")
+worker_branch=fixture-worker-integration
+worker_wt="$fixture/worker checkout"
+git -C "$sokkin_wt" branch "$worker_branch" "$base"
+git -C "$sokkin_wt" worktree add -q "$worker_wt" "$worker_branch"
+assert_parent_preserved
+
+# Protect an unrelated pre-existing shared ref as well as the checked-out
+# human branch. Only this temporary repository is ever targeted.
+git -C "$repo" update-ref refs/tags/fixture-human-baseline "$base"
+assert_shared_refs_preserved() {
+  assert_parent_preserved
+  [[ "$(git -C "$repo" rev-parse "$original_branch")" == "$base" ]] || fail 'shared human branch ref changed'
+  [[ "$(git -C "$repo" rev-parse refs/tags/fixture-human-baseline)" == "$base" ]] || fail 'unrelated shared tag changed'
+  git -C "$repo" ls-files --stage > "$fixture/after.index-entries"
+  cmp "$fixture/before.index-entries" "$fixture/after.index-entries" >/dev/null || fail 'human index entries changed'
+}
+git -C "$repo" ls-files --stage > "$fixture/before.index-entries"
+
+printf 'worker result\n' > "$worker_wt/tracked.txt"
+git -C "$worker_wt" add tracked.txt
+git -C "$worker_wt" commit -qm 'worker fixture change'
+worker_head=$(git -C "$worker_wt" rev-parse HEAD)
+assert_shared_refs_preserved
+printf 'sokkin result\n' > "$sokkin_wt/tracked.txt"
+git -C "$sokkin_wt" add tracked.txt
+git -C "$sokkin_wt" commit -qm 'sokkin fixture change'
+sokkin_head=$(git -C "$sokkin_wt" rev-parse HEAD)
+assert_shared_refs_preserved
+
+# Human work continues after worker/sokkin commits. Adopt that NEW expected
+# baseline, including fresh staged content; never restore the old snapshot.
+printf 'human concurrent staged\n' >> "$repo/tracked.txt"
+git -C "$repo" add tracked.txt
+printf 'human concurrent unstaged\n' >> "$repo/tracked.txt"
+printf 'human concurrent untracked\n' >> "$repo/untracked.txt"
+snapshot before
+git -C "$repo" ls-files --stage > "$fixture/before.index-entries"
+assert_shared_refs_preserved
+
+if git -C "$sokkin_wt" merge --no-edit "$worker_head" > "$fixture/merge.out" 2> "$fixture/merge.err"; then
+  fail 'fixture merge should conflict'
+fi
+[[ "$(git -C "$sokkin_wt" rev-parse MERGE_HEAD)" == "$worker_head" ]] || fail 'unexpected merge target'
+[[ "$(git -C "$sokkin_wt" ls-files -u | wc -l | tr -d ' ')" == 3 ]] || fail 'expected three conflict stages'
+assert_shared_refs_preserved
+# Even Git must refuse switching the integration worktree to the branch that
+# is checked out by the human. No --ignore-other-worktrees escape is permitted.
+if git -C "$worker_wt" checkout "${original_branch#refs/heads/}" > "$fixture/checkout.out" 2> "$fixture/checkout.err"; then
+  fail 'Git allowed a worker to reuse the human checked-out branch'
+fi
+assert_shared_refs_preserved
+printf 'worker + sokkin resolved\n' > "$sokkin_wt/tracked.txt"
+git -C "$sokkin_wt" add tracked.txt
+assert_shared_refs_preserved
+git -C "$sokkin_wt" commit -qm 'resolve fixture integration conflict'
+assert_shared_refs_preserved
+[[ "$(git -C "$sokkin_wt" rev-parse HEAD^1)" == "$sokkin_head" ]] || fail 'merge lost sokkin parent'
+[[ "$(git -C "$sokkin_wt" rev-parse HEAD^2)" == "$worker_head" ]] || fail 'merge lost worker parent'
+[[ "$(git -C "$sokkin_wt" branch --show-current)" == "$sokkin_branch" ]] || fail 'integration changed sokkin branch'
+[[ "$(cat "$sokkin_wt/tracked.txt")" == 'worker + sokkin resolved' ]] || fail 'resolved result missing'
+[[ -z "$(git -C "$sokkin_wt" status --porcelain)" ]] || fail 'integration worktree not clean'
+[[ "$(git -C "$worker_wt" rev-parse HEAD)" == "$worker_head" ]] || fail 'integration changed worker branch'
+
+# Explicit replacement after an uncertain start must preserve a dirty old
+# checkout and create another branch/worktree, never reset/reuse that checkout.
+printf 'failed attempt staged\n' >> "$failed_wt/tracked.txt"
+git -C "$failed_wt" add tracked.txt
+printf 'failed attempt unstaged\n' >> "$failed_wt/tracked.txt"
+printf 'unique failed result\n' > "$failed_wt/failed-result.txt"
+git -C "$failed_wt" diff --binary > "$fixture/failed-before.diff"
+git -C "$failed_wt" diff --cached --binary > "$fixture/failed-before.cached"
+git -C "$failed_wt" status --porcelain=v1 --untracked-files=all > "$fixture/failed-before.status"
+cp "$failed_wt/failed-result.txt" "$fixture/failed-result-preserved"
+failed_branch=$(git -C "$failed_wt" symbolic-ref HEAD)
+failed_head=$(git -C "$failed_wt" rev-parse HEAD)
+assert_shared_refs_preserved
+before_count=$(count_worktrees)
+run_launch --base "$base" --worktree-root "$fixture/failure worktrees" > "$fixture/replacement.json" 2> "$fixture/replacement.err"
+assert_json "$fixture/replacement.json" '.ok == true and .worktree.baseCommit != null'
+replacement_wt=$(jq -r '.worktree.path' "$fixture/replacement.json")
+[[ "$replacement_wt" != "$failed_wt" && -d "$replacement_wt" ]] || fail 'replacement reused old checkout'
+[[ "$(jq -r '.worktree.branch' "$fixture/replacement.json")" != "${failed_branch#refs/heads/}" ]] || fail 'replacement reused old branch'
+[[ "$(count_worktrees)" == "$((before_count + 1))" ]] || fail 'replacement did not add worktree'
+[[ "$(git -C "$failed_wt" rev-parse HEAD)" == "$failed_head" ]] || fail 'replacement reset old HEAD'
+[[ "$(git -C "$failed_wt" symbolic-ref HEAD)" == "$failed_branch" ]] || fail 'replacement changed old branch'
+git -C "$failed_wt" diff --binary > "$fixture/failed-after.diff"
+git -C "$failed_wt" diff --cached --binary > "$fixture/failed-after.cached"
+git -C "$failed_wt" status --porcelain=v1 --untracked-files=all > "$fixture/failed-after.status"
+for part in diff cached status; do
+  cmp "$fixture/failed-before.$part" "$fixture/failed-after.$part" >/dev/null || fail "replacement changed failed checkout: $part"
+done
+cmp "$failed_wt/failed-result.txt" "$fixture/failed-result-preserved" >/dev/null || fail 'replacement lost old untracked result'
+[[ "$(git -C "$replacement_wt" rev-parse HEAD)" == "$base" ]] || fail 'replacement base moved'
+[[ -z "$(git -C "$replacement_wt" status --porcelain)" ]] || fail 'replacement inherited dirty old content'
+assert_shared_refs_preserved
 printf 'launch-sokkin integration: ok\n'
