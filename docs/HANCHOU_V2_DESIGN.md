@@ -2,7 +2,7 @@
 
 作成日: 2026-10-20
 
-状態: 設計案。必須要件と採用方針を定義する文書であり、実装済み・実機検証済みを意味しない。
+状態: 採用済み設計。出荷受入は未完了。必須要件と採用方針を定義し、実施済み検証と残件の正本は[検証状況](VALIDATION.md)とする。設計の採用だけで全要件を実機検証済みとは扱わない。
 
 ## 1. 設計の結論
 
@@ -180,7 +180,7 @@ Herdrの待機状態や`agent prompt --wait`だけでは、その依頼の完了
 | Codex公式API | app-serverのusage通知・usage取得 | 公開schemaにthread利用情報がある。一方、既存CLI threadへの読取り試験では`threadUsage: null`であり、APIだけで全実行を取得できるとは確認できていない |
 | Claude Code | native sessionのログ集計。将来は公式OpenTelemetryも候補 | 手元のCLI 2.1.299のログで同一requestのusageが複数行に重複した。request/message単位の識別が必要。内部ログ形式への依存は版ごとの検証が必要 |
 | Claude公式telemetry | 起動前に設定したOpenTelemetryのrequestイベント／metrics | セッション別計測の公式手段。ただし収集先の運用が必要。Hanchou独自collectorは作らず、既存の採用済み基盤がある環境で検証する |
-| ccusage | provider別sessionのJSON集計 | 既存ツール候補。今回の環境では未導入・未実行。採用版を固定して照合試験を行うまで受入済みとしない |
+| ccusage | provider別sessionのJSON集計 | `ccusage@20.0.37`を限定受入。native usageとの照合結果・親子の計測範囲・未検証経路は[使用量検証](USAGE_TOOL_VALIDATION.md)を参照 |
 | Herdrのmetadata／viewerの使用量表示 | 表示・参考情報 | セッション会計の正本として採用しない。account単位の表示をpane単位の使用量と誤認しない |
 
 Codexの公開インターフェースは[App Server資料](https://learn.chatgpt.com/docs/app-server)、Claudeのtelemetryは[Monitoring資料](https://code.claude.com/docs/en/monitoring-usage)、集計ツール候補は[ccusage Codex](https://ccusage.com/guide/codex/)・[Claude](https://ccusage.com/guide/claude/)を参照する。手元の観測はローカル試料の確認であり、providerの課金仕様の保証ではない。
@@ -368,7 +368,7 @@ v2実装として4スキルと起動スクリプトへ置換し、旧配布物�
 
 [#40の本文](https://github.com/ykawase1011/hanchou/issues/40)には、元checkoutに人間が並行変更するケース、統合時の共有ref、途中の操作対象の確認が追加されている。これはOrcaを外しても必要であり、第12節へ引き継いだ。単に「新規worktreeを作れた」だけでcloseしない。
 
-[#41の2026-10-20の追記](https://github.com/ykawase1011/hanchou/issues/41#issuecomment-6281243255)は、連続9回分の端末に認証入力要求が残存したと報告している。本設計の調査ではその端末の現在状態を再確認していない。最新の運用状態を別途確認し、設計書やIssueのcloseを停止・回収の代わりにしない。本文中の過去の「停止中」という記述だけで現在も停止中と推測しない。
+[#41の2026-10-20の追記](https://github.com/ykawase1011/hanchou/issues/41#issuecomment-6281243255)は、連続9回分の端末に認証入力要求が残存したと報告している。その後のv2移行では、これらを含む10端末の所有・成果・状態を再確認し、旧Automationとworkspaceを撤去した。操作と照合結果は[検証状況](VALIDATION.md)に記録する。設計書やIssueのcloseを停止・回収の代わりにせず、過去の「停止中」という記述だけで現在状態を推測しない。
 
 [#44の追記](https://github.com/ykawase1011/hanchou/issues/44#issuecomment-6183209029)ではPR #46のマージが完了している一方、導入済みスキルへの反映・旧会話終了等の受入が残っている。廃止するのは残る完全自動交代の要求であり、未マージと誤認して再実装することではない。
 

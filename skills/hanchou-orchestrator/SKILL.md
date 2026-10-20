@@ -36,8 +36,9 @@ No Orca Run, Inbox, scheduler or dashboard is required.
    bypass. Return to the original attempt after timeout/blocked/unknown rather
    than launching another. Never use the human checkout as a fallback.
 3. Read [usage](references/usage.md). Resolve the native session/thread and
-   qualify measurement before assigning real work. A short bootstrap for
-   identity/skill receipt is allowed and included in usage. Missing data is not
+   qualify measurement before assigning real work. A short, tool-free bootstrap
+   acknowledging supplied role/instructions is allowed and included in usage.
+   The supervisor binds native identity from the settled log. Missing data is not
    zero. Keep a bounded budget for bootstrap, final verification and reporting.
 4. Explicitly assign the role: “Act as this mission's sokkin and follow the
    instructions in [the pinned absolute SKILL.md path].” Sending a file to read

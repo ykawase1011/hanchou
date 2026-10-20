@@ -3,7 +3,8 @@
 Use native logs and a qualified existing tool; do not implement another collector
 or treat Herdr's display, context percentage, dollar estimate, or weekly quota as
 session tokens. The current bounded qualification is **ccusage 20.0.37** with
-Codex CLI 0.162.1 / Claude Code 2.1.299. Requalify changed log/tool formats.
+Codex CLI 0.162.1 / Claude Code 2.1.299, plus a tool-free bootstrap on 2.1.304.
+Requalify changed log/tool formats.
 Install explicitly through the existing package manager, outside the project;
 the launcher does not install a usage tool.
 
@@ -45,6 +46,12 @@ Do not mistake an exit-zero tool response or a selected object for valid data:
 require the intended identity, numeric nonnegative token fields and all expected
 logs. Missing, malformed, stale, unreadable or ambiguous results are unavailable,
 never zero.
+In 20.0.37, missing native IDs can still produce path-derived entries, and a
+missing fork parent can produce an overcount with exit status zero. Independently
+check native metadata and required parent logs. A decreasing cumulative counter
+without trustworthy per-request usage is unavailable: the tool can undercount
+that reset without warning. An empty result for a nonempty native log is not a
+zero-usage session, including when its serialization is unsupported.
 
 ## Accounting
 

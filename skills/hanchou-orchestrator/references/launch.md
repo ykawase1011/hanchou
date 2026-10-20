@@ -87,10 +87,14 @@ automatic rollback guarantee is offered. Never force-delete retained resources.
 
 ## Bootstrap and mission
 
-Allow one short, explicitly bounded bootstrap turn to establish native identity,
-skill receipt and initial usage. It may read its environment/native metadata and
-the pinned `hanchou-sokkin/SKILL.md`; it must not start workers or real work.
-Include bootstrap tokens in the total. Qualify usage with [usage.md](usage.md).
+Allow one short bootstrap turn for role/instruction receipt only. Supply the
+already-verified launch metadata and the exact pinned sokkin instructions in
+that message, and request an acknowledgment without tools, file reads or worker
+dispatch. The supervisor resolves native identity and measures the settled
+response before real work. This avoids repeated full-context responses and
+approval turns just to read instructions or run `pwd`. A bootstrap token
+allowance is an estimate, not a hard cap; include its actual usage in the total
+and stop assignments when it is exceeded. Qualify usage with [usage.md](usage.md).
 
 Resolve native identity from Herdr's observed `agent_session`, if available, and
 cross-check provider and native log metadata. Without integrations, resolve the
