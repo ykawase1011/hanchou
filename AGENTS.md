@@ -12,8 +12,13 @@ worktree before starting a new sokkin, and exits after returning launch identity
 Do not add a runtime, daemon, database, scheduler, generic launcher, dashboard,
 registry, or copied CLI command reference. Repository tests are allowed.
 Use public CLI contracts and installed-version help; do not claim untested
-capabilities. Read `docs/HANCHOU_V2_DESIGN.md` for accepted requirements and
-`docs/VALIDATION.md` for bounded verification status.
+capabilities. When developing or investigating Hanchou itself, read the relevant
+sections of `docs/HANCHOU_V2_DESIGN.md` for accepted requirements and
+`docs/VALIDATION.md` for bounded verification status. Running an installed skill
+or a product smoke test does not require loading these development documents.
+Use the installed skill and the selected project's policy/config for that path;
+read development documents only to resolve a concrete implementation question.
+This reading distinction does not waive the placement and preservation rules below.
 
 Preserve the human checkout, index, uncommitted changes, and existing resources.
 Pin project policy/config sources independently of execution placement; do not

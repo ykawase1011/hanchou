@@ -6,6 +6,12 @@ version. Install the official `codex` or `claude` CLI in both the caller's PATH
 and Herdr's shell environment. The script does not install tools, start a server,
 change global agent settings, submit a mission, or install integrations.
 
+Use this launch contract directly; inspect the script source only when diagnosing
+an actual failure or developing it. Do not load repository design/history or the
+companion's references as routine supervisor preparation. Read companion content
+once when supplying the bootstrap. Applicable project instructions still govern
+placement, authority and preservation.
+
 Select an already-running **local named Herdr session**. Keep the same executable
 and session for subsequent calls; workspace/pane IDs are scoped to that server.
 Check its current inventory before creating resources. Never silently fall back
@@ -60,6 +66,9 @@ resolution. Inspect the actual process arguments and observed model/effort durin
 bootstrap. Unrequested billing, permission or notification behavior is a
 configuration discrepancy to resolve before work, not a reason to rewrite the
 user's shell files. The launcher does not set bypass-permission flags.
+Keep verified executable paths, versions and help in the mission evidence, so a
+later stage can reuse them. Check current session inventory/notification state
+and actual pane identity; old receipts do not prove those mutable facts.
 
 ## Receipt and partial failure
 
@@ -123,7 +132,8 @@ Send a compact mission containing:
   problem. Include each independent session once and state native-child scope.
 
 Use installed Herdr help for prompt/read/wait commands. Set explicit wait
-timeouts. A timeout can follow successful input delivery; inspect the same
+timeouts. Read only the relevant subcommand help unless it leaves a concrete
+question unanswered. A timeout can follow successful input delivery; inspect the same
 attempt's report before resending. Terminal idle is not a mission receipt.
 
 On completion, receive evidence and session totals before stopping the owned
