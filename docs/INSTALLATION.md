@@ -38,8 +38,8 @@ npx --yes skills@1.7.4 list --agent codex claude-code --json
 launcherの実行権限、`--help`の動作を確認しました。scripts、references、assetsを含み、
 無関係なスキルは導入されていません。
 
-公開repositoryへv2がマージされた後の同等のproject-localコマンドは次のとおりです。
-**公開sourceからのv2導入は未検証**です。マージ前の公開版をv2として導入しないでください。
+公開mainのv2（`f19c958`、PR #59）からCodex／Claude Codeへのglobal導入も確認しました。
+同じ公開sourceをproject-localへ導入するコマンドは次のとおりです。
 
 ```bash
 npx --yes skills@1.7.4 add https://github.com/ykawase1011/hanchou \
@@ -47,9 +47,16 @@ npx --yes skills@1.7.4 add https://github.com/ykawase1011/hanchou \
   --skill hanchou-orchestrator hanchou-sokkin hanchou-init hanchou-update --yes
 ```
 
+global導入では上記に`--global`を追加しました。4スキルの全ファイル、Claude側の
+symlink、launcherの実行権限と`--help`を公開sourceと照合しました。
+既存の5つの旧スキルは更新前に旧sourceとの一致を確認し、local変更がない状態で移行しました。
+旧cron・publish-issuesの除去では、installer成功後も共有実体とlock entryが残ったため、
+対象を再照合して保全先へ退避し、2 entryだけを除去しました。成功表示だけで除去完了と
+判断せず、実体・link・登録情報と無関係なentryの保全を確認してください。
+
 実際の導入先・scope・link／copy・既存のlocal変更を確認します。localとglobalの重複が
 ある場合はagentが読む実体を確認し、既存のcustom copyを自動削除しません。
-他版のinstallerやglobal導入はこの試験の対象外です。
+他版のinstallerはこの試験の対象外です。
 
 対象projectで`$hanchou-init`（Claude Codeでは`/hanchou-init`）を明示的に呼びます。
 設定例:

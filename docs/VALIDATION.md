@@ -131,7 +131,7 @@ bootstrap失敗のみだった。対応する進行中のRun・worker・子works
 旧workspace・process一覧・物理path・Git worktree登録・対応するmerge済みlocal branchが
 なくなったことを再照合した。他projectのAutomationや現在の作業workspaceは変更していない。
 これは旧運用の終了・回収であり、Orca自体の設定不一致や認証起動の不具合修正ではない。
-導入済み旧スキルの置換とGitHub Issueの処置は別途残る。
+導入済み旧スキルの置換とGitHub Issueの処置は次節に記録する。
 
 ## 必須要件との対応と公開移行
 
@@ -156,9 +156,16 @@ bootstrap失敗のみだった。対応する進行中のRun・worker・子works
 | R14 報告集約 | 制御したquiet sessionで重要結果を班長が回収。Orcaへのworker通知転送なし。採用環境の別設定は要照合 |
 | R15 保全と解放 | bundle/ファイル保全後に所有PID終了・workspace閉鎖・通常worktree削除を実確認 |
 
-公開移行では、PRのマージ、公開sourceからの導入確認、導入済み旧スキルの置換、
-旧Issueの処置と公開参照先の確定が残る。新仕様だけで旧障害を修正済みにしない。
+公開移行も以下まで完了した。新仕様だけで旧障害を修正済みにしない。
 
-[#39](https://github.com/ykawase1011/hanchou/issues/39)と[#41](https://github.com/ykawase1011/hanchou/issues/41)の旧運用は上記のとおり終了・回収した。公開された移行内容と対応づけて`not planned`で整理できる。上流障害を解決済みとする根拠にはしない。
+- [PR #59](https://github.com/ykawase1011/hanchou/pull/59)をマージし、公開main `f19c958`から`skills@1.7.4`で4スキルをCodex/Claude Codeの既存global scopeへ導入した。内容・link・launcher権限を照合し、旧2スキルの実体・link・lock entryを除去した。無関係な登録情報は保持。
+- 旧dashboard、公開済みreceipt、削除したAutomationの定義の7ファイルを保全先へ退避し、空のcron directoryを削除。元projectの`policy.md`と改善メモはhash一致で保持し、権限を勝手に書き換えていない。
+- [#13](https://github.com/ykawase1011/hanchou/issues/13)、[#39](https://github.com/ykawase1011/hanchou/issues/39)、[#41](https://github.com/ykawase1011/hanchou/issues/41)、[#44](https://github.com/ykawase1011/hanchou/issues/44)を旧機能・運用終了の`not planned`でclose。
+- [#40](https://github.com/ykawase1011/hanchou/issues/40)は対象をv2のR03/R04へ明示的に変更し、上記受入を根拠に`completed`でclose。旧Orca全経路の受入とは扱わない。
+- [#10](https://github.com/ykawase1011/hanchou/issues/10)と[#22](https://github.com/ykawase1011/hanchou/issues/22)は採用環境の通知・報告品質の確認としてOPENを維持し、旧Orca更新待ちラベルを解除。制御した試験環境の成功を全OS/mobileへ一般化しない。
+
+導入されたファイルと現在の会話への採用は別である。この実装作業では班長スキルを
+起動せず、次の明示的な起動でv2を採用する。既存projectの独自方針は初期化・移行時に
+確認し、設定が不足する状態で側近を自動起動しない。
 
 週次枠のsession別正確な配賦、providerが強制する厳密なtoken cap、全ホスト共通の自動復帰、24時間TTL解放は設計で保証しない項目であり、上記未実施検証とは区別する。
