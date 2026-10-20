@@ -34,6 +34,7 @@ while IFS= read -r -d '' file; do
   case "$file" in
     *.md) ;;
     "$launcher") ;;
+    skills/hanchou-init/assets/config-template.json) jq -e . "$file" >/dev/null || fail "invalid config template" ;;
     *) fail "unexpected production artifact: $file" ;;
   esac
 done < <(find skills -type f -print0)

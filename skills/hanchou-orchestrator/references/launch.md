@@ -22,9 +22,11 @@ silently rewrite shared/global settings or claim all OS/mobile alerts are muted.
 Use the selected project's `.hanchou/config.json`:
 
 ```json
-{"version":2,"sokkin":{"agent":"codex","model":null}}
+{"version":2,"sokkin":{"agent":"codex","model":"gpt-6-astra","effort":"medium"}}
 ```
 
+This is the new-project `hanchou-init` template, not a launcher fallback.
+Existing values and explicit mission overrides take precedence.
 Optional `sokkin.effort` accepts `low`, `medium`, `high` or null. No other keys
 are supported. Agent is `codex` or `claude`; model is a native model identifier
 or null. Null delegates to the official CLI's configured

@@ -88,7 +88,7 @@ git -C "$repo" add tracked.txt
 printf 'human unstaged\n' >> "$repo/tracked.txt"
 printf 'human untracked\n' > "$repo/untracked.txt"
 mkdir -p "$repo/.hanchou"
-printf '%s\n' '{"version":2,"sokkin":{"agent":"codex","model":null}}' > "$repo/.hanchou/config.json"
+cp "$root/skills/hanchou-init/assets/config-template.json" "$repo/.hanchou/config.json"
 printf 'Human policy remains here.\n' > "$repo/.hanchou/policy.md"
 
 snapshot() {
@@ -163,6 +163,11 @@ for attempt in first second; do
   assert_json "$fixture/$attempt.json" '.version == 2 and .ok == true and .missionId == "sample" and (.attemptId | type == "string" and length > 0)'
   assert_json "$fixture/$attempt.json" '.herdr.workspaceId == "fixture-workspace" and .herdr.tabId == "fixture-tab" and .herdr.paneId == "fixture-pane"'
   assert_json "$fixture/$attempt.json" '.sokkin.agent == "codex" and .sokkin.nativeThreadId == "fixture-native-thread" and .sokkin.nativeSessionId == null and .usageReadiness.status == "pending"'
+  assert_json "$fixture/$attempt.json" '.sokkin.requestedModel == "gpt-6-astra" and .sokkin.requestedEffort == "medium"'
+  jq -se 'any(.[]; (index("start") != null) and
+    (index("--model") as $i | $i != null and .[$i+1] == "gpt-6-astra") and
+    (index("model_reasoning_effort=\"medium\"") != null))' "$MOCK_LOG" >/dev/null ||
+    fail 'copied init template did not reach agent start arguments'
   wt=$(jq -r '.worktree.path' "$fixture/$attempt.json")
   branch=$(jq -r '.worktree.branch' "$fixture/$attempt.json")
   [[ "$wt" != "$repo" && -d "$wt" ]] || fail 'missing separate worktree'
