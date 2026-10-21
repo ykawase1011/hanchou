@@ -14,6 +14,26 @@ consult relevant help on a mismatch or unknown option, not the full command tree
 Use offline mode to avoid price downloads; never use price estimates
 as a subscription-budget measure.
 
+## Bundled read-only measurement
+
+For Codex 0.162.1 native source `cli` / ccusage 20.0.37, prefer
+`scripts/measure-session.sh` from this orchestrator skill. It reconciles the
+existing tool with native evidence in one bounded call; it does not implement a
+new collector or decide the budget. See its `--help` for the narrow interface.
+Pass the actual log home, expected physical cwd/model/effort, a current-request start-time
+lower bound and a unique marker from the current request. Reuse known native ID
+and log path. Without identity hints it searches only that home for one match.
+
+A ready receipt describes the session cumulative scope, current request boundary,
+observed native/tool counters and freshness. Active requests have usage still
+unreported, including the final answer: reserve for it, do not repeatedly poll
+self for a settled total. At final acceptance measure the sokkin after its report
+with that assignment's marker and require a settled boundary. Preserve one latest
+cumulative receipt per native ID; do not sum repeated snapshots.
+Unsupported forks, compaction, resets or versions fail closed. Do not bypass a
+failure by inventing a less strict parser. The detailed contracts below remain
+the explanation and qualified manual route for other supported providers.
+
 ## Supervisor preparation
 
 Bind the supervisor too, before broad discovery. Use a host-supplied native ID

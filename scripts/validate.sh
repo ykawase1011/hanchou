@@ -29,11 +29,13 @@ done < <(find skills -type f -name SKILL.md -print0)
 [[ $count == 4 ]] || fail 'expected exactly four skills'
 
 launcher=skills/hanchou-orchestrator/scripts/launch-sokkin.sh
+measurement=skills/hanchou-orchestrator/scripts/measure-session.sh
 [[ -x $launcher ]] || fail 'missing executable one-shot launcher'
+[[ -x $measurement ]] || fail 'missing executable one-shot measurement'
 while IFS= read -r -d '' file; do
   case "$file" in
     *.md) ;;
-    "$launcher") ;;
+    "$launcher"|"$measurement") ;;
     skills/hanchou-init/assets/config-template.json) jq -e . "$file" >/dev/null || fail "invalid config template" ;;
     *) fail "unexpected production artifact: $file" ;;
   esac

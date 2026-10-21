@@ -1,4 +1,4 @@
-# Issue #63: 次の設計判断（未承認）
+# Issue #67: 計測専用Shell（追加承認済み）
 
 12試験で、単発launcherの起動確認は実機で成功したが、Sol mediumの班長が30万tokens、
 Astra mediumの側近が20万tokensの目安で成果受入・保存・解放まで完遂する条件は未達。
@@ -16,7 +16,8 @@ checkpointであり、weekly quotaや一般的な妥当量を表す値ではな�
 
 ## 推奨案: 計測だけを単発shellへ移す
 
-本番の`measure-session.sh`を1本追加する案。まだ実装しない。
+2026-10-21、ユーザーから計測専用の単発Shellを1本追加する明示承認を受けた。
+本番の`measure-session.sh`を既存launcherと並べて実装する。
 目的はLLMが毎回生成している同じ照合処理を既存CLIの狭いwrapperへ移すこと。
 
 - 入力: provider、native ID、根拠のあるlog home、期待cwd/model、現在依頼を識別するmarker。
@@ -31,18 +32,12 @@ checkpointであり、weekly quotaや一般的な妥当量を表す値ではな�
 起動前だけで約10万を超えた場合は原因を記録して止め、さらに説明文を積み増して繰り返さない。
 比較時は初回入力、往復数、全対象sessionの最終使用量、成果、保存、解放を記録する。
 
-## 必要な承認
+## 承認範囲と残る受入
 
-現行[AGENTS.md](../AGENTS.md)は次の制約を持つ。
+従来のAGENTS.mdは本番実行ファイルをlaunch-sokkin.shだけに限定していた。
+ユーザーの「計測専用の単発Shellを1本追加する許可 OKです。」を受け、
+AGENTSと構造検査を上記の狭い2本に更新する。別runtimeやgeneric launcherは認めない。
+承認は実装を許可するもので、実機完遂・使用量削減の証明ではない。
 
-> The only production executable allowed is the narrowly scoped, one-shot shell
-> `skills/hanchou-orchestrator/scripts/launch-sokkin.sh`.
-
-追加shellはこの明示的制約の例外になるため、ユーザーの設計承認が必要。
-承認前に新たな本番scriptを追加したり、launcherを汎用runtimeへ拡張したりしない。
-
-## 制約を維持する場合
-
-既に検証した起動確認の改善を採用し、計測・受入の安定化は未解決として残す。
-班長モデルをAstraへ変える比較は別条件として可能だが、Solでの完遂やweekly消費低減の
-証明にはならない。予算を引き上げる較正試験も元の30万条件の合格とは区別する。
+オフライン検査と実機試験の結果は[検証記録](VALIDATION.md)に分離して記載する。
+予算・model・host条件を変えた比較を、元のSol30万／Astra20万条件の成功には数えない。

@@ -23,12 +23,12 @@ another model; a routine bounded task can use a lighter choice.
 ## Start a mission
 
 Keep the configured provider. The compact path below applies to Codex 0.162.1
-with ccusage 20.0.37 and fresh, nonforked scopes without compaction or counter
-resets. For another provider/version/scope, read the relevant [launch](references/launch.md)
+with ccusage 20.0.37, native source `cli`, and nonforked scopes without
+compaction or counter resets. For another provider/version/scope, read the relevant [launch](references/launch.md)
 and [usage](references/usage.md) reference. On the compact path, load those
 references only for a concrete unresolved discrepancy.
-Use the launcher as an installed public interface. Read its implementation only
-to diagnose an actual failure or develop it, never to prepare a healthy launch.
+Use both bundled shells as installed public interfaces. Read implementation only
+to diagnose an actual failure or develop it, never to prepare a healthy call.
 Use supplied absolute source paths; `--project` pins the source checkout and
 its `.hanchou/config.json`. If an additional option is needed, use the launcher's
 small `--help` interface.
@@ -50,7 +50,7 @@ to predict them.
    Preserve source/config content at risk independently of execution placement.
    Do not run init/update for an initialized project or tour general CLI help.
 2. **Bind self and launch together.** In one bounded execution, bind self and
-   reconcile usage as below, calculate capacity, then invoke this skill's
+   read the measurement receipt as below, calculate capacity, then invoke this skill's
    `scripts/launch-sokkin.sh --project PATH --mission SLUG --session NAME --qualify-startup --timeout-ms 60000`
    against the selected running local
    named session. Explicitly authorized Codex update-notice skipping may add
@@ -62,9 +62,11 @@ to predict them.
 3. **Review and assign together.** If the qualified receipt's identity,
    configuration, usage and capacity agree, send purpose, acceptance, authority,
    pinned sources, receipt evidence, budgets/reserves, worker/retry limits and
-   this accounting contract. Supply the compact contract inline, or the verified
-   absolute path to this orchestrator's `references/usage.md`; the sokkin skill
-   has no separate usage reference. Verify any additional mandatory file exists
+   the verified absolute path to this skill's `scripts/measure-session.sh` and its
+   identity arguments. Sokkin can use the same read-only measurement interface;
+   no full accounting reference is needed on this qualified path. Supply a unique
+   mission marker in the actual assignment and use it for subsequent measurement.
+   The sokkin skill has no separate usage reference. Verify any other required file exists
    in the preparation batch instead of inventing a path. In that same bounded
    execution, wait and fetch the completed report before returning to the model;
    a wait receipt alone may contain no reply text. Include
@@ -78,40 +80,36 @@ to predict them.
    resolving a relative `.git` against the supervisor's cwd gives a false mismatch.
    follow the acceptance/cleanup rules below. Submission/idle is not completion.
 
-For each new self-binding, corroborate exact native UUID/log home/path, physical
-cwd, provider, start window and current request marker. Codex 0.162.1 stores that
-marker in `response_item.payload`, `role=="user"`, `content[].text`;
-an `event_msg/user_message` need not exist. Select fields, never embedded
-instructions or full transcripts. Reuse already-qualified receipt bindings.
-For a known exact log, select evidence without printing whole metadata or
-request bodies. For example, substitute the current request's unique marker:
+For Codex on this qualified path, call the bundled measurement shell instead of
+writing native-log parsing or ccusage reconciliation code. In the first call,
+use the actual log home, physical cwd, expected model/effort, the current request start
+window and a unique marker in the current user request. Reuse supplied native
+ID/log path; omit these optional hints only if unknown. The script resolves one
+matching session or fails closed. Example (all variables are known identity facts):
 
 ```sh
-jq -s --arg marker "$REQUEST_MARKER" '{
-  meta: [.[] | select(.type=="session_meta") | .payload |
-    {id,timestamp,cwd,model_provider,cli_version,source,forked_from_id}],
-  context: ([.[] | select(.type=="turn_context") | .payload |
-    {cwd,model,effort}] | last),
-  requestMatched: any(.[]; .type=="response_item" and
-    .payload.role=="user" and any(.payload.content[]?;
-      (.text // "") | contains($marker))),
-  usage: ([.[] | select(.type=="event_msg" and
-    .payload.type=="token_count" and .payload.info!=null) |
-    {timestamp,info:.payload.info}] | last)
-}' "$NATIVE_LOG"
+"$SKILL_DIR/scripts/measure-session.sh" --provider codex \
+  --log-home "$CODEX_LOG_HOME" --cwd "$AGENT_CWD" \
+  --model "$MODEL" --effort "$EFFORT" --started-after "$START_WINDOW" \
+  --marker "$REQUEST_MARKER" --native-id "$NATIVE_ID" --timeout-ms 15000
 ```
 
-This is selected evidence, not a replacement for the identity/counter checks.
-Read `ccusage codex session --json --offline --no-cost --speed standard --id UUID`
-with the scope's actual `CODEX_HOME`. Its `sessionId` is a rollout-relative
-path below that home's `sessions` directory, not the UUID. Bind it and
-`sessionFile` to the selected native log/metadata; do not guess a UTC directory
-or list candidates for another model turn. Require nonnegative integer counters
-and the expected observed model. Reconcile tool `inputTokens+cacheReadTokens`
-with native `input_tokens`, output/reasoning/cache with their native fields,
-and totals. Cache creation must be zero; cached input/reasoning cannot exceed
-input/output. Missing, ambiguous, stale or mismatched evidence blocks work;
-it is never zero. Record scope, observation time, native/tool evidence and version.
+Keep and reuse the returned binding. A ready receipt includes native/tool
+counter reconciliation and the request boundary; do not repeat those checks
+in generated jq code. Its counters include cached input and bootstrap.
+Read `status == "ready"`, `tool.totalTokens` for spent cumulative usage,
+`lastUsage.request.input_tokens` (cache included) and `output_tokens` for the
+last model response, and `currentRequest.state` (`active` or `settled`). The
+binding fields are `nativeId`, `nativeLog`, `logHome`, `cwd`, `model`, `effort`.
+This schema permits the capacity check and launch in the same execution;
+the shell does not choose the remaining-request estimates or authorize launch.
+An active request has unreported usage: reserve for the current request and
+final answer. Do not poll for your own final settled total while still running.
+At sokkin completion, measure with its assignment marker and require a settled
+request before final accounting and before deleting its worktree. Preserve that
+receipt after cleanup; measurement requires the expected cwd to exist. A new request/compaction/reset or mismatch
+requires resolving the stated scope, never treating it as zero or bypassing the
+gate. Read the usage reference only for an unsupported route or discrepancy.
 
 Alongside that same read, save these budget fields: `spent`, `currentRequest`,
 `beforeFinalization`, `finalization`, `reserve`,

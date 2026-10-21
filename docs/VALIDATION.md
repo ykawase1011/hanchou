@@ -5,7 +5,7 @@
 
 ## 配布と起動スクリプト
 
-- 配布対象は4スキルと単発のBash起動スクリプト。旧cron、kaizen、issue公開helper、status-view、Orca用参照、旧テストを削除。
+- 配布対象は4スキルと単発のBash起動・計測スクリプト。旧cron、kaizen、issue公開helper、status-view、Orca用参照、旧テストを削除。
 - `make check`: 構造、リンク、shell構文、実Gitとmock Herdrによる起動試験、Bash 3.2回帰試験。ネットワーク・認証・実agentを必要としない。
 - 起動試験は新規branch/worktree、元checkoutのstaged/unstaged/untracked保全、設定override、異常値、cwd/provider不一致、途中失敗時の資源保全を検査する。mock成功はHerdr実機成功とは別。
 - 39回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
@@ -29,6 +29,20 @@ pane内のbrew実行path、CodexのChatGPT認証、同じ使用量、通知設�
 共有設定を保持した。新規推論・班長・側近・worker・旧cronは起動していない。
 
 ## 使用量
+
+### Issue #67: 計測専用の単発Shell
+
+2026-10-21、ユーザーの追加承認により、本番実行ファイルを起動・計測の2本に限定した。
+`measure-session.sh`はCodex 0.162.1（native source cli）／ccusage 20.0.37について、
+現在依頼のmarker・cwd・model/effort・時刻・native IDと使用量を1回の有期限呼出しで照合する。
+activeな自己計測とsettledな側近完了を区別し、未記録の推論を0として返さない。
+既存cwdを必要とするため、最終測定はworktree削除前に行いreceiptを保全する。
+
+Bash 3.2、jq 1.6／1.7のオフライン検査と独立レビューを通過。
+不正counter、reset／fork／compaction、識別・版・scope不一致、曖昧な候補、
+完了とcounterの書込み競合、timeoutと成功時の子プロセス残留を検査した。
+合成nativeログの選択フィールドを実ccusage 20.0.37へ渡す照合も成功した。
+全体の`make check`も通過。これらは実機の予算内完遂を証明しない。
 
 ### 班長の準備費用（Issue #63）
 
@@ -282,7 +296,7 @@ bootstrap失敗のみだった。対応する進行中のRun・worker・子works
 
 | 要件 | 主な根拠 |
 | --- | --- |
-| R01 薄い構成 | 配布4スキル、唯一の単発shell、構造検査 |
+| R01 薄い構成 | 配布4スキル、限定した単発shell 2本、構造検査 |
 | R02 Orca非依存 | Orca CLI・socket等へのアクセスを拒否した子プロセスで起動・実行・回収・会計・解放 |
 | R03 新規worktree/branch | 両providerの実起動、実Git/mockの異常系・置換・設定試験 |
 | R04 人間の作業場所の保全 | native競合地点・並行編集後・統合後・cleanup後の照合、共有ref確認 |

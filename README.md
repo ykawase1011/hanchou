@@ -6,6 +6,8 @@ Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herd
 新しい側近を起動するたびに、同梱の`launch-sokkin.sh`が新規branchとGit worktreeを作り、
 専用Herdr workspaceの最初のタブへ設定されたCodexまたはClaude Codeを起動します。
 元checkoutのbranch・index・人間の変更は保全します。
+検証済みCodex版では、同梱の`measure-session.sh`がnative sessionと既存usage toolを
+単発で照合します。計測値と予算判断を分け、未確定の処理を0には扱いません。
 
 ## 導入と使い方
 

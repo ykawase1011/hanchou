@@ -5,10 +5,15 @@ This repository distributes Hanchou v2 Agent Skills: `hanchou-orchestrator`,
 provider-neutral, explicitly triggered, and focused on requests, results, and
 usage supervision. Sokkin owns execution, workers, verification, and integration.
 
-The only production executable allowed is the narrowly scoped, one-shot shell
-`skills/hanchou-orchestrator/scripts/launch-sokkin.sh`. It wraps existing Git,
+The only production executables allowed are two narrowly scoped, one-shot shells.
+`skills/hanchou-orchestrator/scripts/launch-sokkin.sh` wraps existing Git,
 Herdr, and official agent CLIs, always creates and verifies a fresh branch and
 worktree before starting a new sokkin, and exits after returning launch identity.
+`skills/hanchou-orchestrator/scripts/measure-session.sh` only reads and reconciles
+one native session with the qualified existing usage tool. It does not launch
+agents, dispatch missions, decide budgets, modify project/provider configuration,
+delete resources, or maintain accounting state. Temporary observation files are
+removed on exit. Unknown identity, format or scope fails closed.
 Do not add a runtime, daemon, database, scheduler, generic launcher, dashboard,
 registry, or copied CLI command reference. Repository tests are allowed.
 Use public CLI contracts and installed-version help; do not claim untested
