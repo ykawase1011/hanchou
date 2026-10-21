@@ -44,6 +44,17 @@ Bash 3.2、jq 1.6／1.7のオフライン検査と独立レビューを通過。
 合成nativeログの選択フィールドを実ccusage 20.0.37へ渡す照合も成功した。
 全体の`make check`も通過。これらは実機の予算内完遂を証明しない。
 
+最初の新規Sol medium班長試験は、計測Shellを呼ぶ前に**112,694 tokens**
+（非cache入力19,591、cache92,416、出力687）へ達し、起動前10万の外側checkpointで停止した。
+側近・workerは未起動で成果は未生成。readinessの拡張子をjsonと誤認し、既知の環境・
+承認経路を引き継がず再探索していた。スキルでconfig／policy／readinessの既定pathを明示した。
+
+同じ実ログの中断前prefixを保存して計測Shellへ渡すと、同値counterの再掲時刻と
+ccusageのlastActivityが異なる不一致を検出した。最後の増分の初出時刻`usageChangedAt`と
+最後のcounter観測時刻`observedThrough`を分け、同じ112,694を照合した。
+mockと実ccusageの再掲回帰を追加し、独立レビューを通過した。
+これは過去prefixの再生であり、新規実機任務の成功ではない。
+
 ### 班長の準備費用（Issue #63）
 
 2026-10-20の初期化済み新タブ試験では、Sol / mediumの班長が側近への実作業送信前に

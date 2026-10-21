@@ -36,16 +36,19 @@ The success receipt supplies `worktree`, `herdr`, `sokkin`, `sourceSnapshot`
 and `usageReadiness`; inspect those returned fields after launch, not source code
 to predict them.
 
-1. **Prepare one batch.** Resolve purpose, acceptance, authority and budgets;
-   read pinned config/policy, optional readiness/handoff, and `herdr --skill`
+1. **Prepare one batch.** Resolve purpose, acceptance, authority and budgets.
+   With `--project PATH`, read `PATH/.hanchou/config.json` and
+   `PATH/.hanchou/policy.md`; if present, read `PATH/.hanchou/readiness.md`.
+   Explicit separately pinned sources override these defaults. Read `herdr --skill`
    once if not injected. Reuse verified placement/environment evidence. Verify
    the installed companion skill is readable; the qualified launcher supplies it.
    Resolve any genuinely missing prompt/wait/read/exit/close syntax with targeted
    help in this same batch; do not defer a general command tour until after launch.
    Read the known config, policy and readiness paths directly; do not search
    the repository, historical validation files or installed skill directories.
-   In this batch, check the selected session's notification configuration at
-   its known source. Record its scope; unverified external silence alone is
+   Use readiness's exact session config path and known connection approval route;
+   do not guess a global config or another readiness filename. In this batch,
+   check the selected session's notification configuration. Record its scope; unverified external silence alone is
    not a blocker.
    Preserve source/config content at risk independently of execution placement.
    Do not run init/update for an initialized project or tour general CLI help.

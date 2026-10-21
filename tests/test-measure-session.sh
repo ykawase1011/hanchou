@@ -44,9 +44,10 @@ if rg -q 'PRIVATE_TRANSCRIPT|"content"|"instructions"' "$path"; then exit 93; fi
 jq -sc --arg mode "$MOCK_MODE" '
   [.[]|select(.type=="event_msg" and .payload.type=="token_count" and .payload.info!=null)][-1] as $event |
   $event.payload.info.total_token_usage as $u |
+  ([.[]|select(.type=="event_msg" and .payload.type=="token_count" and .payload.info.total_token_usage==$u)][0].timestamp) as $changed |
   {sessionId:"2026/10/20/rollout-2026-10-20T00-00-00-00000000-0000-4000-8000-000000000001",
     sessionFile:"rollout-2026-10-20T00-00-00-00000000-0000-4000-8000-000000000001",
-    lastActivity:$event.timestamp,inputTokens:($u.input_tokens-$u.cached_input_tokens),cacheReadTokens:$u.cached_input_tokens,
+    lastActivity:$changed,inputTokens:($u.input_tokens-$u.cached_input_tokens),cacheReadTokens:$u.cached_input_tokens,
     cacheCreationTokens:0,outputTokens:$u.output_tokens,reasoningOutputTokens:$u.reasoning_output_tokens,totalTokens:$u.total_tokens,
     models:{"fixture-model":{isFallback:false}}} |
   if $mode=="scope" then .sessionId="wrong/session"
@@ -111,6 +112,21 @@ if [[ -n $MOCK_REAL_CCUSAGE ]]; then
   export MOCK_MODE=real
   run_measure --native-log "$log" > "$fixture/real-ccusage.json"
   assert_json "$fixture/real-ccusage.json" '.status=="ready" and .tool.totalTokens==110 and .tool.models["fixture-model"].isFallback==false'
+  export MOCK_MODE=normal
+fi
+
+# Codex can repeat an unchanged counter after a permission/tool event. ccusage
+# retains the first activity timestamp for that increment, not the repeated row.
+restore
+jq -c 'select(.type=="event_msg" and .payload.type=="token_count") | .timestamp="2026-10-20T00:00:06.900Z"' "$log" > "$fixture/repeated-count"
+jq -c 'select(.payload.type!="task_complete")' "$log" > "$fixture/active-count"
+cat "$fixture/active-count" "$fixture/repeated-count" > "$log"
+run_measure --native-log "$log" > "$fixture/repeated.json"
+assert_json "$fixture/repeated.json" '.status=="ready" and .lastUsage.usageChangedAt=="2026-10-20T00:00:06.000Z" and .lastUsage.observedThrough=="2026-10-20T00:00:06.900Z"'
+if [[ -n $MOCK_REAL_CCUSAGE ]]; then
+  export MOCK_MODE=real
+  run_measure --native-log "$log" > "$fixture/repeated-real.json"
+  assert_json "$fixture/repeated-real.json" '.status=="ready" and .tool.lastActivity==.lastUsage.usageChangedAt and .tool.totalTokens==110'
   export MOCK_MODE=normal
 fi
 

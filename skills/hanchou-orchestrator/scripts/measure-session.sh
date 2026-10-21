@@ -193,7 +193,9 @@ elif ($done|length)==1 and ($last.i<=$start.i or $last.i>=$doneIndices[0] or $re
 else {nativeId:$m.id,cliVersion:$m.cli_version,model:$model,effort:$effort,
   currentRequest:{state:(if ($done|length)==1 then "settled" else "active" end),turnId:$start.row.payload.turn_id,
     startedAt:$start.row.timestamp,completedAt:($done[0].timestamp // null)},
-  lastUsage:{observedThrough:$last.row.timestamp,responseId:$record.row.payload.response_id,
+  lastUsage:{observedThrough:$last.row.timestamp,
+    usageChangedAt:([$counts[] | select(.row.payload.info.total_token_usage==$last.row.payload.info.total_token_usage)][0].row.timestamp),
+    responseId:$record.row.payload.response_id,
     turnId:$record.row.payload.turn_id,cumulative:$last.row.payload.info.total_token_usage,
     request:$last.row.payload.info.last_token_usage}}
 end end end
@@ -256,7 +258,7 @@ while :; do
       def integer: type=="number" and isfinite and .>=0 and floor==. and .<=9007199254740991;
       $n[0].lastUsage.cumulative as $v |
       .sessionId==$path and .sessionFile==($file|rtrimstr(".jsonl")) and
-      .lastActivity==$n[0].lastUsage.observedThrough and (.models|keys)==[$n[0].model] and
+      .lastActivity==$n[0].lastUsage.usageChangedAt and (.models|keys)==[$n[0].model] and
       .models[$n[0].model].isFallback==false and
       ([.inputTokens,.cacheReadTokens,.outputTokens,.reasoningOutputTokens,.cacheCreationTokens,.totalTokens]|all(.[];integer)) and
       .inputTokens+.cacheReadTokens==$v.input_tokens and .cacheReadTokens==$v.cached_input_tokens and
