@@ -14,6 +14,26 @@ consult relevant help on a mismatch or unknown option, not the full command tree
 Use offline mode to avoid price downloads; never use price estimates
 as a subscription-budget measure.
 
+## Bundled read-only measurement
+
+For Codex 0.162.1 native source `cli` / ccusage 20.0.37, prefer
+`scripts/measure-session.sh` from this orchestrator skill. It reconciles the
+existing tool with native evidence in one bounded call; it does not implement a
+new collector or decide the budget. See its `--help` for the narrow interface.
+Pass the actual log home, expected physical cwd/model/effort, a current-request start-time
+lower bound and a unique marker from the current request. Reuse known native ID
+and log path. Without identity hints it searches only that home for one match.
+
+A ready receipt describes the session cumulative scope, current request boundary,
+observed native/tool counters and freshness. Active requests have usage still
+unreported, including the final answer: reserve for it, do not repeatedly poll
+self for a settled total. At final acceptance measure the sokkin after its report
+with that assignment's marker and require a settled boundary. Preserve one latest
+cumulative receipt per native ID; do not sum repeated snapshots.
+Unsupported forks, compaction, resets or versions fail closed. Do not bypass a
+failure by inventing a less strict parser. The detailed contracts below remain
+the explanation and qualified manual route for other supported providers.
+
 ## Supervisor preparation
 
 Bind the supervisor too, before broad discovery. Use a host-supplied native ID
@@ -52,8 +72,12 @@ rounds before declaring a small mission unaffordable. Do not invent a fixed
 minimum request count, or add a reserve on top of the same acceptance/reporting
 requests already counted. A small output or low effort does not make repeated
 cached input free.
-If the remaining work does not fit, stop new assignments and report what is
-missing; do not launch optimistically or raise the budget silently.
+If projected total exceeds the planning estimate, alert the human with observed
+usage, remaining estimate/uncertainty, progress, execution state and proposed
+next action. Continue only within existing bounded authority and state the next
+checkpoint; pause new assignments when a decision is needed. A user-specified
+stop limit still blocks new assignments. Do not silently raise it. Completing
+within a fixed estimate is not the product acceptance criterion.
 When stopping before resources exist, save the evidence already collected and a
 short report in one batch. Mark unverified facts as unknown; do not continue
 optional environment discovery or chase a newer self-counter to fill the report.
@@ -158,11 +182,21 @@ Every report records observation time, last activity, native ID, source/tool
 version, total/input/output/cache breakdown, included children, freshness and
 status (`ready`, `pending`, `unavailable`). Initial bootstrap is part of the total.
 New assignments, workers and retries require ready usage within the mission's
-allowed freshness and remaining budget. Reserve capacity for verification and
-final reporting. On missing measurement or exhausted budget, stop assigning and
-report the condition. Active requests can overshoot; this is a checkpoint policy,
-not provider-enforced hard capping.
+allowed freshness and applicable authority/stop limits. Reserve capacity for
+verification and reporting. Missing measurement or an explicit stop limit blocks
+assignment. Estimated overruns, threatened reserve, unexpected cost growth and
+no-progress consumption require a human-facing alert before further expansion;
+a JSON receipt or local file alone is not delivery. Active requests can overshoot;
+checkpoint supervision is not provider-enforced hard capping. Budget calibration
+uses measured comparable scopes, not a fixed universal token target.
 
 Native session counts do not determine weekly subscription percentage. Report
 account quota separately only when the provider actually exposes it. No silent
 API/extra-usage fallback is permitted for Claude.
+
+A matching historical `turn_aborted` may close a prior turn before a unique new
+`task_started`. Rebind the latest request marker/start window while retaining
+the same session cumulative counters. Do not add the prior total again. A latest
+aborted task returns `current_request_aborted`; it is not settled completion or
+proof that every interrupted request reported usage. Mismatched/duplicate ends,
+reused turn IDs and reversed boundary timestamps remain unavailable.

@@ -19,8 +19,12 @@ exchange is unnecessary unless evidence disagrees or authority is missing.
 Batch required reading, execution and verification where dependencies allow.
 Do not reread this exact skill if already supplied in bootstrap. Read remaining
 pinned policy/usage instructions together, then execute and verify the bounded
-work together. The usage contract is supplied inline or via a verified path by
-the supervisor; this skill has no separate `references/usage.md`. Do not invent
+work together. On the qualified Codex path, use the supervisor-provided absolute
+`measure-session.sh` path and identity arguments for current usage; do not write
+a new native parser or reread its implementation. Keep the same native binding
+and use the current assignment marker. Read the returned counters and active
+request boundary, reserving for usage not yet recorded. This skill has no separate
+`references/usage.md`. Other qualified routes use the supplied usage contract. Do not invent
 additional required files. For a long test or wait, use long foreground waits at both tool
 layers: where supported, `exec_command`/`write_stdin` wait 30000 ms and the outer
 execution wrapper/continuation waits 60000 ms. Consume pending inner sessions in
@@ -52,11 +56,19 @@ Set finite worker concurrency and retry limits from the mission. Size final
 verification/reporting reserves from recent per-response input plus output
 usage, including repeated cached input and the expected remaining tool turns.
 A short final answer can still consume a full context. At each new assignment/retry and
-when results settle, read the supervisor-provided usage contract and current
+when results settle, apply the supervisor-provided usage contract and measure current
 native-session usage. Include your own usage, workers, failed attempts and
 bootstrap; annotate native children included in a parent's total and do not add
-those twice. Missing or stale usage stops additional assignments. Reduce scope
-or return to the supervisor when the remaining budget cannot cover the work.
+those twice. Missing or stale usage stops additional assignments. Treat the
+budget as a planning estimate unless the mission explicitly sets a stop limit.
+Report projected overruns, threatened reserve, unexpected per-turn cost or
+unproductive preparation/retries to the supervisor at the next available
+checkpoint, before exhaustion. Include observed usage/scope/freshness, remaining
+estimate and uncertainty, progress, execution state and a proposed next action.
+Do not bury the warning in a local file or wait for the final report. An estimate
+overrun alone does not make the task a failure: continue bounded authorized work
+with a stated next checkpoint or pause for the supervisor's decision. Never
+silently widen scope/worker/retry authority or override an explicit stop limit.
 Do not create another sokkin hierarchy or an independent background scheduler.
 
 Use only the official Claude Code CLI with subscription authentication when

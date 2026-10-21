@@ -26,7 +26,8 @@ verified obsolete Hanchou installs within the authorized scope, preserving
 customizations and user `.hanchou` data. Old schedules/resources require their
 own migration disposition; uninstalling a skill does not stop them.
 
-Verify the installed files and executable mode of `launch-sokkin.sh`. Distinguish
+Verify the installed files and executable modes of `launch-sokkin.sh` and
+`measure-session.sh`. Distinguish
 file installation from adoption by a running conversation. Use a fresh explicit
 invocation to adopt v2; do not auto-close the current chat, rebind ownership or
 start a successor. Report installed version/paths, local changes, obsolete copies
