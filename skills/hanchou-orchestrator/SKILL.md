@@ -37,15 +37,20 @@ nor shell implementation. Both bundled shells are public interfaces.
    missing, resolve only that fact before measuring. Do not postpone self
    measurement until after help exploration or writing a launch wrapper.
    Reuse supplied placement and readiness evidence; check actual cwd/Git and
-   the selected session's notification config at its recorded path. Unverified
+   the notification config at its recorded path. Scan this project once with
+   `scripts/launch-sokkin.sh --project PATH --lifecycle reap`; inspect retained
+   or failed cleanup results using [lifecycle](references/lifecycle.md). Unverified
    external silence alone does not block work. Read only missing subcommand
    help for assignment/wait/read/exit/close, batched with these checks.
 2. **Launch.** Resolve authority, acceptance and capacity from that evidence.
    Refresh self usage and evaluate capacity in the same bounded execution as
    the launch; no model round trip is needed between those two operations.
-   Invoke `scripts/launch-sokkin.sh --project PATH --mission SLUG --session NAME
+   Invoke `scripts/launch-sokkin.sh --project PATH --mission SLUG
    --qualify-startup --timeout-ms 60000`. `--project` pins the config source;
-   the launcher creates a fresh worktree from that checkout's HEAD. Add `--base`
+   the launcher creates a fresh worktree from that checkout's HEAD and an owned
+   named Herdr server. Use `--session NAME` only for an explicitly selected
+   existing shared server. Read [lifecycle](references/lifecycle.md) for the
+   owned-instance record and completion/cleanup contract. Add `--base`
    only for an explicitly selected different base. An authorized process-local
    update-notice skip uses `--skip-update-check`. Use `--help` only for an
    additional unresolved option. Save and return exit status and receipt in
@@ -55,7 +60,8 @@ nor shell implementation. Both bundled shells are public interfaces.
    `stage == "startup_qualified"`, usage ready, identity/configuration and
    budget; reuse its process/model/native binding and bootstrap usage. Send
    purpose, acceptance, authority, pinned sources, these receipt facts,
-   budgets/reserves, worker/retry limits, and the absolute measurement shell
+   budgets/reserves, worker/retry limits, lifecycle instance key/record and launcher
+   path, and the absolute measurement shell
    path with identity arguments. Include a unique assignment marker. In the
    same bounded tool execution, wait and fetch the report, not only wait status.
    Bootstrap is already done; never resend it. Refresh only for intervening
@@ -184,9 +190,17 @@ narrate every empty poll. Follow any higher-priority host reporting requirement.
 Require evidence for each acceptance criterion, artifacts/commits, tests, known
 limitations, usage scope/freshness, and resource disposition. Preserve results
 and recheck own impacts on the source checkout without reverting concurrent edits
-before stopping processes and closing the exact owned Herdr workspace. Closing
-it and removing a Git worktree are separate operations. Never force-remove dirty
-or untracked results or stop the shared Herdr server. Cleanup requires verified
-ownership and actual process termination; missing status is not proof of exit.
-No TTL cleanup, automatic upgrade/old-conversation close, or ordinary-work
-improvement publishing is enabled by this skill.
+before stopping owned agent/worker processes. For owned servers, require sokkin's
+FINISHED report, save final settled measurements, verify agent exit and record
+acceptance through the [lifecycle](references/lifecycle.md) command. Scan once at
+this checkpoint; accepted FINISHED instances older than a day are automatically
+stopped when encountered and verified quiescent. Do not close their retained
+panes manually after acceptance; that changes the recorded inventory. No timer
+or scheduler runs between invocations.
+
+For an explicitly selected shared server, close only the owned workspace after
+verification; never stop the shared server. Server shutdown and Git worktree
+removal are separate decisions. Never force-remove dirty/untracked results.
+Cleanup requires verified ownership and actual process termination; missing
+status is not proof of exit. No automatic upgrade/old-conversation close or
+ordinary-work improvement publishing is enabled by this skill.

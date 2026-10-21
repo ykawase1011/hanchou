@@ -7,3 +7,4 @@ check:
 	bash tests/test-launch-sokkin-regressions.sh
 	bash tests/test-startup-qualification.sh
 	bash tests/test-measure-session.sh
+	python3 tests/test-herdr-lifecycle.py
