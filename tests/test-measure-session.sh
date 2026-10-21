@@ -146,6 +146,50 @@ bad historical-marker --native-log "$log"
 printf '%s\n' '{"timestamp":"2026-10-20T00:00:11Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-2"}}' >> "$log"
 bad stale-complete --native-log "$log" --marker marker-second
 
+# Real test2 ordering: matching abort, new task/context/user, unchanged cumulative
+# usage, then new responses. Never reset accounting at the continuation boundary.
+restore
+mutate 'if .payload.type=="task_complete" then .payload.type="turn_aborted" else . end'
+cp "$log" "$fixture/aborted.jsonl"
+bad current-abort --native-log "$log"
+assert_json "$fixture/current-abort.json" '.error.code=="current_request_aborted"'
+cat "$fixture/second.jsonl" >> "$log"
+run_measure --native-log "$log" --marker marker-second > "$fixture/resumed.json"
+assert_json "$fixture/resumed.json" '.currentRequest.state=="active" and .currentRequest.turnId=="turn-2" and .lastUsage.turnId=="turn-1" and .tool.totalTokens==110'
+jq -nc --arg id "$id" '
+  def u($i;$c;$o;$r): {input_tokens:$i,cached_input_tokens:$c,cache_write_input_tokens:0,output_tokens:$o,reasoning_output_tokens:$r,total_tokens:($i+$o)};
+  {timestamp:"2026-10-20T00:00:11Z",type:"response_item",payload:{type:"message",role:"assistant",phase:"final_answer"}},
+  {timestamp:"2026-10-20T00:00:12Z",type:"token_usage_record",payload:{thread_id:$id,turn_id:"turn-2",response_id:"response-2",usage:u(50;30;5;1),thread_token_usage:u(150;90;15;5)}},
+  {timestamp:"2026-10-20T00:00:13Z",type:"event_msg",payload:{type:"token_count",info:{total_token_usage:u(150;90;15;5),last_token_usage:u(50;30;5;1)}}},
+  {timestamp:"2026-10-20T00:00:14Z",type:"event_msg",payload:{type:"task_complete",turn_id:"turn-2"}}' >> "$log"
+cp "$log" "$fixture/resumed-settled.jsonl"
+run_measure --native-log "$log" --marker marker-second > "$fixture/resumed-settled.json"
+assert_json "$fixture/resumed-settled.json" '.currentRequest.state=="settled" and .tool.totalTokens==165 and .tool.cacheReadTokens==90'
+if [[ -n $MOCK_REAL_CCUSAGE ]]; then
+  export MOCK_MODE=real
+  run_measure --native-log "$log" --marker marker-second > "$fixture/resumed-real.json"
+  assert_json "$fixture/resumed-real.json" '.currentRequest.state=="settled" and .tool.totalTokens==165'
+  export MOCK_MODE=normal
+fi
+bad resumed-old-marker --native-log "$log"
+for change in \
+  'if .payload.type=="turn_aborted" then .payload.turn_id="wrong" else . end' \
+  'if .payload.type=="turn_aborted" then del(.payload.turn_id) else . end' \
+  'select(.payload.type!="turn_aborted")' \
+  'if .payload.type=="turn_aborted" then ., . else . end' \
+  'if .payload.type=="turn_aborted" then .timestamp="2026-10-20T00:00:09Z" else . end' \
+  'if .payload.turn_id=="turn-2" then .payload.turn_id="turn-1" else . end'; do
+  cp "$fixture/resumed-settled.jsonl" "$log"
+  mutate "$change"
+  bad invalid-resume --native-log "$log" --marker marker-second
+  assert_json "$fixture/invalid-resume.json" '.error.code=="unsupported_boundary"'
+done
+# A matching abort after an already completed turn remains invalid.
+restore
+jq -c 'select(.payload.type=="task_complete")|.payload.type="turn_aborted"' "$log" > "$fixture/extra-abort"
+cat "$fixture/extra-abort" "$fixture/second.jsonl" >> "$log"
+bad completed-then-abort --native-log "$log" --marker marker-second
+
 # Missing final counters cannot be replaced by a prior response in the same task.
 restore
 mutate 'if .type=="response_item" and .payload.phase=="final_answer" then .payload.phase="commentary" else . end'

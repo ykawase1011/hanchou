@@ -14,6 +14,8 @@ Without --native-log, discovery stays in LOG_HOME/sessions and checks at most
 256 files modified since that bound. Supply an exact log for older/large homes.
 The latest task must contain the marker and match cwd/model/effort. Active tasks
 can return ready measured usage with their remaining in-flight usage unknown.
+A matched historical turn_aborted may precede a new task; its recorded usage
+remains in the session total. An aborted latest task is not settled completion.
 Forks, children with inherited history, compaction, resets and unknown formats
 are unavailable. Exit 0 means the stated observation scope is ready, never that
 a mission is complete or that its budget permits work. Failures exit 1 with JSON.
@@ -148,8 +150,10 @@ $meta[0] as $m | $starts[-1] as $start |
 [$rows[]|select(.type=="event_msg" and .payload.type=="token_count" and .payload.info!=null)|.payload.info.total_token_usage] as $totals |
 [$rows[]|if .type=="token_usage_record" then .payload.thread_token_usage
   elif .type=="event_msg" and .payload.type=="token_count" and .payload.info!=null then .payload.info.total_token_usage else empty end] as $accumulated |
-(reduce ($rows[]|select(.type=="event_msg" and (.payload.type=="task_started" or .payload.type=="task_complete"))) as $event
-  ({active:null,seen:[],invalid:false};
+(reduce ($rows[]|select(.type=="event_msg" and (.payload.type=="task_started" or .payload.type=="task_complete" or .payload.type=="turn_aborted"))) as $event
+  ({active:null,seen:[],lastAt:null,invalid:false};
+   ($event.timestamp|epoch) as $at |
+   .invalid=(.invalid or (.lastAt!=null and $at<.lastAt)) | .lastAt=$at |
    if $event.payload.type=="task_started" then
      .invalid=(.invalid or .active!=null or (.seen|index($event.payload.turn_id))!=null or
        ($event.payload.turn_id|type)!="string" or $event.payload.turn_id=="") |
@@ -165,9 +169,9 @@ elif ($start.row.timestamp|epoch)<$since or ($markers|length)!=1 or
   any($rows[$start.i:][]|select(.timestamp!=null);(.timestamp|epoch)<($start.row.timestamp|epoch)) then reject("current_request_mismatch")
 elif ($ctx|length)==0 or any($ctx[];.turn_id!=$start.row.payload.turn_id or .cwd!=$cwd or .model!=$model or .effort!=$effort) or
   any($rows[]|select(.type=="turn_context");.payload.model!=$model) then reject("context_mismatch")
+elif any($rows[$start.i:][];.type=="event_msg" and .payload.type=="turn_aborted") then reject("current_request_aborted")
 elif ($done|length)>1 or any($done[];.payload.turn_id!=$start.row.payload.turn_id) or
-  (($done|length)==1 and any($rows[($doneIndices[0]+1):][];.type=="response_item" or .type=="turn_context" or .type=="token_usage_record")) or
-  any($rows[$start.i:][];.type=="event_msg" and .payload.type=="turn_aborted") then reject("unsupported_boundary")
+  (($done|length)==1 and any($rows[($doneIndices[0]+1):][];.type=="response_item" or .type=="turn_context" or .type=="token_usage_record")) then reject("unsupported_boundary")
 elif ($counts|length)==0 or ($records|length)==0 then reject("missing_usage")
 elif any($counts[]; (.row.payload.info.total_token_usage|counters|not) or (.row.payload.info.last_token_usage|counters|not) or
   (le((.row.payload.info.last_token_usage|values);(.row.payload.info.total_token_usage|values))|not)) or

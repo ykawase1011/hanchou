@@ -186,3 +186,10 @@ not provider-enforced hard capping.
 Native session counts do not determine weekly subscription percentage. Report
 account quota separately only when the provider actually exposes it. No silent
 API/extra-usage fallback is permitted for Claude.
+
+A matching historical `turn_aborted` may close a prior turn before a unique new
+`task_started`. Rebind the latest request marker/start window while retaining
+the same session cumulative counters. Do not add the prior total again. A latest
+aborted task returns `current_request_aborted`; it is not settled completion or
+proof that every interrupted request reported usage. Mismatched/duplicate ends,
+reused turn IDs and reversed boundary timestamps remain unavailable.
