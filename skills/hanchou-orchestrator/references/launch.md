@@ -164,9 +164,10 @@ dispatch. The supervisor resolves native identity and measures the settled
 response before real work. This avoids repeated full-context responses and
 approval turns just to read instructions or run `pwd`. Estimate bootstrap from
 observed context costs and include actual usage in the mission total. Do not
-invent a separate hard limit smaller than the known initial context. Stop on
-the user's budget or a concrete inability to finish within it; an internal
-estimate overrun alone does not create another authority gate. Qualify usage
+invent a separate hard limit smaller than the known initial context. Respect
+explicit user stop limits. A planning-estimate overrun calls for a human alert
+and an explicit continuation/reduction/decision state, not an automatic failure
+or silent budget increase. Qualify usage
 with [usage.md](usage.md).
 Match the assistant's acknowledgment/completion and settled counters, not a
 terminal substring that can merely echo the bootstrap prompt.

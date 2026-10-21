@@ -59,8 +59,16 @@ A short final answer can still consume a full context. At each new assignment/re
 when results settle, apply the supervisor-provided usage contract and measure current
 native-session usage. Include your own usage, workers, failed attempts and
 bootstrap; annotate native children included in a parent's total and do not add
-those twice. Missing or stale usage stops additional assignments. Reduce scope
-or return to the supervisor when the remaining budget cannot cover the work.
+those twice. Missing or stale usage stops additional assignments. Treat the
+budget as a planning estimate unless the mission explicitly sets a stop limit.
+Report projected overruns, threatened reserve, unexpected per-turn cost or
+unproductive preparation/retries to the supervisor at the next available
+checkpoint, before exhaustion. Include observed usage/scope/freshness, remaining
+estimate and uncertainty, progress, execution state and a proposed next action.
+Do not bury the warning in a local file or wait for the final report. An estimate
+overrun alone does not make the task a failure: continue bounded authorized work
+with a stated next checkpoint or pause for the supervisor's decision. Never
+silently widen scope/worker/retry authority or override an explicit stop limit.
 Do not create another sokkin hierarchy or an independent background scheduler.
 
 Use only the official Claude Code CLI with subscription authentication when

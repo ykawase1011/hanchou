@@ -103,8 +103,11 @@ are not separate model turns. Qualified bootstrap is already included; do not
 budget another bootstrap/readiness exchange. Include growth and any genuinely
 needed approval/result follow-up; do not reduce estimates just to fit the cap.
 Finalization includes acceptance, preservation, cleanup and final reply, counted
-once. Insufficient capacity blocks launch. Measurement
-returns evidence; the agent decides the estimates and budget gate.
+once. Treat a budget as a planning estimate and alert threshold unless the user
+explicitly made it a stop limit. Finishing within a fixed token number is not a
+product acceptance criterion. Negative headroom triggers the human alert below;
+it does not prove the work is impossible or permit silently raising a hard limit.
+Measurement returns evidence; the agent owns estimates and supervision.
 
 An active self cannot measure its own final reply: reserve and report that gap.
 At sokkin completion, require the assignment's settled measurement **before**
@@ -132,9 +135,42 @@ Track each independently launched native session once. Include preparation:
 check supervisor usage after discovery, before launch and at assignment, retry,
 verification and reporting boundaries. Combine checks with useful work instead
 of spending separate LLM turns just polling counters.
-Pause further assignments if measurement is pending/unavailable, the budget is
-exhausted, or the requested model/auth route cannot be verified. Token budgets
-are checkpoint limits, not a provider-enforced hard cap. Weekly quota is separate.
+Pause further assignments if measurement is pending/unavailable or the requested
+model/auth route cannot be verified. Explicit user stop limits, worker limits and
+retry limits still apply. A planning estimate is not a provider-enforced cap or a
+guarantee of affordable completion. Weekly quota is separate.
+
+### Alert the human at a useful checkpoint
+
+Choose an initial estimate from comparable measured tasks, including preparation,
+bootstrap, remaining work and finalization. If evidence is sparse, label the
+estimate provisional; do not invent a universal token budget. Revisit it at the
+existing discovery, assignment, retry and acceptance boundaries, not via extra
+short polling turns. Record the assumptions and next checkpoint.
+
+Alert when projected total exceeds the estimate, reserve is threatened, per-turn
+cost grows beyond its assumptions, preparation/retries consume tokens without
+useful progress, or measurement becomes missing/stale/inconsistent. Do not wait
+for actual exhaustion. A raw JSON receipt or a local report file is not a human
+alert: surface it in the current human-facing conversation when detected.
+Include mission/stage, observed usage and freshness/scope, estimated remaining
+work and uncertainty, what changed, the current execution state, and the proposed
+action (continue within existing authority, reduce scope, revise the estimate,
+or pause for a decision). Send one alert per material change; a worsened condition
+or unresolved decision is material, an unchanged poll is not.
+
+An estimate overrun alone need not abort already-authorized bounded work. State
+its next checkpoint when continuing. Do not expand scope, add workers/retries or
+switch provider to absorb an overrun without existing authority. If continuation
+needs a human decision, pause new assignments and keep that decision pending.
+Missing identity/usage and explicit stop limits block new assignments regardless
+of the estimate. Preserve results and retain necessary safe-stop/cleanup capacity.
+
+Use a supported host notification route if available and already authorized.
+Distinguish an alert written in the conversation from verified OS/mobile delivery;
+never claim the person saw it from a tool receipt alone. If this conversation
+cannot be woken after returning, keep a bounded foreground wait or pause with
+reconnection details. Do not promise unattended detection without a verified route.
 
 Use existing Herdr waits with explicit timeouts. A timeout triggers inspection
 of the same attempt, not resend. Do not invent background wake, durable delivery
