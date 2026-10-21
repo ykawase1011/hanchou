@@ -96,9 +96,14 @@ Omit optional native ID/log hints only if unknown. A ready receipt has:
 
 Save `spent`, `currentRequest`, `beforeFinalization`, `finalization`, `reserve`,
 `required = spent + currentRequest + beforeFinalization + max(finalization, reserve)`
-and `headroom = budget - required`. Count actual model round trips, not shell
-commands; finalization includes acceptance, preservation, cleanup and final reply.
-Do not count finalization twice. Insufficient capacity blocks launch. Measurement
+and `headroom = budget - required`. List the concrete remaining model turns
+next to these estimates: receipt review plus assignment/wait, acceptance plus
+cleanup, and final reply as applicable. Mechanical commands in one tool call
+are not separate model turns. Qualified bootstrap is already included; do not
+budget another bootstrap/readiness exchange. Include growth and any genuinely
+needed approval/result follow-up; do not reduce estimates just to fit the cap.
+Finalization includes acceptance, preservation, cleanup and final reply, counted
+once. Insufficient capacity blocks launch. Measurement
 returns evidence; the agent decides the estimates and budget gate.
 
 An active self cannot measure its own final reply: reserve and report that gap.
@@ -111,10 +116,12 @@ assignment; never replace it with zero or a weaker manual check.
 
 Use the host's authorized connection route consistently. Readiness may identify
 an individual approval route for Herdr/shared Git; it is not permission to bypass
-controls. Keep launch/wait/cleanup foreground waits long at both layers:
+controls. Keep measurement/launch/wait/cleanup foreground waits long at both layers:
 `exec_command`/`write_stdin` 30000 ms and outer wrapper/continuation 60000 ms where
 supported. Consume an inner pending session inside that same bounded outer call
-when possible. Do not spend a new model request on every short poll. A pending
+when possible. Set these waits on the first call, including the initial self
+measurement; a 1000 ms yield can create a full-context continuation just to
+retrieve the result. Do not spend a new model request on every short poll. A pending
 approval or timeout requires inspecting/waiting on the same attempt, not resend.
 Follow higher-priority host progress-reporting requirements.
 
