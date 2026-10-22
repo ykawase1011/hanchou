@@ -134,6 +134,54 @@ fi
 restore; mutate 'select(.payload.type!="task_complete")'
 run_measure --native-log "$log" > "$fixture/active.json"
 assert_json "$fixture/active.json" '.currentRequest.state=="active" and (.scope.inFlightUsage|startswith("unknown")) and .lastUsage.cumulative.total_tokens==110'
+# Self-measurement is a tool call between native response usage and token_count.
+# The latter cannot arrive until this very call returns. Use the recorded native
+# response counters through the disclosed adapter, including on the first call.
+restore; mutate 'select(.payload.type!="task_complete" and .payload.type!="token_count")'
+cp "$log" "$fixture/first-response.jsonl"
+run_measure --native-log "$log" > "$fixture/self-first.json"
+assert_json "$fixture/self-first.json" '.currentRequest.state=="active" and .tool.totalTokens==110 and .lastUsage.counterSource=="token_usage_record" and (.scope.toolInput|contains("adapted"))'
+cmp "$log" "$fixture/first-response.jsonl" || fail 'adapter modified native log'
+if [[ -n $MOCK_REAL_CCUSAGE ]]; then
+  export MOCK_MODE=real
+  run_measure --native-log "$log" > "$fixture/self-first-real.json"
+  assert_json "$fixture/self-first-real.json" '.currentRequest.state=="active" and .tool.totalTokens==110 and .lastUsage.counterSource=="token_usage_record"'
+  export MOCK_MODE=normal
+fi
+restore; mutate 'select(.payload.type!="task_complete")'
+jq -nc --arg id "$id" '
+  def u($i;$c;$o;$r): {input_tokens:$i,cached_input_tokens:$c,cache_write_input_tokens:0,output_tokens:$o,reasoning_output_tokens:$r,total_tokens:($i+$o)};
+  {timestamp:"2026-10-20T00:00:08Z",type:"token_usage_record",payload:{thread_id:$id,turn_id:"turn-1",response_id:"response-2",usage:u(50;30;5;1),thread_token_usage:u(150;90;15;5)}}' >> "$log"
+cp "$log" "$fixture/pending-response.jsonl"
+run_measure --native-log "$log" > "$fixture/self-later.json"
+assert_json "$fixture/self-later.json" '.currentRequest.state=="active" and .tool.totalTokens==165 and .tool.inputTokens==60 and .tool.cacheReadTokens==90 and .lastUsage.counterSource=="token_usage_record"'
+if [[ -n $MOCK_REAL_CCUSAGE ]]; then
+  export MOCK_MODE=real
+  run_measure --native-log "$log" > "$fixture/self-later-real.json"
+  assert_json "$fixture/self-later-real.json" '.tool.totalTokens==165 and .tool.lastActivity=="2026-10-20T00:00:08Z"'
+  export MOCK_MODE=normal
+fi
+for change in \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then .payload.usage.input_tokens=51 | .payload.usage.total_tokens=56 else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then .payload.response_id="response-1" else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then .payload.turn_id="foreign" else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then .payload.thread_id="foreign" else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then .timestamp="2026-10-20T00:00:05Z" else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then .payload.usage.cache_write_input_tokens=1 else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then del(.payload.usage.cached_input_tokens) else . end' \
+  'if .type=="token_usage_record" and .payload.response_id=="response-2" then ., . else . end'; do
+  cp "$fixture/pending-response.jsonl" "$log"; mutate "$change"
+  bad invalid-pending-response --native-log "$log"
+done
+cp "$fixture/pending-response.jsonl" "$log"
+printf '%s\n' '{"timestamp":"2026-10-20T00:00:09Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}' >> "$log"
+bad completed-pending-response --native-log "$log"
+cp "$fixture/pending-response.jsonl" "$log"
+jq -c 'select(.type=="token_usage_record" and .payload.response_id=="response-2") |
+  {timestamp:"2026-10-20T00:00:09Z",type:"event_msg",payload:{type:"token_count",info:{total_token_usage:.payload.thread_token_usage,last_token_usage:.payload.usage}}}' "$log" > "$fixture/arrived-count"
+cat "$fixture/arrived-count" >> "$log"
+run_measure --native-log "$log" > "$fixture/self-arrived.json"
+assert_json "$fixture/self-arrived.json" '.tool.totalTokens==165 and .lastUsage.counterSource=="token_count"'
 # New active task can report the preceding task response while inflight is unknown.
 jq -nc --arg cwd "$fixture/project" '
   {timestamp:"2026-10-20T00:00:08Z",type:"event_msg",payload:{type:"task_started",turn_id:"turn-2"}},

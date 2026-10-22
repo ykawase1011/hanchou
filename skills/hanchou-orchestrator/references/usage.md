@@ -30,6 +30,14 @@ unreported, including the final answer: reserve for it, do not repeatedly poll
 self for a settled total. At final acceptance measure the sokkin after its report
 with that assignment's marker and require a settled boundary. Preserve one latest
 cumulative receipt per native ID; do not sum repeated snapshots.
+During an active tool call, CLI 0.162.1 can write the response usage record before
+the call and its matching `token_count` only after the call returns. The bundled
+script validates one such pending native response and copies its recorded counters
+into a temporary ccusage input row. `lastUsage.counterSource: token_usage_record`
+and `scope.toolInput` identify this path. It is measured usage at that response
+boundary, not a settled task total. No native log is rewritten and no counter is
+estimated. Final settled measurements still require the actual matching
+`token_count`; multiple pending responses or inconsistent increments fail closed.
 Unsupported forks, compaction, resets or versions fail closed. Do not bypass a
 failure by inventing a less strict parser. The detailed contracts below remain
 the explanation and qualified manual route for other supported providers.
