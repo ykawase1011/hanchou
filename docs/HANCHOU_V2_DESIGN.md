@@ -119,6 +119,7 @@ flowchart TD
 6. 班長は戻り値の観測範囲・鮮度・予算を確認してから実作業を渡す。qualified receiptの確認処理を毎回書き直さない。他provider等の手動bootstrapでも受領と計測可能性を先に確定する。起動時点からの使用量も含める。任意のviewerを開く場合も、返された接続先を使う。
 
 明示的な`--session NAME`は既存共有serverを使う互換経路であり、所有記録や自動停止の権限を付けない。専用serverのcwdは保存先instance directoryとし、削除可能な実行worktreeへ依存させない。
+専用serverは呼出し元toolと独立したprocess groupで起動し、PIDとPGIDの一致を確認する。`nohup`だけに依存せず、tool終了時のprocess group後片付けを越えて生存させる。
 
 Herdrはworkspace作成時に最初のtab／paneを作成し、`agent start`は既存paneを使う。この公開契約に沿って操作し、CLIの結果からIDを取得する。コマンド構文は導入した版のhelpを参照する。[Herdr agent automation](https://herdr.dev/docs/agent-automation/)
 

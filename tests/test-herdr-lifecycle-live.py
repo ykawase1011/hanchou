@@ -11,6 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 import shutil
+import signal
 
 launcher = Path(__file__).resolve().parents[1] / 'skills/hanchou-orchestrator/scripts/launch-sokkin.sh'
 real = Path(sys.argv[1]).resolve(strict=True)
@@ -37,7 +38,17 @@ os.execv(real,[real,*a])
     (bin/'codex').write_text('#!/bin/sh\nexit 99\n');(bin/'codex').chmod(0o755)
     env=dict(os.environ,PATH=str(bin)+os.pathsep+os.environ['PATH'],HERDR_BIN=str(wrapper),LIVE_HERDR=str(real),LIVE_CREATE=str(root/'create.json'))
     def call(*args):
-        p=subprocess.run(['bash',str(launcher),'--project',str(repo),*args],env=env,text=True,capture_output=True,timeout=30)
+        command=['bash',str(launcher),'--project',str(repo),*args]
+        if '--mission' in args:
+            child=subprocess.Popen(command,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+            stdout,stderr=child.communicate(timeout=30)
+            # Tool completion cleans only this test-owned group. The server must
+            # survive and be usable by the later independent lifecycle calls.
+            try: os.killpg(child.pid,signal.SIGTERM)
+            except ProcessLookupError: pass
+            p=subprocess.CompletedProcess(command,child.returncode,stdout,stderr)
+        else:
+            p=subprocess.run(command,env=env,text=True,capture_output=True,timeout=30)
         if p.returncode: raise RuntimeError((p.stdout,p.stderr))
         return json.loads(p.stdout)
     name=None; completed=False

@@ -442,11 +442,18 @@ if [[ -z $session ]]; then
   state_write "$state"
   stage=server_start
   # Start in durable evidence storage, never in an ephemeral execution checkout.
+  # Agent tool runners may terminate the launch process group after returning
+  # its receipt. nohup alone only ignores SIGHUP. Bash job control assigns this
+  # persistent server its own group without another runtime or launcher.
+  set -m
   (cd "$instance_dir" && exec nohup "$herdr_bin" --session "$session" server) > "$instance_dir/server.log" 2>&1 < /dev/null &
   server_pid=$!
+  set +m
   server_birth=$(process_birth "$server_pid")
-  state=$(jq -c --argjson pid "$server_pid" --arg birth "$server_birth" '.server={pid:$pid,birth:$birth}' <<<"$state"); state_write "$state"
+  state=$(jq -c --argjson pid "$server_pid" --arg birth "$server_birth" '.server={pid:$pid,birth:$birth,processGroup:$pid}' <<<"$state"); state_write "$state"
   resources=$(jq -c --arg session "$session" --arg record "$record" '. + [{kind:"server",session:$session,record:$record,state:"retained"}]' <<<"$resources")
+  [[ $(LC_ALL=C ps -p "$server_pid" -o pgid= | tr -d '[:space:]') == "$server_pid" ]] ||
+    fail server_group_unconfirmed 'Cannot verify a server process group independent of the launch tool.'
   for ((i=0;i<100;i++)); do
     herdr status --json > "$tmp/server.json" 2> "$tmp/error" && jq -e '.server.running==true and .server.compatible==true' "$tmp/server.json" >/dev/null && break
     kill -0 "$server_pid" 2>/dev/null || break

@@ -9,7 +9,8 @@ and completion report. These commands do not send messages to other agents.
 
 Omitting `--session` starts a fresh local named server for this attempt, after
 creating and verifying its fresh Git worktree. The launcher exits after launch;
-Herdr stays running. Explicit `--session NAME` instead uses an existing shared
+Herdr stays running in its own verified process group, so cleanup of the calling
+tool's process group does not terminate it. Explicit `--session NAME` instead uses an existing shared
 server and grants no ownership or automatic cleanup. Never adopt an old server
 by adding a record manually.
 
