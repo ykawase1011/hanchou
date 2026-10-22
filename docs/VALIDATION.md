@@ -470,3 +470,21 @@ PIDとPGIDの一致を確認する修正後は、後続の独立した完了・�
 `make check`（lifecycle計13テスト）とmacOS / Herdr 0.9.5の実server試験で確認した。
 後者も起動元groupの終了を挟むが、agentとusageはfixtureのままであり、実AI任務の
 完遂検証とは区別する。元の停止で送られたOS signalそのものを特定した主張ではない。
+
+### 側近環境のlifecycle検証（2026-10-22、#72）
+
+Codex 0.162.1の公開`codex sandbox`でworkspace-writeを指定し、実側近と同じ
+`ps`実行とUnix socket作成の`Operation not permitted`を再現した。
+旧テストの13件のserver_start失敗はこの実行条件と整合する。修正後の`make check`は
+fixture作成前に必要権限を検査し、制限環境では明示的なエラーで止まる。skipや成功にはしない。
+本番launcherもprocess情報を取得できなければ資源作成・記録変更前に
+`process_inspection_unavailable`を返す。ホストの承認経路で対象コマンドだけを実行し、
+global sandbox設定を変更しない手順を側近skillへ追加した。
+
+別途、呼出し元の4つのHANCHOU instance/mission/attempt環境変数を引き継ぐとfixtureの
+finishがinstance_mismatchになることを再現。offline/live双方のfixture環境からこの4つを
+除外し、実callerの環境は保持する。意図的な異なるbindingの拒否テストは維持した。
+親bindingを設定した15件のlifecycleテストと、Herdr 0.9.5のlive fixtureのCLOSEDを確認。
+live fixtureではユーザーのzsh起動設定によるssh-add待機も観測したため、公開workspace
+environment指定でテスト用ZDOTDIRを渡す。ユーザー設定は変更せず、本番launcherの
+起動環境にもこのテスト用設定を追加しない。

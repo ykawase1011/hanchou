@@ -120,6 +120,11 @@ need_value() { [[ $# -ge 2 && -n $2 && $2 != --* ]] || fail missing_argument 'An
 # Owned-session lifecycle; all operations are one-shot and local to pinned project.
 # Records are coordination evidence, not an authentication or sandbox boundary.
 process_birth() { LC_ALL=C ps -p "$1" -o lstart= 2>/dev/null | sed 's/^ *//;s/ *$//'; }
+require_process_inspection() {
+  local birth
+  birth=$(process_birth "$$") && [[ -n $birth ]] ||
+    fail process_inspection_unavailable 'Process inspection (ps) is blocked. Use the host approval flow for this exact operation; do not disable the sandbox globally. No lifecycle resource has been created or changed.'
+}
 state_write() {
   local data=$1
   printf '%s\n' "$data" > "$instance_dir/.instance-next"
@@ -316,6 +321,7 @@ herdr() { command "$herdr_bin" --session "$session" "$@"; }
 if [[ -n $lifecycle ]]; then
   [[ -z $mission && -z $session && -z $config_path && -z $agent_override && -z $model_override && -z $effort_override && -z $worktree_root && $base == HEAD && $qualify_startup == false && $skip_update_check == false ]] || fail invalid_operation 'Do not combine lifecycle and launch options.'
   [[ $(git -C "$project" rev-parse --show-toplevel 2>/dev/null) == "$project" ]] || fail invalid_project 'Select the pinned Git checkout root.'
+  require_process_inspection
   lifecycle_operation
 fi
 [[ -z $instance && -z $evidence ]] || fail invalid_operation 'Instance and evidence options require --lifecycle.'
@@ -398,6 +404,7 @@ if [[ -z $session ]]; then
   for dependency in nohup ps hostname sed ls awk od; do
     command -v "$dependency" >/dev/null 2>&1 || fail missing_dependency 'Owned server startup requires standard POSIX process tools.'
   done
+  require_process_inspection
 fi
 source_head=$(git -C "$project" rev-parse HEAD)
 source_branch=$(git -C "$project" symbolic-ref --quiet --short HEAD || true)
