@@ -8,7 +8,9 @@ import signal
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
+from lifecycle_support import CALLER_BINDINGS, fixture_environment, require_lifecycle_permissions
 
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCH = ROOT / 'skills/hanchou-orchestrator/scripts/launch-sokkin.sh'
@@ -58,6 +60,7 @@ else: raise RuntimeError(args)
 class Lifecycle(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_lifecycle_permissions()
         cls.tmp = Path(tempfile.mkdtemp(prefix='hl-', dir='/tmp'))
         cls.repo = cls.tmp / 'human checkout'
         cls.repo.mkdir()
@@ -69,7 +72,7 @@ class Lifecycle(unittest.TestCase):
             p = cls.bin / name
             p.write_text(content)
             p.chmod(0o755)
-        cls.env = dict(os.environ, PATH=str(cls.bin)+os.pathsep+os.environ['PATH'],
+        cls.env = fixture_environment(PATH=str(cls.bin)+os.pathsep+os.environ['PATH'],
                        HERDR_BIN=str(cls.bin/'herdr'), MOCK_SERVERS=str(cls.servers))
         for args in [('init','-q'), ('config','user.name','Fixture'), ('config','user.email','fixture@example.invalid')]:
             cls.git(*args)
@@ -174,6 +177,29 @@ class Lifecycle(unittest.TestCase):
             self.op('finish','--evidence',str(report),ok=False,env=dict(self.env,**{key:'foreign'}))
             self.assertEqual(self.record.read_text(),original)
         self.finish(); self.accept(); self.age(); self.op('reap')
+
+    def test_process_inspection_denied_before_resources(self):
+        blocked = self.tmp/'blocked-ps'; blocked.mkdir()
+        ps = blocked/'ps'; ps.write_text('#!/bin/sh\nexit 1\n'); ps.chmod(0o755)
+        before = self.git('worktree','list','--porcelain'), sorted(self.servers.iterdir())
+        result = self.run_script('--mission','denied',ok=False,
+                                 env=dict(self.env,PATH=str(blocked)+os.pathsep+self.env['PATH']))
+        self.assertEqual(result['error']['code'],'process_inspection_unavailable')
+        self.assertEqual(result['stage'],'preflight')
+        self.assertEqual(result['resources'],[])
+        self.assertEqual(before,(self.git('worktree','list','--porcelain'),sorted(self.servers.iterdir())))
+        self.assertEqual(self.snapshot(),self.baseline)
+
+    def test_parent_instance_environment_is_not_fixture_identity(self):
+        with patch.dict(os.environ,{key:'parent-instance' for key in CALLER_BINDINGS}):
+            env = fixture_environment(PATH=self.env['PATH'],HERDR_BIN=self.env['HERDR_BIN'],
+                                      MOCK_SERVERS=self.env['MOCK_SERVERS'])
+            self.launch(env=env)
+            report = self.tmp/'parent-env-report'; report.write_text('Fixture evidence\n')
+            self.op('finish','--evidence',str(report),env=env)
+            self.accept(); self.age(); self.op('reap')
+            for key in CALLER_BINDINGS:
+                self.assertEqual(os.environ[key],'parent-instance')
 
     def test_usage_requires_final_boundary_scope_and_counters(self):
         self.launch(); self.finish(); self.accept()

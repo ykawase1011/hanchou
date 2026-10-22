@@ -85,6 +85,12 @@ not new authority or permission to widen the mission.
 
 Perform relevant tests and inspect the actual result. Use independent review
 when justified by the risk; do not attach repetitive review to every small edit.
+When the execution sandbox denies required process inspection, local sockets or
+pinned evidence writes, use the host's approval flow for the exact bounded test
+or lifecycle command within existing mission authority. Do not disable sandboxing
+globally, change project permissions, or silently skip checks. If that flow is
+unavailable or denied, report the environmental blocker and actual tool receipt;
+do not label unexecuted assertions as product failures or mark required checks passed.
 Keep secrets and unnecessary transcript text out of reports. Distinguish tests,
 reasoning-only review, runtime health and actual user-visible acceptance.
 

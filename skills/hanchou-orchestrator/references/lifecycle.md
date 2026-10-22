@@ -7,6 +7,12 @@ and completion report. These commands do not send messages to other agents.
 
 ## Launch and record
 
+Owned lifecycle operations require process inspection and Herdr's local socket.
+`process_inspection_unavailable` fails before creating or changing lifecycle
+resources. Use the host approval flow for the exact authorized operation when
+needed; never disable sandboxing globally or treat a permission denial as proof
+that the server stopped. Reconcile any partial-start receipt before a retry.
+
 Omitting `--session` starts a fresh local named server for this attempt, after
 creating and verifying its fresh Git worktree. The launcher exits after launch;
 Herdr stays running in its own verified process group, so cleanup of the calling

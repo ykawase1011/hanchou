@@ -73,3 +73,8 @@ Claude Codeでは`/hanchou-orchestrator`を使います。依頼時に目的・�
 [仕様](HANCHOU_SPEC.md) / [設計と判断の経緯](docs/HANCHOU_V2_DESIGN.md)
 
 開発時の確認: `make check`
+
+lifecycle テストは実プロセス情報と一時的な Unix socket を使います。
+sandbox がこれらを拒否する場合は、ホストの承認手順で対象のテストコマンドだけを
+実行してください。権限不足をテスト成功や製品の assertion 失敗として扱わず、
+sandbox 全体の無効化やテストの省略で回避しません。
