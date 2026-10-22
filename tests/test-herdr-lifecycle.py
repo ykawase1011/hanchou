@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import unittest
@@ -107,9 +108,21 @@ class Lifecycle(unittest.TestCase):
             time.sleep(.02)
         shutil.rmtree(cls.tmp)
 
-    def run_script(self, *args, ok=True, env=None):
-        p = subprocess.run(['bash',str(LAUNCH),'--project',str(self.repo),*args],
-                           env=env or self.env, text=True, capture_output=True, timeout=25)
+    def run_script(self, *args, ok=True, env=None, cleanup_group=False):
+        command = ['bash',str(LAUNCH),'--project',str(self.repo),*args]
+        if cleanup_group:
+            # Simulate an agent tool runner that cleans up its process group after
+            # the launch command exits. Never signal the test runner/user group.
+            child = subprocess.Popen(command, env=env or self.env, text=True,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     start_new_session=True)
+            stdout,stderr = child.communicate(timeout=25)
+            self.launch_group = child.pid
+            try: os.killpg(child.pid, signal.SIGTERM)
+            except ProcessLookupError: pass
+            p = subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
+        else:
+            p = subprocess.run(command, env=env or self.env, text=True, capture_output=True, timeout=25)
         self.assertEqual(p.returncode==0, ok, (p.stdout,p.stderr))
         return json.loads(p.stdout) if p.stdout.strip() else None
 
@@ -222,6 +235,18 @@ class Lifecycle(unittest.TestCase):
         self.assertTrue((self.record.parent/'report.txt').is_file())
         self.assertEqual(self.op('reap')['action'],'retained')
         self.assertEqual(self.snapshot(),self.baseline)
+
+    def test_server_survives_launch_tool_group_cleanup(self):
+        import time
+        self.launch(cleanup_group=True)
+        time.sleep(.2)
+        self.assertTrue((self.server/'s').exists(), 'tool cleanup stopped the owned server')
+        pid = json.loads(self.record.read_text())['server']['pid']
+        self.assertEqual(os.getpgid(pid),pid)
+        self.assertNotEqual(os.getpgid(pid),self.launch_group)
+        # Later independent commands still reach the same incarnation and can reap.
+        self.finish(); self.accept(); self.age()
+        self.assertEqual(self.op('reap')['status'],'CLOSED')
 
     def test_busy_agent_and_background_process(self):
         import time

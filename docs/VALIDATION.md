@@ -457,3 +457,16 @@ cache creation・出力の非負整数と合計、reasoningが出力の内数で
 `tests/test-herdr-lifecycle.py`は3テスト追加で計12テストになり、拒否後の記録・server保全と
 正常な回収を確認する。macOS / Herdr 0.9.5のserver-only実機試験も更新したreceipt形式で
 `CLOSED`まで成功した。agent起動・使用量は引き続きfixtureであり、実AI完遂の証明ではない。
+
+### 起動tool終了後の専用server保全（2026-10-22）
+
+mainの実Codex試験でbootstrap qualification（21,184 tokens）は成功したが、
+次のtool呼出しでの任務送信は`server_not_running`となり、記録したserver・agent PIDも
+消滅していた。実任務は未送信で、FINISHED・受入は未達。失敗instanceと証拠は保持した。
+
+起動tool専用のprocess groupへ終了通知を送る回帰試験で、従来の`nohup`だけでは
+serverも停止することを再現した。専用serverをBash job controlで別groupにし、
+PIDとPGIDの一致を確認する修正後は、後続の独立した完了・受入・回収呼出しまで成功する。
+`make check`（lifecycle計13テスト）とmacOS / Herdr 0.9.5の実server試験で確認した。
+後者も起動元groupの終了を挟むが、agentとusageはfixtureのままであり、実AI任務の
+完遂検証とは区別する。元の停止で送られたOS signalそのものを特定した主張ではない。
