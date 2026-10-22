@@ -45,10 +45,15 @@ os.execv(real,[real,*a])
         r=call('--mission','server-smoke');name=r['herdr']['session'];key=r['lifecycle']['instanceKey'];record=Path(r['lifecycle']['record'])
         report=root/'report';report.write_text('Server-only fixture. No actual agent/usage qualification.\n')
         call('--lifecycle','finish','--instance',key,'--evidence',str(report))
+        now=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         acceptance=root/'accept.json';acceptance.write_text(json.dumps({'missionId':r['missionId'],'attemptId':r['attemptId'],
-              'artifactsPreserved':True,'workersStopped':True,'usage':[{'status':'ready','nativeId':'server-only-fixture','currentRequest':{'state':'settled'},
-                      'cwd':r['worktree']['path'],'tool':{'totalTokens':0},
-                      'observedAt':datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}]}))
+              'artifactsPreserved':True,'workersStopped':True,'usage':[{'status':'ready','nativeId':'server-only-fixture',
+                      'currentRequest':{'state':'settled','completedAt':now},
+                      'cwd':r['worktree']['path'],'tool':{'inputTokens':0,'cacheReadTokens':0,'cacheCreationTokens':0,
+                          'outputTokens':0,'reasoningOutputTokens':0,'totalTokens':0},
+                      'scope':{'kind':'native session cumulative','includedNativeIds':['server-only-fixture'],
+                          'includedChildren':[],'missionDelta':False,'otherSessionsIncluded':False},
+                      'observedAt':now}]}))
         import time
         for retry in range(10):
             try:

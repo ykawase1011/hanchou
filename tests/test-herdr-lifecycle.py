@@ -43,7 +43,8 @@ elif args[:2]==['agent','start']:
  if os.environ.get('MOCK_START_FAIL'): sys.exit(1)
  emit({'result':{'agent':{'agent':'codex','agent_status':'idle','pane_id':'w2:p1','cwd':(d/'cwd').read_text(),'agent_session':{'kind':'id','value':'test-native'}}}})
 elif args==['api','snapshot']:
- emit({'result':{'snapshot':{'agents':[{'agent_status':'working'}] if (d/'busy').exists() else [],'panes':[]}}})
+ panes=json.loads((d/'panes.json').read_text()) if (d/'panes.json').exists() else []
+ emit({'result':{'snapshot':{'agents':[{'agent_status':'working'}] if (d/'busy').exists() else [],'panes':panes}}})
 elif args[:2]==['session','stop']:
  assert args[2]==name
  with (root/'stops').open('a') as f: f.write(name+'\n')
@@ -134,12 +135,75 @@ class Lifecycle(unittest.TestCase):
 
     def accept(self, **kw):
         evidence = self.tmp/'accept.json'
+        now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         evidence.write_text(json.dumps({'missionId':'fixture','attemptId':self.launch_receipt['attemptId'],
                          'artifactsPreserved':True,'workersStopped':True,
-                         'usage':[{'status':'ready','nativeId':'test-native','currentRequest':{'state':'settled'},
-                                   'cwd':self.launch_receipt['worktree']['path'],'tool':{'totalTokens':1},
-                                   'observedAt':datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}]}))
+                         'usage':[{'status':'ready','nativeId':'test-native',
+                                   'currentRequest':{'state':'settled','completedAt':now},
+                                   'cwd':self.launch_receipt['worktree']['path'],
+                                   'tool':{'inputTokens':1,'cacheReadTokens':0,'cacheCreationTokens':0,
+                                           'outputTokens':0,'reasoningOutputTokens':0,'totalTokens':1},
+                                   'scope':{'kind':'native session cumulative','includedNativeIds':['test-native'],
+                                            'includedChildren':[],'missionDelta':False,'otherSessionsIncluded':False},
+                                   'observedAt':now}]}))
         return self.op('accept','--evidence',str(evidence),**kw)
+
+    def test_finish_rejects_changed_server_and_wrong_caller(self):
+        self.launch()
+        report = self.tmp/'finish-report'; report.write_text('Preserved result\n')
+        original = self.record.read_text()
+        s = json.loads(original); s['server']['birth'] = 'changed'
+        self.record.write_text(json.dumps(s))
+        self.op('finish','--evidence',str(report),ok=False)
+        self.assertEqual(json.loads(self.record.read_text())['status'],'RUNNING')
+        self.record.write_text(original)
+        for key in ('HANCHOU_INSTANCE_KEY','HANCHOU_INSTANCE_RECORD','HANCHOU_MISSION_ID','HANCHOU_ATTEMPT_ID'):
+            self.op('finish','--evidence',str(report),ok=False,env=dict(self.env,**{key:'foreign'}))
+            self.assertEqual(self.record.read_text(),original)
+        self.finish(); self.accept(); self.age(); self.op('reap')
+
+    def test_usage_requires_final_boundary_scope_and_counters(self):
+        self.launch(); self.finish(); self.accept()
+        self.edit(createdAt=(datetime.now(timezone.utc)-timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'))
+        evidence = self.tmp/'accept.json'; original = json.loads(evidence.read_text())
+        # An observation made now can still contain a pre-final completion boundary.
+        changes = [
+            ('currentRequest', {'state':'settled'}),
+            ('currentRequest', {'state':'settled','completedAt':'2000-01-01T00:00:00Z'}),
+            ('currentRequest', {'state':'settled','completedAt':(datetime.now(timezone.utc)-timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')}),
+            ('currentRequest', {'state':'settled','completedAt':'2999-01-01T00:00:00Z'}),
+            ('currentRequest', {'state':'settled','completedAt':'2026-02-30T12:00:00Z'}),
+            ('scope', None), ('tool', {'totalTokens':1}),
+        ]
+        scope = original['usage'][0]['scope']; counters = original['usage'][0]['tool']
+        changes += [('scope',dict(scope,**{k:v})) for k,v in [
+            ('includedNativeIds',['foreign']), ('includedChildren',['child']),
+            ('missionDelta',True), ('otherSessionsIncluded',True)]]
+        changes += [('tool',dict(counters,**{k:v})) for k,v in [
+            ('inputTokens',-1), ('outputTokens',0.5), ('totalTokens',2),
+            ('cacheCreationTokens',1), ('reasoningOutputTokens',1), ('totalTokens',9007199254740992)]]
+        for field,value in changes:
+            with self.subTest(field=field,value=value):
+                data = json.loads(json.dumps(original)); data['usage'][0][field] = value
+                evidence.write_text(json.dumps(data))
+                before = self.record.read_bytes()
+                self.assertEqual(self.op('accept','--evidence',str(evidence),ok=False)['error']['code'],'invalid_evidence')
+                self.assertEqual(self.record.read_bytes(),before)
+        # Native logs use fractional UTC timestamps; preserve that supported form.
+        data = json.loads(json.dumps(original))
+        data['usage'][0]['currentRequest']['completedAt'] = data['usage'][0]['observedAt'].replace('Z','.000Z')
+        evidence.write_text(json.dumps(data)); self.op('accept','--evidence',str(evidence))
+        self.age(); self.op('reap')
+
+    def test_malformed_pane_inventory_is_retained(self):
+        self.launch(); self.finish(); self.accept(); self.age()
+        inventory = self.server/'panes.json'
+        # Newline IDs must not disappear in the shell line-oriented enumeration.
+        for panes in [[{'pane_id':''}], [{'pane_id':'\n'}], [None], [{'pane_id':'p'},{'pane_id':'p'}]]:
+            inventory.write_text(json.dumps(panes))
+            self.op('reap',ok=False)
+            self.assertTrue((self.server/'s').exists())
+        inventory.unlink(); self.op('reap')
 
     def age(self, days=2):
         self.edit(finishedAt=(datetime.now(timezone.utc)-timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ'))

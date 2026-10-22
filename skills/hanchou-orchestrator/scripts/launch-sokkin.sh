@@ -157,13 +157,16 @@ server_matches() {
 quiet_inventory() {
   # Agent absence alone is insufficient: include every pane and server descendant.
   herdr api snapshot > "$tmp/snapshot.json" 2> "$tmp/error" || return 1
-  jq -e '.result.snapshot | (.agents|type=="array" and length==0) and (.panes|type=="array")' "$tmp/snapshot.json" >/dev/null || return 1
+  jq -e '.result.snapshot | (.agents|type=="array" and length==0) and
+    (.panes|type=="array" and
+      all(.[]; .pane_id|type=="string" and test("^[^[:space:][:cntrl:]]+$")) and
+      (map(.pane_id)|length==(unique|length)))' "$tmp/snapshot.json" >/dev/null || return 1
   : > "$tmp/shells.jsonl"
   local pane shell birth
   while IFS= read -r pane; do
     herdr pane process-info --pane "$pane" > "$tmp/process-info.json" 2> "$tmp/error" || return 1
-    shell=$(jq -er '.result.process_info | select((.shell_pid|type)=="number") |
-      select((.foreground_processes|length)==1 and .foreground_processes[0].pid==.shell_pid) |
+    shell=$(jq -er '.result.process_info | select(.shell_pid|type=="number" and .>0 and floor==.) |
+      select((.foreground_processes|type=="array" and length==1) and .foreground_processes[0].pid==.shell_pid) |
       select(.foreground_processes[0] |
         (.name|IN("sh","bash","zsh","dash","ksh","fish")) and
         (.argv|type=="array" and length>0 and all(.[1:][]; IN("-l","-i","-il","-li","--login","--noprofile","--norc")))) |
@@ -198,8 +201,13 @@ lifecycle_operation() {
   case $lifecycle in
     finish)
       [[ $(jq -r .status <<<"$state") == RUNNING ]] || fail invalid_transition 'Only RUNNING can become FINISHED.'
-      [[ -s $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the preserved completion report.'
-      [[ -z ${HANCHOU_INSTANCE_KEY:-} || $HANCHOU_INSTANCE_KEY == "$instance" ]] || fail instance_mismatch 'Completion instance differs from the calling pane.'
+      [[ -f $evidence && -s $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the preserved completion report.'
+      [[ ( -z ${HANCHOU_INSTANCE_KEY:-} || $HANCHOU_INSTANCE_KEY == "$instance" ) &&
+         ( -z ${HANCHOU_INSTANCE_RECORD:-} || $HANCHOU_INSTANCE_RECORD == "$record" ) &&
+         ( -z ${HANCHOU_MISSION_ID:-} || $HANCHOU_MISSION_ID == "$(jq -r .missionId <<<"$state")" ) &&
+         ( -z ${HANCHOU_ATTEMPT_ID:-} || $HANCHOU_ATTEMPT_ID == "$(jq -r .attemptId <<<"$state")" ) ]] ||
+        fail instance_mismatch 'Completion instance or mission differs from the calling pane.'
+      server_matches || fail instance_mismatch 'Server incarnation changed or cannot be verified.'
       cp -- "$evidence" "$instance_dir/.report-next"
       mv -- "$instance_dir/.report-next" "$instance_dir/report.txt"
       state=$(jq -c --arg at "$started_at" --arg hash "$(git hash-object "$instance_dir/report.txt")" '
@@ -214,6 +222,14 @@ lifecycle_operation() {
       [[ $(jq -r .status <<<"$state") == FINISHED ]] || fail invalid_transition 'Accept a FINISHED instance only.'
       [[ -f $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the final acceptance and settled usage receipt.'
       jq -es --argjson record "$state" --arg now "$started_at" '
+        def integer: type=="number" and isfinite and .>=0 and floor==. and .<=9007199254740991;
+        # Native completion stamps may include fractional UTC seconds. The lifecycle
+        # clock has second precision; do not substitute receipt observation for completion.
+        def epoch:
+          if type=="string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")
+          then sub("\\.[0-9]+Z$";"Z") as $stamp | ($stamp|fromdateiso8601) as $time |
+            if ($time|todateiso8601)==$stamp then $time else error("invalid UTC date") end
+          else error("missing UTC completion boundary") end;
         length==1 and (.[0] |
         .missionId==$record.missionId and .attemptId==$record.attemptId and
         .artifactsPreserved==true and .workersStopped==true and
@@ -221,13 +237,19 @@ lifecycle_operation() {
           (map(.nativeId)|length==(unique|length)) and
           all(.[]; .status=="ready" and .currentRequest.state=="settled" and
             (.nativeId|type=="string" and length>0) and (.cwd|type=="string" and startswith("/")) and
-            (.tool.totalTokens|type=="number" and isfinite and .>=0 and floor==.) and
-            (.observedAt|fromdateiso8601)>=($record.createdAt|fromdateiso8601) and
-            (.observedAt|fromdateiso8601)<=($now|fromdateiso8601)) and
+            (.tool | [.inputTokens,.cacheReadTokens,.cacheCreationTokens,.outputTokens,.reasoningOutputTokens,.totalTokens] | all(.[];integer)) and
+            .tool.totalTokens==(.tool.inputTokens+.tool.cacheReadTokens+.tool.cacheCreationTokens+.tool.outputTokens) and
+            .tool.reasoningOutputTokens<=.tool.outputTokens and
+            (. as $usage | .scope.kind=="native session cumulative" and .scope.includedNativeIds==[$usage.nativeId] and
+              .scope.includedChildren==[] and .scope.missionDelta==false and .scope.otherSessionsIncluded==false) and
+            (.currentRequest.completedAt|epoch)>=($record.createdAt|epoch) and
+            (.currentRequest.completedAt|epoch)<=(.observedAt|epoch) and
+            (.observedAt|epoch)<=($now|epoch)) and
           any(.[]; .cwd==$record.worktree.path and
             ($record.nativeId==null or .nativeId==$record.nativeId) and
-            (.observedAt|fromdateiso8601)>=($record.finishedAt|fromdateiso8601))))
-      ' "$evidence" >/dev/null || fail invalid_evidence 'Acceptance requires preserved artifacts, stopped workers and fresh settled native usage including this sokkin.'
+            (.currentRequest.completedAt|epoch)>=($record.finishedAt|epoch))))
+      ' "$evidence" >/dev/null || fail invalid_evidence 'Acceptance requires preserved artifacts, stopped workers and scoped final settled usage including this sokkin.'
+      [[ -f $instance_dir/report.txt && ! -L $instance_dir/report.txt ]] || fail missing_evidence 'Completion report is missing or unsafe.'
       [[ $(git hash-object "$instance_dir/report.txt") == "$(jq -r .reportHash <<<"$state")" ]] || fail changed_evidence 'Completion report changed.'
       server_matches && quiet_inventory || fail instance_busy 'Verify the owned server; exit every agent/worker before accepting cleanup.'
       cp -- "$evidence" "$instance_dir/.acceptance-next"

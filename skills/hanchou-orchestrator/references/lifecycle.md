@@ -40,7 +40,9 @@ exit, then records completion before its final reply:
 ```
 
 This copies the report into the instance directory, sets `status: FINISHED` and
-UTC `finishedAt`. It does not imply that the final reply's usage is settled, that
+UTC `finishedAt`. The same server incarnation must still be verifiable; any supplied
+pane environment binding (instance key/record, mission and attempt) must match.
+It does not imply that the final reply's usage is settled, that
 the supervisor accepted the result, or that the CLI has exited. Do not mark a
 paused, blocked, failed or still-running assignment FINISHED merely to reclaim it.
 Shared-session missions have no lifecycle record and use ordinary result reporting.
@@ -59,19 +61,34 @@ acceptance with a local JSON file containing:
   "usage": [{
     "status": "ready",
     "nativeId": "the-verified-native-id",
-    "currentRequest": {"state": "settled"},
+    "currentRequest": {"state": "settled", "completedAt": "2026-10-21T12:00:00Z"},
     "cwd": "/verified/sokkin/worktree",
     "observedAt": "2026-10-21T12:00:00Z",
-    "tool": {"totalTokens": 12345}
+    "tool": {
+      "inputTokens": 1000, "cacheReadTokens": 10000, "cacheCreationTokens": 0,
+      "outputTokens": 1345, "reasoningOutputTokens": 345, "totalTokens": 12345
+    },
+    "scope": {
+      "kind": "native session cumulative", "includedNativeIds": ["the-verified-native-id"],
+      "includedChildren": [], "missionDelta": false, "otherSessionsIncluded": false
+    }
   }]
 }
 ```
 
 The `usage` entries above illustrate the required boundary fields: insert the
 **full real measurement receipts**, including counters, scope and freshness, not
-these placeholders. The shell checks unique native IDs, counters, freshness and
-the sokkin cwd/native binding. For other providers use their qualified settled accounting
-contract with the same boundary fields; missing accounting blocks acceptance.
+these placeholders. The shell checks unique native IDs, nonnegative integral counters,
+their sum, and a single-session cumulative scope without included children or other
+sessions. Supply separate, nonoverlapping receipts for independent workers. Counter
+fields use disjoint input/cache-read/cache-creation/output categories; reasoning is a
+subset of output, not an additional summand. Do not invent zeros for missing counters.
+The sokkin cwd/native binding must match. Each request completion must fall between
+instance creation and observation; sokkin completion must also be at or after
+`finishedAt`. A freshly observed pre-final receipt does not satisfy that boundary.
+UTC fractional seconds from native logs are accepted at the lifecycle clock's
+one-second precision. For other providers use their qualified settled accounting
+contract normalized to these fields; missing accounting blocks acceptance.
 Artifact locations and acceptance findings belong in the report/acceptance file.
 The booleans are supervisor attestations backed by those findings, not checks
 that the shell can independently perform.

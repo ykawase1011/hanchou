@@ -422,3 +422,17 @@ server/socket/pane PID消滅とCLOSED記録まで確認した。起動直後のs
 
 プロセスとsocket照合は協調する管理操作を対象とする。外部から同時にserverを入れ替える
 操作を公開CLIと原子的に排他する保証や、複数hostの回収、正確な24時間後の実行は提供しない。
+
+### PR #69: 完了・受入の証拠照合を補強（2026-10-22）
+
+完了時にもserver実体と、呼出し元が持つinstance／record／mission／attemptの対応を照合する。
+受入時は観測時刻だけでなく、側近の`currentRequest.completedAt`が`finishedAt`以降か確認する。
+使用量は単一native sessionの累積・子や他sessionを含まない範囲に限定し、入力・cache read・
+cache creation・出力の非負整数と合計、reasoningが出力の内数であることを検証する。
+欠測や集計範囲不明は受入を拒否する。nativeログのUTC小数秒は、既存の寿命管理時計に
+合わせて秒精度で照合する。pane一覧の空・改行・重複ID、不正なprocess形式も拒否する。
+
+変更前にserver差し替え後の完了と、不完全／古い使用量の受入が通ることを回帰テストで再現した。
+`tests/test-herdr-lifecycle.py`は3テスト追加で計12テストになり、拒否後の記録・server保全と
+正常な回収を確認する。macOS / Herdr 0.9.5のserver-only実機試験も更新したreceipt形式で
+`CLOSED`まで成功した。agent起動・使用量は引き続きfixtureであり、実AI完遂の証明ではない。
