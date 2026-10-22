@@ -194,6 +194,14 @@ Codexの公開インターフェースは[App Server資料](https://learn.chatgp
 
 同じsession内で、対応する`turn_aborted`の後に一意な新しい`task_started`が続く履歴は、最新依頼のmarker・開始下限・contextを改めて照合する。中断前の記録済み使用量も累積値に残し、再開前後の累積を加算しない。終了イベントの不一致・二重終了・順序逆転は拒否する。最新依頼自体が中断済みなら`current_request_aborted`として利用不能を返し、最終確定量や完遂の証拠にしない。これは同じ生存sessionの計測範囲であり、側近を古いworktreeで再起動する許可ではない。
 
+Codex 0.162.1の自己計測では、応答の`token_usage_record`がtool実行前、対応する
+`token_count`がtool終了後に書かれる場合がある。activeな現在依頼の未対応レコードが
+一つだけの場合、native identity・一意response・時刻・増分と累積の整合を確認し、
+記録済みcounterをccusage用の一時`token_count`行へ写像する。元ログは変更せず、
+`lastUsage.counterSource`と`scope.toolInput`に写像経路を明示する。値を推定せず、
+未記録の推論は引き続きunknownとする。settledな最終計測にはこの写像を使わず、
+実際の`token_count`との一致を必須とする。複数の未対応応答や不正な増分は拒否する。
+
 対応外のprovider/version、fork・compaction・reset、帰属が曖昧なログ、欠測・不一致は利用不能とする。限定した期限内で同じ観測の書込み待ちを行えるが、実作業の再送や継続集計は行わない。対応外を0にしたり、手動の緩い照合へ切り替えてgateを回避したりしない。Claudeなど既存の別経路は[使用量参照](../skills/hanchou-orchestrator/references/usage.md)の限定検証範囲を維持する。
 
 各記録にはmission／試行／worker、provider、native ID、親ID、model、計測元と版、観測時刻、対象期間、完全性を付ける。完全性は少なくとも「対象範囲を取得」「一部欠測」「不明」を区別する。生の本文や認証情報は報告へ載せない。

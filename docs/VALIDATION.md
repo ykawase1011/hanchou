@@ -32,6 +32,27 @@ pane内のbrew実行path、CodexのChatGPT認証、同じ使用量、通知設�
 
 ### Issue #67: 計測専用の単発Shell
 
+#### 自己計測のtool終了待ちを解消（2026-10-22）
+
+PR #69導入後の実Codex 0.162.1 / Astra high班長が、自己計測15秒のtimeout、
+続く45秒の`unsettled_counters`で側近起動前に停止した。応答終了後には同じログを
+既存scriptで308,611 tokensと照合できた。実ログでは`token_usage_record`がtool前、
+対応する`token_count`がtool終了後に書かれ、自己計測が自分の終了を待っていた。
+
+activeな依頼に限り、一つの未対応native応答の実counterを検証してccusage用一時行へ
+写像する。最初の応答と後続応答、実ccusage 20.0.37との一致、増分・identity・時刻・
+重複・欠測の拒否、実counter到着後の二重計上防止、完了時に写像を使わない条件を
+`tests/test-measure-session.sh`へ追加した。元ログへの書込みは行わない。
+
+失敗時点の本文を除去したprefix再生で、従来ccusageが161,916までしか読めなかった
+状態から、記録済みの最新応答まで209,117を照合した。その後、同じ生存中の実班長で
+候補scriptを一度呼び、`ready / active`、`counterSource: token_usage_record`、
+累積359,534（非cache入力38,974、cache316,160、出力4,400）を取得した。
+この値は診断も含むsession累積であり、当該確認一回の消費量や最終確定量ではない。
+この時点で側近は未起動。実側近の任務完遂・FINISHED・受入の検証とは区別する。
+
+#### 初回実装と検証（2026-10-21）
+
 2026-10-21、ユーザーの追加承認により、本番実行ファイルを起動・計測の2本に限定した。
 `measure-session.sh`はCodex 0.162.1（native source cli）／ccusage 20.0.37について、
 現在依頼のmarker・cwd・model/effort・時刻・native IDと使用量を1回の有期限呼出しで照合する。

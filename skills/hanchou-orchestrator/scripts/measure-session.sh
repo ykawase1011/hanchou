@@ -16,6 +16,11 @@ The latest task must contain the marker and match cwd/model/effort. Active tasks
 can return ready measured usage with their remaining in-flight usage unknown.
 A matched historical turn_aborted may precede a new task; its recorded usage
 remains in the session total. An aborted latest task is not settled completion.
+During active self-measurement, one native response usage record may precede its
+token_count event. After validating identity and the cumulative increment, copy
+those recorded counters into a temporary ccusage token_count row. The receipt
+discloses lastUsage.counterSource and scope.toolInput; native logs are unchanged.
+Settled tasks require the actual matching token_count event, never this adapter.
 Forks, children with inherited history, compaction, resets and unknown formats
 are unavailable. Exit 0 means the stated observation scope is ready, never that
 a mission is complete or that its budget permits work. Failures exit 1 with JSON.
@@ -136,6 +141,24 @@ def le($a;$b): all(range(0;5); . as $i|$a[$i]<=$b[$i]);
 def epoch: . as $t | (sub("\\.[0-9]+Z$";"Z")|fromdateiso8601) +
   (if ($t|contains(".")) then ($t|capture("\\.(?<fraction>[0-9]+)Z$").fraction|"0."+.|tonumber) else 0 end);
 def reject($code): {error:$code};
+# In CLI 0.162.1 a response usage record precedes tool execution, but token_count
+# can be emitted only AFTER that tool returns. Waiting inside self-measurement
+# cannot settle it. For one active response only, adapt its actual native fields
+# to ccusage input. All identity, counter-chain and boundary checks below still
+# apply; settled tasks never use this adapter. Do not modify the native log.
+. as $native |
+[to_entries[]|select(.value.type=="event_msg" and .value.payload.type=="task_started")][-1] as $active |
+[to_entries[]|select(.value.type=="event_msg" and .value.payload.type=="token_count" and .value.payload.info!=null)][-1] as $count |
+[to_entries[]|select(.value.type=="token_usage_record" and .key>($count.key // -1))] as $pending |
+if $active!=null and ($pending|length)==1 and
+  $pending[0].key>$active.key and $pending[0].value.payload.turn_id==$active.value.payload.turn_id and
+  all($native[$active.key:][]; .type!="event_msg" or (.payload.type!="task_complete" and .payload.type!="turn_aborted")) and
+  ($count==null or ($pending[0].value.timestamp|epoch)>=($count.value.timestamp|epoch)) and
+  ([$native[]|select(.type=="token_usage_record" and .payload.response_id==$pending[0].value.payload.response_id)]|length)==1
+then . + [{timestamp:$pending[0].value.timestamp,type:"event_msg",adaptedResponse:true,
+  payload:{type:"token_count",info:{total_token_usage:$pending[0].value.payload.thread_token_usage,
+    last_token_usage:$pending[0].value.payload.usage}}}]
+else . end |
 . as $rows |
 [to_entries[]|select(.value.type=="session_meta")|.value.payload] as $meta |
 [to_entries[]|select(.value.type=="event_msg" and .value.payload.type=="task_started")|{i:.key,row:.value}] as $starts |
@@ -198,6 +221,7 @@ else {nativeId:$m.id,cliVersion:$m.cli_version,model:$model,effort:$effort,
   currentRequest:{state:(if ($done|length)==1 then "settled" else "active" end),turnId:$start.row.payload.turn_id,
     startedAt:$start.row.timestamp,completedAt:($done[0].timestamp // null)},
   lastUsage:{observedThrough:$last.row.timestamp,
+    counterSource:(if $last.row.adaptedResponse==true then "token_usage_record" else "token_count" end),
     usageChangedAt:([$counts[] | select(.row.payload.info.total_token_usage==$last.row.payload.info.total_token_usage)][0].row.timestamp),
     responseId:$record.row.payload.response_id,
     turnId:$record.row.payload.turn_id,cumulative:$last.row.payload.info.total_token_usage,
@@ -254,6 +278,13 @@ while :; do
   native_id=$(jq -r .nativeId "$tmp/native.json")
   [[ ${native_log##*/} == rollout-*"$native_id".jsonl ]] || fail identity_mismatch 'Native metadata and rollout filename differ.'
   cp "$tmp/snapshot.jsonl" "$tmp/tool/sessions/$relative"
+  if [[ $(jq -r .lastUsage.counterSource "$tmp/native.json") == token_usage_record ]]; then
+    # Copy counters, never infer them. This adapter row exists only in the
+    # disposable ccusage input, and is disclosed in the measurement receipt.
+    jq -c '{timestamp:.lastUsage.observedThrough,type:"event_msg",payload:{type:"token_count",
+      info:{total_token_usage:.lastUsage.cumulative,last_token_usage:.lastUsage.request}}}' \
+      "$tmp/native.json" >> "$tmp/tool/sessions/$relative"
+  fi
   # A selected, sanitized snapshot prevents unrelated-home scans and transcript
   # copying. ccusage still owns the token calculation; native counters corroborate it.
   if bounded env CODEX_HOME="$tmp/tool" ccusage codex session --json --offline --no-cost --speed standard --id "$native_id"; then
@@ -284,5 +315,8 @@ jq -nc --slurpfile n "$tmp/native.json" --slurpfile u "$tmp/tool.json" \
     toolVersion:"20.0.37",parserVersion:$parser,
     tool:($u[0]|{sessionId,sessionFile,lastActivity,inputTokens,cacheReadTokens,cacheCreationTokens,outputTokens,reasoningOutputTokens,totalTokens,models}),
     scope:{kind:"native session cumulative",includedNativeIds:[$n[0].nativeId],includedChildren:[],
-      missionDelta:false,otherSessionsIncluded:false,toolInput:"selected native fields in temporary snapshot",
+      missionDelta:false,otherSessionsIncluded:false,
+      toolInput:(if $n[0].lastUsage.counterSource=="token_usage_record"
+        then "selected native fields; one active response usage record adapted to token_count in temporary snapshot"
+        else "selected native fields in temporary snapshot" end),
       inFlightUsage:(if $n[0].currentRequest.state=="active" then "unknown; current request and final reply can add usage" else "none at observed completion boundary" end)}}'
