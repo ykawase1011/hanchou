@@ -24,7 +24,7 @@ workspaceの最初のタブで起動する側近は、`.hanchou`内の設定でC
 
 Hanchouの中心はスキルとする。新規worktree作成を確実に実行するための、単発で終了する側近起動シェルスクリプトを同梱する。スクリプトは既存のGit・Herdr・公式エージェントCLIの操作をまとめる。常駐runtime、daemon、DB、scheduler、汎用agent launcher、独自dashboardへは拡張しない。企業利用の可否は組織の導入・認証・データ取扱方針に依存し、Herdr採用だけで承認済みとは扱わない。
 
-2026-10-21の追加承認により、既存usage toolとnative sessionを照合する計測専用の単発`measure-session.sh`も同梱する。本番実行ファイルはこの2本に限定する。計測scriptは読取りと一時観測ファイルの作成・終了時削除だけを行い、agent起動、mission送信、予算判断、設定変更、資源解放、永続集計を持たない。
+2026-10-21の追加承認により、既存usage toolとnative sessionを照合する計測専用の単発`measure-session.sh`も同梱する。本番実行ファイルはこの2本に限定する。同日の追加指定により、起動scriptは依頼専用Herdr serverの起動と、ローカルinstance記録に基づく単発の完了・受入・再開・回収も担う。計測scriptは読取りと一時観測ファイルの作成・終了時削除だけを行い、agent起動、mission送信、予算判断、設定変更、資源解放、永続集計を持たない。
 
 Hermes等を将来の実行先候補から排除はしないが、初版はHerdrを対象とする。未実装の汎用backend層やplugin frameworkは作らない。
 
@@ -114,9 +114,11 @@ flowchart TD
 1. 対象repository、実行host、起点commit、作業目的、権限、使用量予算を確定する。元のcheckoutのbranch・HEAD・差分状態を観測する。
 2. 一意なmission IDを付け、既存branch／既存directoryを再利用せず、新しいbranchとGit worktreeを作る。起点は動くbranch名だけでなくcommit IDとして固定する。
 3. `git worktree list`等の既存Git機能で登録されたpath、branch、HEAD、共通Git directoryを照合する。記録上の親依頼と実際の起点も一致させる。異なるpathだけで正しいrepository由来とは判断しない。
-4. 新規worktreeをcwdとしてHerdr workspaceを作り、返されたworkspace／tab／pane IDを使う。初期タブに設定された公式CLIで側近を起動する。
+4. 既定では依頼専用のnamed Herdr serverを起動し、設定元の`.hanchou/instances/<key>/instance.json`に所有・実プロセスの識別情報を保存する。新規worktreeをcwdとしてHerdr workspaceを作り、返されたworkspace／tab／pane IDを使う。初期タブに設定された公式CLIで側近を起動する。
 5. 実際のcwd・branch・HEAD、起動したagentを照合する。既定は`agent_ready`／usage pendingで終了する。検証済みCodex／ccusage版向けの任意`--qualify-startup`は、同梱側近指示のtool-free受領を1回だけ送信し、固有cwd・時刻・marker・native metadataと初回使用量を照合して`startup_qualified`／readyを返す。実作業・任意prompt・再送・継続集計は行わず終了する。不明・不一致は資源を残して失敗し、作業を許可しない。
 6. 班長は戻り値の観測範囲・鮮度・予算を確認してから実作業を渡す。qualified receiptの確認処理を毎回書き直さない。他provider等の手動bootstrapでも受領と計測可能性を先に確定する。起動時点からの使用量も含める。任意のviewerを開く場合も、返された接続先を使う。
+
+明示的な`--session NAME`は既存共有serverを使う互換経路であり、所有記録や自動停止の権限を付けない。専用serverのcwdは保存先instance directoryとし、削除可能な実行worktreeへ依存させない。
 
 Herdrはworkspace作成時に最初のtab／paneを作成し、`agent start`は既存paneを使う。この公開契約に沿って操作し、CLIの結果からIDを取得する。コマンド構文は導入した版のhelpを参照する。[Herdr agent automation](https://herdr.dev/docs/agent-automation/)
 
@@ -133,13 +135,14 @@ stdoutにバージョン付きJSONを1件返し、診断ログはstderrへ分け
 | `config` | 設定元pathと今回適用した設定。認証情報を含めない |
 | `worktree` | 実path、branch、固定base commit、起動時HEAD、元repositoryの識別情報 |
 | `herdr` | host／serverの接続先、workspace／tab／pane ID。共有server全体への所有権は意味しない |
+| `lifecycle` | 専用serverの所有区分、instance key、設定元に固定した記録の絶対path |
 | `sokkin` | agent種別、実行名、要求modelと観測できたmodel、native thread/session ID。未取得値はnull |
 | `usageReadiness` | 計測準備の`ready`／`pending`／`unavailable`と理由。token値自体の正本にはしない |
 | `error`, `resources` | 失敗理由、今回作った資源と残存・削除済み・状態不明の区別。成功時も作成対象を特定できる情報を返す |
 
 班長はこの戻り値の接続先に対して依頼・状態取得・結果回収を行う。側近起動後、スクリプトは常駐しない。起動完了・計測準備完了の両方が確認できるまでは実作業を送らない。
 
-事前検証で失敗した場合は資源を作らない。部分失敗では作成済み資源を残して識別情報を返す。起動スクリプト内で自動削除せず、班長が所有・実稼働・成果を照合して回収する。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
+事前検証で失敗した場合は資源を作らない。部分失敗では作成済み資源を残して識別情報を返す。起動時は自動削除せず、班長が所有・実稼働・成果を照合して回収する。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
 
 ### 5.4 再開
 
@@ -299,12 +302,16 @@ viewerを閉じることと、Herdr側の仕事を止めることを分離する
 1. 側近・workerの結果、検証、最終使用量、未解決事項を回収する。
 2. 成果をcommit、成果ファイル等として保全する。会話・viewer・一時worktreeだけを唯一の保存先にしない。
 3. 解放範囲に属するプロセスを停止し、実際の停止を確認する。接続不能を停止成功と扱わない。
-4. Herdr workspaceを閉じる。workspace閉鎖とGit checkout削除を別の操作として扱う。
+4. 明示選択した共有serverでは所有workspaceだけを閉じる。専用serverは下記の完了・受入記録に基づいて保持し、期限到来後の班長チェックで停止する。Git checkout削除とは別の操作として扱う。
 5. 保全済みで不要と確認したworktreeのみ削除する。dirty／untrackedを強制破棄しない。branch削除は別途、保全・統合状態を確認する。
 
 Herdrでもworkspaceの閉鎖とworktreeの削除は別の操作である。実際の削除挙動は採用版の公開契約を確認する。[Herdr CLI reference](https://herdr.dev/docs/cli-reference/)
 
-「最後の作業から24時間で自動解放」は初版の必須要件にしない。採用する場合は、受入済み、成果保全済み、実行中でない、保留理由がないことを条件とし、最終操作時刻だけで削除しない。既存の外部schedulerと所有者・保持理由・次回確認日が必要である。本書はcronの作成・有効化を指示するものではない。
+2026-10-21の指定により、班長が専用serverの寿命を管理する。側近は成果・報告を保全し、worker終了を確認して`FINISHED`とUTCの`finishedAt`を記録する。班長は最終応答後の確定使用量、成果、CLI終了を照合し、受入記録と停止前のpane/process一覧を保存する。側近の自己申告や端末のidleだけを受入にしない。
+
+班長の明示呼出しと受入・終了処理のチェック時に一度、設定元projectの記録を読む。`FINISHED`から86,400秒以上経過し、受入済み・証拠不変・同じhostとserver実体・pane一覧不変・稼働処理なしの場合に、公開Herdr CLIでその専用serverだけを停止する。PIDと開始時刻、socket identityを直前にも照合し、プロセスとsocketの消滅を確認して`CLOSED`と`closedAt`を残す。完了後に同じ生存CLIへ追加依頼する場合は先に`RUNNING`へ戻し、完了時刻と受入をクリアする。終了済みCLIの再起動は従来どおり新規試行とする。
+
+これはチェック時の回収であり、24時間後の定刻実行やcron、常駐監視、共有serverの移管を追加しない。班長を呼ばない期間は24時間を超えて残り得る。共有server、部分失敗・未受入・稼働中・識別不能・時刻不正の記録は自動停止しない。Herdr履歴・記録・Git worktree/branchは期限回収で削除しない。記録のlockと実体照合は協調する呼出しを対象とし、同じ権限で同時に外部からserverを差し替える操作を安全に原子化するものではない。具体的な更新契約は[ライフサイクル手順](../skills/hanchou-orchestrator/references/lifecycle.md)を参照する。
 
 ## 11. 実現可能性と残る制約
 
@@ -323,7 +330,7 @@ Herdrでもworkspaceの閉鎖とworktreeの削除は別の操作である。実�
 | 全ホストでの自動復帰・非同期通知 | 共通には保証できない | ホスト別の既存復帰機能。未対応ホストは継続中の待機・再照会 |
 | プロセス／server障害からの完全自動復旧 | 保証しない | 実行ID・成果・計測の再照合。画面の復元だけを実行再開と見なさない |
 | viewerの自動表示・read-only化 | 任意機能、未検証 | plugin導入、対象workspace表示、権限・認証・ブラウザ連携の確認 |
-| 24時間後の自動解放 | 初版対象外 | 既存scheduler、保持条件、誤削除防止の別設計 |
+| 完了24時間後の解放 | 班長チェック時の単発回収に対応。定刻実行は対象外 | 受入・証拠・実体・稼働処理を再照合し、専用serverだけを停止 |
 
 Herdrの状態復元や接続機能の詳細は[Session state and restore](https://herdr.dev/docs/session-state/)を参照する。表示の復元、エージェントの会話再開、未完了作業の安全な再実行はそれぞれ別に検証する。
 

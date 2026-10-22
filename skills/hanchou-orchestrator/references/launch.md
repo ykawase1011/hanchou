@@ -3,7 +3,7 @@
 The bundled launcher is one-shot Bash 3.2+ with Git and jq. Use Herdr 0.9.5's
 public local-session contracts; verify compatibility before adopting a different
 version. Install the official `codex` or `claude` CLI in both the caller's PATH
-and Herdr's shell environment. The script does not install tools, start a server,
+and Herdr's shell environment. The script does not install tools,
 change global agent settings, submit a mission, or install integrations.
 
 Use this launch contract directly; inspect the script source only when diagnosing
@@ -13,8 +13,10 @@ reads its bundled companion once; manual bootstrap needs its exact content.
 Applicable project instructions still govern
 placement, authority and preservation.
 
-Select an already-running **local named Herdr session**. Keep the same executable
-and session for subsequent calls; workspace/pane IDs are scoped to that server.
+By default the launcher starts an owned **local named Herdr session** for the
+attempt. See [owned lifecycle](lifecycle.md) for its record and delayed cleanup.
+Explicit `--session NAME` instead selects an already-running shared server.
+Keep the same executable and session for subsequent calls; workspace/pane IDs are scoped to that server.
 The launcher checks current connectivity/inventory. Never silently fall back to
 the default server or a remote host. A viewer is optional and closing it does
 not terminate the server's agents. Reuse the caller/init readiness handoff for
@@ -52,7 +54,7 @@ Invoke the installed script by its resolved path, using quoted arguments:
 
 ```bash
 bash "$LAUNCH_SCRIPT" \
-  --project "$PROJECT_ROOT" --mission "$MISSION_SLUG" --session "$HERDR_SESSION"
+  --project "$PROJECT_ROOT" --mission "$MISSION_SLUG"
 ```
 
 `--agent`, `--model` and `--effort` override only this launch. `--base` is resolved once to a
@@ -196,6 +198,9 @@ timeouts. Read only the relevant subcommand help unless it leaves a concrete
 question unanswered. A timeout can follow successful input delivery; inspect the same
 attempt's report before resending. Terminal idle is not a mission receipt.
 
-On completion, receive evidence and session totals before stopping the owned
-processes, closing the exact workspace, and removing preserved, unused worktrees.
-These are separate steps. Do not stop a shared server or remove a dirty worktree.
+On completion, receive evidence and session totals before stopping owned
+agent/worker processes. Workspace closure, server shutdown and preserved unused
+worktree removal are separate decisions. Owned servers follow [lifecycle](lifecycle.md): preserve
+the completion report, measure final settled usage, exit agents, accept, then reap
+on a later check at least a day after FINISHED. Do not stop a shared server or
+remove a dirty worktree.

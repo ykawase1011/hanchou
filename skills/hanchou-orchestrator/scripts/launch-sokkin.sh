@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# One-shot local Herdr launch. No work is submitted; stdout is a single receipt.
+# One-shot Herdr launch/lifecycle. No mission dispatch; JSON receipts on stdout.
 set -Eeuo pipefail
 umask 077
 
 usage() {
   cat <<'HELP'
-Usage: launch-sokkin.sh --project PATH --mission SLUG --session NAME [options]
+Usage: launch-sokkin.sh --project PATH --mission SLUG [options]
+       launch-sokkin.sh --project PATH --lifecycle finish|accept|resume|reap
+         [--instance KEY] [--evidence PATH]
+  --session NAME         Opt into an existing shared session (never auto-stopped)
   --config PATH          Default: selected project's .hanchou/config.json
   --base REF             Default: selected project's HEAD, resolved once
   --agent codex|claude   One-launch override (does not write configuration)
@@ -18,7 +21,11 @@ Usage: launch-sokkin.sh --project PATH --mission SLUG --session NAME [options]
   --help                 Show this help without contacting Herdr
 
 Requires Bash 3.2+, Git, jq, Herdr (tested: 0.9.5) and the official agent CLI.
-Select an already-running local named Herdr session. HERDR_BIN may name its CLI.
+By default create an owned named server and a private .hanchou/instances record.
+With --session select an already-running shared server. HERDR_BIN names its CLI.
+finish saves a report; accept saves settled usage after agent exit; resume clears
+completion; reap closes accepted FINISHED instances >=24h old when called.
+No worktree, branch, session history or record is deleted by reap.
 Default success means agent readiness only. Opt-in startup qualification returns
 initial identity/usage evidence, never mission completion or final usage.
 Blocked/uncertain starts preserve resources and return their identity. Do not
@@ -44,9 +51,19 @@ usage_pid=
 observed_process=null
 started_at=
 herdr_bin=${HERDR_BIN:-herdr}
+lifecycle= instance= evidence= instance_dir= record= lifecycle_lock= instances=
+server_pid= server_birth= server_socket= server_inode= state= inventory=
+owned=false
 
 receipt() {
   local ok=$1
+  if [[ $owned == true && -n $record && -f $record ]]; then
+    state=$(jq -c --arg status "$(if [[ $ok == true ]]; then printf RUNNING; else printf UNKNOWN; fi)" \
+      --arg workspace "$workspace" --arg pane "$pane" --arg path "$wt" --arg branch "$branch" \
+      --arg native "$native_id" --argjson resources "$resources" '.nativeId=(if $native=="" then null else $native end) | .status=$status | .workspaceId=$workspace | .paneId=$pane |
+        .worktree={path:$path,branch:$branch} | .resources=$resources' "$record")
+    state_write "$state" || return 1
+  fi
   jq -n --argjson ok "$ok" --arg stage "$stage" --arg mission "$mission" \
     --arg attempt "$attempt" --arg config "$config_path" --argjson effective "$effective" \
     --arg project "$project" --arg path "$wt" --arg branch "$branch" --arg base "$base_commit" --arg head "$actual_head" \
@@ -54,7 +71,7 @@ receipt() {
     --arg agent "$kind" --arg name "$agent_name" --arg native "$native_id" \
     --arg started "$started_at" --argjson snapshot "$source_snapshot" --argjson skipUpdate "$skip_update_check" \
     --arg observedModel "$observed_model" --arg observedEffort "$observed_effort" --argjson usage "$usage_readiness" \
-    --argjson process "$observed_process" \
+    --argjson process "$observed_process" --arg record "$record" --arg instance "$instance" --argjson owned "$owned" \
     --arg code "$error_code" --arg upstream "$upstream_code" --arg message "$error_message" --argjson resources "$resources" '
     def optional: if . == "" then null else . end;
     {version:2,ok:$ok,stage:$stage,startedAt:($started|optional),sourceSnapshot:$snapshot,
@@ -62,6 +79,7 @@ receipt() {
      config:{source:($config|optional),effective:$effective},
      worktree:{repository:($project|optional),path:($path|optional),branch:($branch|optional),
        baseCommit:($base|optional),head:($head|optional)},
+     lifecycle:{owned:$owned,instanceKey:($instance|optional),record:($record|optional)},
      herdr:{host:"local",session:($session|optional),workspaceId:($workspace|optional),
        tabId:($tab|optional),paneId:($pane|optional)},
      sokkin:{agent:($agent|optional),name:($name|optional),requestedModel:($effective.sokkin.model // null),
@@ -78,7 +96,8 @@ finish() {
   local rc=$?
   trap - EXIT
   stop_usage_helper
-  if [[ $emitted == false ]]; then receipt false; [[ $rc != 0 ]] || rc=1; fi
+  if [[ $emitted == false ]]; then receipt false || true; [[ $rc != 0 ]] || rc=1; fi
+  [[ -z $lifecycle_lock ]] || rmdir "$lifecycle_lock"
   [[ -z $tmp ]] || rm -rf -- "$tmp"
   exit "$rc"
 }
@@ -98,11 +117,190 @@ trap 'error_code=interrupted; error_message="Launch interrupted; reconcile this 
 started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fail() { error_code=$1; error_message=$2; exit 1; }
 need_value() { [[ $# -ge 2 && -n $2 && $2 != --* ]] || fail missing_argument 'An option is missing its value.'; }
+# Owned-session lifecycle; all operations are one-shot and local to pinned project.
+# Records are coordination evidence, not an authentication or sandbox boundary.
+process_birth() { LC_ALL=C ps -p "$1" -o lstart= 2>/dev/null | sed 's/^ *//;s/ *$//'; }
+state_write() {
+  local data=$1
+  printf '%s\n' "$data" > "$instance_dir/.instance-next"
+  mv -f -- "$instance_dir/.instance-next" "$record"
+}
+state_root() {
+  [[ ! -L $project/.hanchou && ! -L $project/.hanchou/instances ]] || fail unsafe_record 'Instance directories must not be symlinks.'
+  instances="$project/.hanchou/instances"
+}
+load_instance() {
+  [[ $instance =~ ^[a-f0-9]{32}$ ]] || fail invalid_instance 'Use the returned instance key.'
+  instance_dir="$instances/$instance"; record="$instance_dir/instance.json"
+  [[ -d $instance_dir && ! -L $instance_dir && -f $record && ! -L $record ]] || fail invalid_record 'Missing or unsafe instance record.'
+  mkdir "$instance_dir/lock" 2>/dev/null || fail instance_busy 'Instance is locked; inspect the original operation, never steal its lock.'
+  lifecycle_lock="$instance_dir/lock"
+  state=$(jq -ces 'if length==1 then .[0] else error("multiple records") end' "$record") || fail invalid_record 'Invalid instance JSON.'
+  jq -e --arg project "$project" --arg id "$instance" --arg host "$(hostname)" '
+    .version==1 and .instanceKey==$id and .project==$project and .host==$host and
+    .ownership=="dedicated" and .session==("hanchou-"+$id) and
+    (.status=="RUNNING" or .status=="FINISHED" or .status=="CLOSED" or .status=="STARTING" or .status=="UNKNOWN")
+  ' <<<"$state" >/dev/null || fail invalid_record 'Instance ownership, host or schema mismatch.'
+  session=$(jq -r .session <<<"$state")
+}
+server_matches() {
+  local pid birth socket
+  pid=$(jq -r '.server.pid // empty' <<<"$state"); birth=$(jq -r '.server.birth // empty' <<<"$state")
+  [[ $pid =~ ^[0-9]+$ && -n $birth && $(process_birth "$pid") == "$birth" ]] || return 1
+  herdr status --json > "$tmp/server.json" 2> "$tmp/error" || return 1
+  socket=$(jq -r '.server.socket // empty' <<<"$state")
+  jq -e --arg session "$session" --arg socket "$socket" '
+    .server.running==true and .server.compatible==true and .server.session==$session and .server.socket==$socket
+  ' "$tmp/server.json" >/dev/null || return 1
+  [[ -S $socket && $(ls -di "$socket" | awk '{print $1}') == "$(jq -r .server.socketInode <<<"$state")" ]]
+}
+quiet_inventory() {
+  # Agent absence alone is insufficient: include every pane and server descendant.
+  herdr api snapshot > "$tmp/snapshot.json" 2> "$tmp/error" || return 1
+  jq -e '.result.snapshot | (.agents|type=="array" and length==0) and
+    (.panes|type=="array" and
+      all(.[]; .pane_id|type=="string" and test("^[^[:space:][:cntrl:]]+$")) and
+      (map(.pane_id)|length==(unique|length)))' "$tmp/snapshot.json" >/dev/null || return 1
+  : > "$tmp/shells.jsonl"
+  local pane shell birth
+  while IFS= read -r pane; do
+    herdr pane process-info --pane "$pane" > "$tmp/process-info.json" 2> "$tmp/error" || return 1
+    shell=$(jq -er '.result.process_info | select(.shell_pid|type=="number" and .>0 and floor==.) |
+      select((.foreground_processes|type=="array" and length==1) and .foreground_processes[0].pid==.shell_pid) |
+      select(.foreground_processes[0] |
+        (.name|IN("sh","bash","zsh","dash","ksh","fish")) and
+        (.argv|type=="array" and length>0 and all(.[1:][]; IN("-l","-i","-il","-li","--login","--noprofile","--norc")))) |
+      .shell_pid' "$tmp/process-info.json") || return 1
+    birth=$(process_birth "$shell"); [[ -n $birth ]] || return 1
+    jq -nc --arg pane "$pane" --argjson pid "$shell" --arg birth "$birth" '{pane:$pane,pid:$pid,birth:$birth}' >> "$tmp/shells.jsonl"
+  done < <(jq -r '.result.snapshot.panes[].pane_id' "$tmp/snapshot.json")
+  ps -axo pid=,ppid= > "$tmp/process-tree" || return 1
+  # ps output contains numbers only; walk descendants without assuming an agent name.
+  jq -Rn '[inputs | capture("^ *(?<pid>[0-9]+) +(?<ppid>[0-9]+) *$") | {pid:(.pid|tonumber),ppid:(.ppid|tonumber)}]' < "$tmp/process-tree" > "$tmp/process-tree.json" || return 1
+  jq -e --argjson root "$(jq -r .server.pid <<<"$state")" --slurpfile shells "$tmp/shells.jsonl" '
+    . as $all | def descendants($p): $all[] | select(.ppid==$p) | .pid as $id | $id, descendants($id);
+    [descendants($root)] | sort == ($shells|map(.pid)|sort)
+  ' "$tmp/process-tree.json" >/dev/null || return 1
+  inventory=$(jq -sc 'sort_by(.pane)' "$tmp/shells.jsonl")
+}
+lifecycle_operation() {
+  state_root
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-lifecycle.XXXXXX")
+  if [[ $lifecycle == reap && -z $instance ]]; then
+    # One scan per explicit supervisor invocation. No timer, watcher or daemon.
+    local f key rc=0
+    for f in "$instances"/*/instance.json; do
+      [[ -e $f ]] || continue
+      key=$(basename "$(dirname "$f")")
+      bash "${BASH_SOURCE[0]}" --project "$project" --lifecycle reap --instance "$key" || rc=1
+    done
+    emitted=true; exit "$rc"
+  fi
+  load_instance
+  stage="lifecycle_$lifecycle"
+  case $lifecycle in
+    finish)
+      [[ $(jq -r .status <<<"$state") == RUNNING ]] || fail invalid_transition 'Only RUNNING can become FINISHED.'
+      [[ -f $evidence && -s $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the preserved completion report.'
+      [[ ( -z ${HANCHOU_INSTANCE_KEY:-} || $HANCHOU_INSTANCE_KEY == "$instance" ) &&
+         ( -z ${HANCHOU_INSTANCE_RECORD:-} || $HANCHOU_INSTANCE_RECORD == "$record" ) &&
+         ( -z ${HANCHOU_MISSION_ID:-} || $HANCHOU_MISSION_ID == "$(jq -r .missionId <<<"$state")" ) &&
+         ( -z ${HANCHOU_ATTEMPT_ID:-} || $HANCHOU_ATTEMPT_ID == "$(jq -r .attemptId <<<"$state")" ) ]] ||
+        fail instance_mismatch 'Completion instance or mission differs from the calling pane.'
+      server_matches || fail instance_mismatch 'Server incarnation changed or cannot be verified.'
+      cp -- "$evidence" "$instance_dir/.report-next"
+      mv -- "$instance_dir/.report-next" "$instance_dir/report.txt"
+      state=$(jq -c --arg at "$started_at" --arg hash "$(git hash-object "$instance_dir/report.txt")" '
+        .status="FINISHED" | .finishedAt=$at | .acceptedAt=null | .acceptedInventory=null | .reportHash=$hash' <<<"$state")
+      ;;
+    resume)
+      jq -e '.status=="FINISHED" and .acceptedAt==null' <<<"$state" >/dev/null || fail invalid_transition 'Resume only before acceptance/CLI exit; otherwise launch a fresh attempt.'
+      server_matches || fail instance_mismatch 'Server incarnation changed or cannot be verified.'
+      state=$(jq -c '.status="RUNNING" | .finishedAt=null | .acceptedAt=null | .acceptedInventory=null | .acceptanceHash=null' <<<"$state")
+      ;;
+    accept)
+      [[ $(jq -r .status <<<"$state") == FINISHED ]] || fail invalid_transition 'Accept a FINISHED instance only.'
+      [[ -f $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the final acceptance and settled usage receipt.'
+      jq -es --argjson record "$state" --arg now "$started_at" '
+        def integer: type=="number" and isfinite and .>=0 and floor==. and .<=9007199254740991;
+        # Native completion stamps may include fractional UTC seconds. The lifecycle
+        # clock has second precision; do not substitute receipt observation for completion.
+        def epoch:
+          if type=="string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")
+          then sub("\\.[0-9]+Z$";"Z") as $stamp | ($stamp|fromdateiso8601) as $time |
+            if ($time|todateiso8601)==$stamp then $time else error("invalid UTC date") end
+          else error("missing UTC completion boundary") end;
+        length==1 and (.[0] |
+        .missionId==$record.missionId and .attemptId==$record.attemptId and
+        .artifactsPreserved==true and .workersStopped==true and
+        (.usage|type=="array" and length>0 and
+          (map(.nativeId)|length==(unique|length)) and
+          all(.[]; .status=="ready" and .currentRequest.state=="settled" and
+            (.nativeId|type=="string" and length>0) and (.cwd|type=="string" and startswith("/")) and
+            (.tool | [.inputTokens,.cacheReadTokens,.cacheCreationTokens,.outputTokens,.reasoningOutputTokens,.totalTokens] | all(.[];integer)) and
+            .tool.totalTokens==(.tool.inputTokens+.tool.cacheReadTokens+.tool.cacheCreationTokens+.tool.outputTokens) and
+            .tool.reasoningOutputTokens<=.tool.outputTokens and
+            (. as $usage | .scope.kind=="native session cumulative" and .scope.includedNativeIds==[$usage.nativeId] and
+              .scope.includedChildren==[] and .scope.missionDelta==false and .scope.otherSessionsIncluded==false) and
+            (.currentRequest.completedAt|epoch)>=($record.createdAt|epoch) and
+            (.currentRequest.completedAt|epoch)<=(.observedAt|epoch) and
+            (.observedAt|epoch)<=($now|epoch)) and
+          any(.[]; .cwd==$record.worktree.path and
+            ($record.nativeId==null or .nativeId==$record.nativeId) and
+            (.currentRequest.completedAt|epoch)>=($record.finishedAt|epoch))))
+      ' "$evidence" >/dev/null || fail invalid_evidence 'Acceptance requires preserved artifacts, stopped workers and scoped final settled usage including this sokkin.'
+      [[ -f $instance_dir/report.txt && ! -L $instance_dir/report.txt ]] || fail missing_evidence 'Completion report is missing or unsafe.'
+      [[ $(git hash-object "$instance_dir/report.txt") == "$(jq -r .reportHash <<<"$state")" ]] || fail changed_evidence 'Completion report changed.'
+      server_matches && quiet_inventory || fail instance_busy 'Verify the owned server; exit every agent/worker before accepting cleanup.'
+      cp -- "$evidence" "$instance_dir/.acceptance-next"
+      mv -- "$instance_dir/.acceptance-next" "$instance_dir/acceptance.json"
+      state=$(jq -c --arg at "$started_at" --argjson inventory "$inventory" --arg hash "$(git hash-object "$instance_dir/acceptance.json")" '
+        .acceptedAt=$at | .acceptedInventory=$inventory | .acceptanceHash=$hash' <<<"$state")
+      ;;
+    reap)
+      if ! jq -e --arg now "$started_at" '
+        .status=="FINISHED" and (.acceptedAt|type=="string") and
+        (.finishedAt|type=="string") and
+        (.finishedAt|fromdateiso8601) <= ($now|fromdateiso8601)-86400 and
+        (.acceptedAt|fromdateiso8601) >= (.finishedAt|fromdateiso8601) and
+        (.acceptedAt|fromdateiso8601) <= ($now|fromdateiso8601)
+      ' <<<"$state" >/dev/null 2>&1; then
+        jq -nc --arg id "$instance" '{ok:true,instanceKey:$id,action:"retained",reason:"not_due_or_not_accepted"}'
+        emitted=true; exit 0
+      fi
+      [[ -f $instance_dir/report.txt && ! -L $instance_dir/report.txt && -f $instance_dir/acceptance.json && ! -L $instance_dir/acceptance.json ]] || fail missing_evidence 'Retain instance: preserved evidence is missing.'
+      [[ $(git hash-object "$instance_dir/report.txt") == "$(jq -r .reportHash <<<"$state")" && $(git hash-object "$instance_dir/acceptance.json") == "$(jq -r .acceptanceHash <<<"$state")" ]] || fail changed_evidence 'Retain instance: evidence changed.'
+      server_matches && quiet_inventory || fail instance_busy 'Retain instance: changed server, live work or unknown process state.'
+      [[ $inventory == "$(jq -c .acceptedInventory <<<"$state")" ]] || fail inventory_changed 'Retain instance: pane/process inventory changed after acceptance.'
+      # Recheck the incarnation immediately before the public stop call.
+      server_matches || fail instance_mismatch 'Retain instance: server changed before stop.'
+      herdr session stop "$session" --json > "$instance_dir/stop-receipt.json" 2> "$tmp/error" || fail stop_unconfirmed 'Stop failed or is uncertain; retain evidence and inspect this instance.'
+      local pid birth socket
+      pid=$(jq -r .server.pid <<<"$state"); birth=$(jq -r .server.birth <<<"$state"); socket=$(jq -r .server.socket <<<"$state")
+      for ((i=0;i<50;i++)); do
+        [[ $(process_birth "$pid") != "$birth" && ! -e $socket ]] && break
+        sleep 0.1
+      done
+      [[ $(process_birth "$pid") != "$birth" && ! -e $socket ]] || fail stop_unconfirmed 'Stop receipt is not proof of process/socket disappearance.'
+      while IFS= read -r shell; do
+        pid=$(jq -r .pid <<<"$shell"); birth=$(jq -r .birth <<<"$shell")
+        [[ $(process_birth "$pid") != "$birth" ]] || fail stop_unconfirmed 'An owned pane process remains.'
+      done < <(jq -c '.acceptedInventory[]' <<<"$state")
+      state=$(jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.status="CLOSED" | .closedAt=$at' <<<"$state")
+      ;;
+    *) fail invalid_operation 'Lifecycle operation must be finish, accept, resume or reap.';;
+  esac
+  state_write "$state"
+  jq -nc --arg id "$instance" --arg record "$record" --arg status "$(jq -r .status <<<"$state")" '{ok:true,instanceKey:$id,record:$record,status:$status}'
+  emitted=true; exit 0
+}
+
 while [[ $# -gt 0 ]]; do
   if [[ $1 == --skip-update-check ]]; then skip_update_check=true; shift; continue; fi
   if [[ $1 == --qualify-startup ]]; then qualify_startup=true; shift; continue; fi
   need_value "$@"
   case $1 in
+    --lifecycle) lifecycle=$2;; --instance) instance=$2;; --evidence) evidence=$2;;
     --project) project=$2;; --mission) mission=$2;; --session) session=$2;;
     --config) config_path=$2;; --base) base=$2;; --agent) agent_override=$2;;
     --model) model_override=$2;; --effort) effort_override=$2;;
@@ -111,9 +309,19 @@ while [[ $# -gt 0 ]]; do
   esac
   shift 2
 done
-[[ -n $project && -n $mission && -n $session ]] || fail missing_argument 'Project, mission and named Herdr session are required.'
+[[ -n $project ]] || fail missing_argument 'Project is required.'
+[[ -d $project ]] || fail invalid_project 'Project directory does not exist.'
+project=$(cd "$project" && pwd -P)
+herdr() { command "$herdr_bin" --session "$session" "$@"; }
+if [[ -n $lifecycle ]]; then
+  [[ -z $mission && -z $session && -z $config_path && -z $agent_override && -z $model_override && -z $effort_override && -z $worktree_root && $base == HEAD && $qualify_startup == false && $skip_update_check == false ]] || fail invalid_operation 'Do not combine lifecycle and launch options.'
+  [[ $(git -C "$project" rev-parse --show-toplevel 2>/dev/null) == "$project" ]] || fail invalid_project 'Select the pinned Git checkout root.'
+  lifecycle_operation
+fi
+[[ -z $instance && -z $evidence ]] || fail invalid_operation 'Instance and evidence options require --lifecycle.'
+[[ -n $mission ]] || fail missing_argument 'Mission is required.'
 [[ $mission =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || fail invalid_mission 'Mission must be a short lowercase slug.'
-[[ $session =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$ ]] || fail invalid_session 'Use an explicit local named Herdr session.'
+[[ -z $session || $session =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$ ]] || fail invalid_session 'Use an explicit local named Herdr session.'
 [[ $timeout_ms =~ ^[0-9]{4,6}$ ]] && ((10#$timeout_ms > 3000 && 10#$timeout_ms <= 300000)) || fail invalid_timeout 'Timeout must be 3001..300000 milliseconds.'
 for dependency in git "$herdr_bin"; do
   command -v "$dependency" >/dev/null 2>&1 || fail missing_dependency 'Git or Herdr is not available.'
@@ -157,8 +365,10 @@ if [[ $qualify_startup == true ]]; then
 fi
 herdr() { command "$herdr_bin" --session "$session" "$@"; }
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-launch.XXXXXX")
+if [[ -n $session ]]; then
 herdr workspace list > "$tmp/workspaces.json" 2> "$tmp/error" || fail herdr_unavailable 'Start the selected Herdr session before launching a sokkin.'
 jq -e '.result.workspaces|type=="array"' "$tmp/workspaces.json" >/dev/null || fail herdr_contract 'Herdr did not return a workspace inventory.'
+fi
 if [[ $kind == claude ]]; then
   claude auth status --json > "$tmp/auth.json" 2> "$tmp/error" || fail subscription_required 'Claude subscription authentication must be available.'
   jq -e '.loggedIn==true and .authMethod=="claude.ai" and .apiProvider=="firstParty" and
@@ -183,6 +393,12 @@ while IFS= read -r -d '' field; do
   fi
 done < <(git -C "$project" worktree list --porcelain -z)
 # Compact pre-launch evidence, not a backup or proof of mission-final preservation.
+if [[ -z $session ]]; then
+  state_root
+  for dependency in nohup ps hostname sed ls awk od; do
+    command -v "$dependency" >/dev/null 2>&1 || fail missing_dependency 'Owned server startup requires standard POSIX process tools.'
+  done
+fi
 source_head=$(git -C "$project" rev-parse HEAD)
 source_branch=$(git -C "$project" symbolic-ref --quiet --short HEAD || true)
 source_staged=$(git --no-optional-locks -C "$project" diff --cached --binary --no-ext-diff --no-textconv | git -C "$project" hash-object --stdin)
@@ -210,9 +426,41 @@ wt_common=$(cd "$wt_common" && pwd -P)
 actual_head=$(git -C "$wt" rev-parse HEAD)
 [[ $wt != "$project" && $wt_common == "$common" && $actual_head == "$base_commit" && $(git -C "$wt" symbolic-ref --short HEAD) == "$branch" ]] || fail worktree_mismatch 'Created worktree identity did not match the request.'
 
+if [[ -z $session ]]; then
+  state_root
+  instance=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  session="hanchou-$instance"; instance_dir="$instances/$instance"; record="$instance_dir/instance.json"
+  command "$herdr_bin" session list --json > "$tmp/sessions.json" 2> "$tmp/error" || fail session_inventory_unknown 'Cannot check existing named sessions.'
+  jq -e --arg name "$session" '.sessions | type=="array" and all(.[]; (.name|ascii_downcase)!=($name|ascii_downcase))' "$tmp/sessions.json" >/dev/null || fail session_collision 'Never adopt or replace an existing session.'
+  mkdir -p -- "$instances"
+  mkdir -- "$instance_dir" || fail instance_collision 'Instance directory already exists.'
+  mkdir "$instance_dir/lock"; lifecycle_lock="$instance_dir/lock"; owned=true
+  state=$(jq -nc --arg id "$instance" --arg project "$project" --arg host "$(hostname)" --arg session "$session" \
+    --arg mission "$mission" --arg attempt "$attempt" --arg at "$started_at" \
+    '{version:1,instanceKey:$id,project:$project,host:$host,ownership:"dedicated",session:$session,
+      missionId:$mission,attemptId:$attempt,status:"STARTING",createdAt:$at,finishedAt:null,acceptedAt:null,closedAt:null}')
+  state_write "$state"
+  stage=server_start
+  # Start in durable evidence storage, never in an ephemeral execution checkout.
+  (cd "$instance_dir" && exec nohup "$herdr_bin" --session "$session" server) > "$instance_dir/server.log" 2>&1 < /dev/null &
+  server_pid=$!
+  server_birth=$(process_birth "$server_pid")
+  state=$(jq -c --argjson pid "$server_pid" --arg birth "$server_birth" '.server={pid:$pid,birth:$birth}' <<<"$state"); state_write "$state"
+  resources=$(jq -c --arg session "$session" --arg record "$record" '. + [{kind:"server",session:$session,record:$record,state:"retained"}]' <<<"$resources")
+  for ((i=0;i<100;i++)); do
+    herdr status --json > "$tmp/server.json" 2> "$tmp/error" && jq -e '.server.running==true and .server.compatible==true' "$tmp/server.json" >/dev/null && break
+    kill -0 "$server_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  server_socket=$(jq -er '.server.socket|select(type=="string")' "$tmp/server.json") || fail server_start_unknown 'Server startup did not return a socket.'
+  [[ -S $server_socket ]] || fail server_start_unknown 'Server socket was not created.'
+  server_inode=$(ls -di "$server_socket" | awk '{print $1}')
+  state=$(jq -c --arg socket "$server_socket" --arg inode "$server_inode" '.server.socket=$socket | .server.socketInode=$inode' <<<"$state"); state_write "$state"
+  server_matches || fail server_start_unknown 'Cannot bind the new server process and socket.'
+fi
 stage=workspace_create
 # No prompts, hooks, credentials or old .hanchou files are copied to the checkout.
-herdr workspace create --cwd "$wt" --label "$agent_name" --env "HANCHOU_MISSION_ID=$mission" --env "HANCHOU_ATTEMPT_ID=$attempt" --no-focus > "$tmp/create.json" 2> "$tmp/error" || fail workspace_create_unknown 'Workspace creation failed or is uncertain; reconcile by attempt label before retrying.'
+herdr workspace create --cwd "$wt" --label "$agent_name" --env "HANCHOU_MISSION_ID=$mission" --env "HANCHOU_ATTEMPT_ID=$attempt" --env "HANCHOU_INSTANCE_KEY=$instance" --env "HANCHOU_INSTANCE_RECORD=$record" --no-focus > "$tmp/create.json" 2> "$tmp/error" || fail workspace_create_unknown 'Workspace creation failed or is uncertain; reconcile by attempt label before retrying.'
 workspace=$(jq -er '.result.workspace.workspace_id|select(type=="string" and length>0)' "$tmp/create.json")
 tab=$(jq -er '.result.tab.tab_id|select(type=="string" and length>0)' "$tmp/create.json")
 pane=$(jq -er '.result.root_pane.pane_id|select(type=="string" and length>0)' "$tmp/create.json")

@@ -48,6 +48,9 @@ Verify executable resolution, versions and required help after installation.
 Check the selected CLI's authentication status without exposing credentials or
 starting inference; guide the user only when interactive login is needed.
 Claude must use subscription authentication, never an API fallback.
+Mission launch creates an owned named server by default; init itself still starts
+none. `.hanchou/instances` holds local lifecycle evidence, never credentials or
+policy. Preserve existing records and use the project's ignore policy for them.
 If an authorized named local Herdr session already exists, check PATH and auth
 in an available shell pane without disturbing agents; otherwise report the
 in-session checks as pending. Do not create/start a server, service or agent just

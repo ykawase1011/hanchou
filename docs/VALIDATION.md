@@ -398,3 +398,41 @@ bootstrap失敗のみだった。対応する進行中のRun・worker・子works
 確認し、設定が不足する状態で側近を自動起動しない。
 
 週次枠のsession別正確な配賦、providerが強制する厳密なtoken cap、全ホスト共通の自動復帰、24時間TTL解放は設計で保証しない項目であり、上記未実施検証とは区別する。
+
+
+## 依頼専用Herdr serverの寿命管理（2026-10-21）
+
+既定の起動を、依頼専用named server＋設定元`.hanchou/instances`の記録へ変更した。
+既存sessionを明示する互換経路は共有のままで、自動停止対象にしない。
+`FINISHED`のUTC時刻、班長の受入、成果・最終使用量の保全、全agent終了を必要条件とし、
+班長の次のチェック時に24時間以上経過した専用serverだけを回収する。タイマーは追加していない。
+
+`tests/test-herdr-lifecycle.py`は一時Git repository、実PID/socket、mock Herdr/agentを使い、
+完了・受入・再開・閉鎖、24時間境界、未受入、変更された証拠・実体・inventory、
+稼働agent・background処理、lock、symlink、部分起動失敗、停止失敗の保全を検証する。
+元checkoutのstaged/unstaged/untracked、HEAD、index、設定が変わらないことも照合する。
+Pythonはrepositoryの試験依存であり、配布scriptの実行依存ではない。
+
+macOS、実Herdr 0.9.5では`tests/test-herdr-lifecycle-live.py /absolute/path/to/herdr`で
+named server起動、workspace作成、実pane/process一覧による受入、24時間経過fixtureの回収、
+server/socket/pane PID消滅とCLOSED記録まで確認した。起動直後のshell準備中は受入を拒否し、
+同じ試行で状態が落ち着いた後に受入できた。agent startとusageは明示的なfixtureであり、
+この試験を実AI側近の完遂・最終使用量・自律的なFINISHED書込みの受入とは扱わない。
+既存の共有serverと設定には変更を加えていない。通常の起動・計測の回帰は`make check`で確認する。
+
+プロセスとsocket照合は協調する管理操作を対象とする。外部から同時にserverを入れ替える
+操作を公開CLIと原子的に排他する保証や、複数hostの回収、正確な24時間後の実行は提供しない。
+
+### PR #69: 完了・受入の証拠照合を補強（2026-10-22）
+
+完了時にもserver実体と、呼出し元が持つinstance／record／mission／attemptの対応を照合する。
+受入時は観測時刻だけでなく、側近の`currentRequest.completedAt`が`finishedAt`以降か確認する。
+使用量は単一native sessionの累積・子や他sessionを含まない範囲に限定し、入力・cache read・
+cache creation・出力の非負整数と合計、reasoningが出力の内数であることを検証する。
+欠測や集計範囲不明は受入を拒否する。nativeログのUTC小数秒は、既存の寿命管理時計に
+合わせて秒精度で照合する。pane一覧の空・改行・重複ID、不正なprocess形式も拒否する。
+
+変更前にserver差し替え後の完了と、不完全／古い使用量の受入が通ることを回帰テストで再現した。
+`tests/test-herdr-lifecycle.py`は3テスト追加で計12テストになり、拒否後の記録・server保全と
+正常な回収を確認する。macOS / Herdr 0.9.5のserver-only実機試験も更新したreceipt形式で
+`CLOSED`まで成功した。agent起動・使用量は引き続きfixtureであり、実AI完遂の証明ではない。

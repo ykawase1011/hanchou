@@ -95,3 +95,15 @@ For a decision, identify the specific missing choice and continue independent
 permitted work. Retain unique/uncommitted artifacts. Stop only owned processes
 and verify exit before marking their resources reclaimable. Ask the supervisor
 to accept the result before final workspace release.
+
+For an owned Herdr instance, use the supervisor-supplied launcher, pinned project
+and instance key after preserving the report and verifying all owned workers have
+stopped: `launch-sokkin.sh --project PATH --lifecycle finish --instance KEY
+--evidence REPORT_PATH`. This records FINISHED with a UTC timestamp and copies
+the report outside the execution checkout. Check the returned status, then give
+your final reply; the supervisor measures that settled reply and owns acceptance,
+CLI exit and eventual server shutdown. Do not stop your own server or claim final
+self usage while the reply is in flight. A blocker/pause is not FINISHED. Before
+any continuation, the supervisor must clear completion with the lifecycle resume
+operation; do not edit record identity or timestamps yourself. Explicitly shared
+sessions have no owned-instance record and use ordinary completion reporting.

@@ -4,7 +4,7 @@ Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herd
 作業・worker選択・検証・統合を担当するAgent Skillsです。班長のホストにOrcaは必須ではありません。
 
 新しい側近を起動するたびに、同梱の`launch-sokkin.sh`が新規branchとGit worktreeを作り、
-専用Herdr workspaceの最初のタブへ設定されたCodexまたはClaude Codeを起動します。
+依頼専用Herdr serverとworkspaceを用意し、最初のタブへ設定されたCodexまたはClaude Codeを起動します。
 元checkoutのbranch・index・人間の変更は保全します。
 検証済みCodex版では、同梱の`measure-session.sh`がnative sessionと既存usage toolを
 単発で照合します。計測値と予算判断を分け、未確定の処理を0には扱いません。
@@ -55,9 +55,15 @@ Claude Codeでは`/hanchou-orchestrator`を使います。依頼時に目的・�
 会話への注意表示とOS/mobileへの通知到達は区別し、未検証の非同期到達は保証しません。
 完了は成果・検証・未解決事項・使用量で確認し、Herdrの待機表示だけで判断しません。
 
+班長は専用serverの終了も管理します。側近が`.hanchou/instances`へ完了時刻を記録し、
+班長が成果・最終使用量・プロセス終了を確認します。完了から1日以上経過したものは、
+班長が次に記録を確認したときに実体と停止条件を再確認して閉じます。常駐タイマーはありません。
+明示的に既存共有sessionを選んだ場合は、そのserverを自動停止しません。
+詳しくは[ライフサイクル手順](skills/hanchou-orchestrator/references/lifecycle.md)を参照してください。
+
 ## 対応範囲
 
-単発の起動シェル以外に独自runtime、daemon、DB、scheduler、dashboardは追加しません。
+単発の起動・ライフサイクル操作と計測シェル以外に独自runtime、daemon、DB、scheduler、dashboardは追加しません。
 定期実行、改善メモ収集・公開、Orca Run管理、旧状況ビューはv2の配布対象外です。
 既存の設定・成果・実行中資源は自動削除しません。[移行手順](docs/MIGRATION.md)を参照してください。
 
