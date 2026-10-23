@@ -6,6 +6,8 @@ fixture=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-startup-test.XXXXXX")
 trap 'rm -rf "$fixture"' EXIT
 mkdir -p "$fixture/bin" "$fixture/source/.hanchou" "$fixture/native"
 export FIXTURE="$fixture" CODEX_HOME="$fixture/native" MOCK_MODE=success
+export HANCHOU_TEST_CODEX_VERSION=${HANCHOU_TEST_CODEX_VERSION:-0.162.1}
+export MOCK_CODEX_VERSION=$HANCHOU_TEST_CODEX_VERSION
 export PATH="$fixture/bin:$PATH" HERDR_BIN="$fixture/bin/herdr"
 git -C "$fixture/source" init -q
 git -C "$fixture/source" -c user.name=Fixture -c user.email=test@example.invalid commit --allow-empty -qm base
@@ -50,7 +52,10 @@ case "$1 $2" in
    ;;
  "pane run")
    [[ $3 == w1:p1 ]]
-   bash -c "$4"
+   if [[ $MOCK_MODE == pane-version ]]; then
+     # A shell wrapper may resolve a different Codex, even another supported one.
+     MOCK_CODEX_VERSION=0.162.1 bash -c "$4"
+   else bash -c "$4"; fi
    printf '{"result":{"type":"ok"}}\n'
    ;;
  "agent start")
@@ -75,9 +80,9 @@ case "$1 $2" in
    mkdir -p "$CODEX_HOME/sessions/fixture"
    log="$CODEX_HOME/sessions/fixture/rollout-11111111-1111-1111-1111-111111111111.jsonl"
    jq -nc --arg cwd "$(cat "$FIXTURE/cwd")" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-     --arg prompt "$prompt" --arg marker "$marker" --arg mode "$MOCK_MODE" '
+     --arg prompt "$prompt" --arg marker "$marker" --arg mode "$MOCK_MODE" --arg version "$MOCK_CODEX_VERSION" '
      {type:"session_meta",payload:{id:"11111111-1111-1111-1111-111111111111",cwd:$cwd,
-       timestamp:$at,model_provider:"openai",cli_version:"0.162.1",
+       timestamp:$at,model_provider:"openai",cli_version:(if $mode=="native-version" then "0.162.1" else $version end),
        forked_from_id:(if $mode=="fork" then "parent" else null end)}},
      {type:"turn_context",payload:{model:(if $mode=="model" then "wrong" else "gpt-6-astra" end),effort:"medium"}},
      {type:"event_msg",payload:{type:"task_started",turn_id:"turn"}},
@@ -128,7 +133,7 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delaye
     [[ -d $(jq -r .worktree.path "$fixture/receipt") ]]
   fi
   prompt_count=1
-  [[ $mode != process-args ]] || prompt_count=0
+  [[ $mode != process-args && $mode != pane-version ]] || prompt_count=0
   jq -se --argjson count "$prompt_count" '[.[]|select(.[2]=="agent" and .[3]=="prompt")]|length==$count' "$fixture/calls" >/dev/null
   if [[ $mode == process-args ]]; then
     jq -e '.error.code=="process_identity_mismatch" and (. | tostring | contains("sensitive-value") | not)' "$fixture/receipt" >/dev/null
@@ -139,7 +144,7 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delaye
   printf 'startup qualification: %s ok\n' "$mode"
 done
 for version in codex usage; do
-  export MOCK_MODE=success MOCK_CODEX_VERSION=0.162.1 MOCK_USAGE_VERSION=20.0.37
+  export MOCK_MODE=success MOCK_CODEX_VERSION=$HANCHOU_TEST_CODEX_VERSION MOCK_USAGE_VERSION=20.0.37
   if [[ $version == codex ]]; then export MOCK_CODEX_VERSION=unknown; else export MOCK_USAGE_VERSION=unknown; fi
   : > "$fixture/calls"
   if launch > "$fixture/receipt" 2> "$fixture/error"; then exit 1; fi

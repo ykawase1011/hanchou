@@ -22,7 +22,7 @@ another model; a routine bounded task can use a lighter choice.
 
 ## Start a mission
 
-Use the configured provider. The compact path is Codex 0.162.1 / ccusage
+Use the configured provider. The compact path is Codex 0.162.1 or 0.163.0 / ccusage
 20.0.37, native source `cli`, without fork, compaction or counter resets.
 For other routes or a concrete failure, read the relevant [launch](references/launch.md)
 or [usage](references/usage.md) reference. Healthy calls need neither reference

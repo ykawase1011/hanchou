@@ -8,6 +8,7 @@ fixture=$(cd "$fixture" && pwd -P)
 trap 'rm -rf "$fixture"' EXIT
 bin="$fixture/bin"; mkdir -p "$bin" "$fixture/project" "$fixture/home/sessions/2026/10/20"
 export MOCK_STATE="$fixture" MOCK_MODE=normal MOCK_VERSION=normal
+export HANCHOU_TEST_CODEX_VERSION=${HANCHOU_TEST_CODEX_VERSION:-0.162.1}
 export MOCK_REAL_CCUSAGE=
 if command -v ccusage >/dev/null && [[ $(ccusage --version) == 'ccusage 20.0.37' ]]; then
   MOCK_REAL_CCUSAGE=$(command -v ccusage)
@@ -18,8 +19,8 @@ export MOCK_LOG_PATH="$log"
 cat > "$bin/codex" <<'MOCK'
 #!/usr/bin/env bash
 [[ $# == 1 && $1 == --version ]] || exit 90
-[[ $MOCK_VERSION != codex ]] || { echo 'codex-cli 0.163.0'; exit; }
-echo 'codex-cli 0.162.1'
+[[ $MOCK_VERSION != codex ]] || { echo 'codex-cli 0.999.0'; exit; }
+printf 'codex-cli %s\n' "$HANCHOU_TEST_CODEX_VERSION"
 MOCK
 cat > "$bin/ccusage" <<'MOCK'
 #!/usr/bin/env bash
@@ -73,10 +74,10 @@ export PATH="$bin:$PATH"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 assert_json() { jq -e "$2" "$1" >/dev/null || fail "assertion $2"; }
 make_log() {
-  jq -nc --arg cwd "$fixture/project" --arg id "$id" '
+  jq -nc --arg cwd "$fixture/project" --arg id "$id" --arg version "$HANCHOU_TEST_CODEX_VERSION" '
     def row($s;$t;$p): {timestamp:("2026-10-20T00:00:"+$s+".000Z"),type:$t,payload:$p};
     def u($i;$c;$o;$r): {input_tokens:$i,cached_input_tokens:$c,cache_write_input_tokens:0,output_tokens:$o,reasoning_output_tokens:$r,total_tokens:($i+$o)};
-    row("00";"session_meta";{id:$id,timestamp:"2026-10-20T00:00:00Z",cwd:$cwd,model_provider:"openai",cli_version:"0.162.1",source:"cli",instructions:"PRIVATE_TRANSCRIPT"}),
+    row("00";"session_meta";{id:$id,timestamp:"2026-10-20T00:00:00Z",cwd:$cwd,model_provider:"openai",cli_version:$version,source:"cli",instructions:"PRIVATE_TRANSCRIPT"}),
     row("01";"event_msg";{type:"task_started",turn_id:"turn-1"}),
     row("02";"response_item";{type:"message",role:"user",content:[{type:"input_text",text:"PRIVATE_TRANSCRIPT marker-current"}]}),
     row("03";"turn_context";{turn_id:"turn-1",cwd:$cwd,model:"fixture-model",effort:"medium"}),

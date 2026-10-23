@@ -8,7 +8,7 @@ Usage: measure-session.sh --provider codex --log-home ABS --cwd ABS
   --model MODEL --effort EFFORT --marker UNIQUE --started-after UTC_ISO
   [--native-id UUID] [--native-log ABS] [--timeout-ms N]
 
-Reads one nonforked Codex 0.162.1 CLI session with installed ccusage 20.0.37.
+Reads one nonforked Codex 0.162.1 or 0.163.0 CLI session with ccusage 20.0.37.
 UTC_ISO is YYYY-MM-DDTHH:MM:SS[.fraction]Z, the current task start lower bound.
 Without --native-log, discovery stays in LOG_HOME/sessions and checks at most
 256 files modified since that bound. Supply an exact log for older/large homes.
@@ -101,7 +101,10 @@ for executable in codex ccusage; do
   command -v "$executable" >/dev/null 2>&1 || fail missing_tool 'Installed codex and ccusage are required.'
   bounded "$executable" --version || fail tool_unavailable 'Version inspection failed or exceeded the observation deadline.'
   case $executable in
-    codex) [[ $(cat "$tmp/command.out") == 'codex-cli 0.162.1' ]] || fail unsupported_version 'Only Codex 0.162.1 is qualified.';;
+    codex) case $(cat "$tmp/command.out") in
+      'codex-cli 0.162.1'|'codex-cli 0.163.0') ;;
+      *) fail unsupported_version 'Only Codex 0.162.1 and 0.163.0 are qualified.';;
+    esac;;
     ccusage) [[ $(cat "$tmp/command.out") == 'ccusage 20.0.37' ]] || fail unsupported_version 'Only ccusage 20.0.37 is qualified.';;
   esac
 done
@@ -141,7 +144,7 @@ def le($a;$b): all(range(0;5); . as $i|$a[$i]<=$b[$i]);
 def epoch: . as $t | (sub("\\.[0-9]+Z$";"Z")|fromdateiso8601) +
   (if ($t|contains(".")) then ($t|capture("\\.(?<fraction>[0-9]+)Z$").fraction|"0."+.|tonumber) else 0 end);
 def reject($code): {error:$code};
-# In CLI 0.162.1 a response usage record precedes tool execution, but token_count
+# In the qualified CLIs a response usage record precedes tool execution, but token_count
 # can be emitted only AFTER that tool returns. Waiting inside self-measurement
 # cannot settle it. For one active response only, adapt its actual native fields
 # to ccusage input. All identity, counter-chain and boundary checks below still
@@ -182,7 +185,7 @@ $meta[0] as $m | $starts[-1] as $start |
        ($event.payload.turn_id|type)!="string" or $event.payload.turn_id=="") |
      .active=$event.payload.turn_id | .seen+=[$event.payload.turn_id]
    else .invalid=(.invalid or .active==null or .active!=$event.payload.turn_id) | .active=null end)) as $boundaries |
-if $m.model_provider!="openai" or $m.cli_version!="0.162.1" or $m.cwd!=$cwd or
+if $m.model_provider!="openai" or ($m.cli_version!="0.162.1" and $m.cli_version!="0.163.0") or $m.cwd!=$cwd or
   ($m.id|type)!="string" or ($m.id|test("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$")|not) or
   ($known!="" and $known!=$m.id) then reject("identity_mismatch")
 elif $m.forked_from_id!=null or $m.source!="cli" or any($rows[];.type=="unsupported_compaction") then reject("unsupported_history")

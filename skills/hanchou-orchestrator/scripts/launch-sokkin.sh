@@ -17,7 +17,7 @@ Usage: launch-sokkin.sh --project PATH --mission SLUG [options]
   --worktree-root PATH   Absolute directory outside existing checkouts
   --timeout-ms NUMBER    Agent readiness timeout, 3001..300000 (default 30000)
   --skip-update-check    Codex only; explicit per-launch update-check opt-out
-  --qualify-startup      Codex 0.162.1 + ccusage 20.0.37: fixed tool-free bootstrap
+  --qualify-startup      Codex 0.162.1/0.163.0 + ccusage 20.0.37: tool-free bootstrap
   --help                 Show this help without contacting Herdr
 
 Requires Bash 3.2+, Git, jq, Herdr (tested: 0.9.5) and the official agent CLI.
@@ -364,8 +364,13 @@ command -v "$kind" >/dev/null 2>&1 || fail missing_agent 'The selected official 
 if [[ $qualify_startup == true ]]; then
   [[ $kind == codex ]] || fail unsupported_option 'Startup qualification currently supports Codex only.'
   command -v ccusage >/dev/null 2>&1 || fail missing_usage_tool 'Startup qualification requires ccusage.'
-  [[ $(ccusage --version) == 'ccusage 20.0.37' && $(codex --version) == 'codex-cli 0.162.1' ]] ||
-    fail unsupported_version 'Startup qualification is tested only with Codex 0.162.1 and ccusage 20.0.37.'
+  qualified_codex_version=$(codex --version)
+  case $qualified_codex_version in
+    'codex-cli 0.162.1'|'codex-cli 0.163.0') ;;
+    *) fail unsupported_version 'Startup qualification requires Codex 0.162.1 or 0.163.0.';;
+  esac
+  [[ $(ccusage --version) == 'ccusage 20.0.37' ]] ||
+    fail unsupported_version 'Startup qualification requires ccusage 20.0.37.'
   companion="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../hanchou-sokkin" && pwd -P)/SKILL.md"
   [[ -s $companion ]] || fail missing_companion 'The installed companion skill is required.'
 fi
@@ -500,8 +505,8 @@ if [[ $qualify_startup == true ]]; then
   herdr pane run "$pane" "$env_command" > "$tmp/run.json" 2> "$tmp/error" ||
     fail startup_environment_unknown 'Cannot read the pane startup environment.'
   for ((i=0; i<100; i++)); do [[ -f $tmp/env-done ]] && break; sleep 0.1; done
-  [[ -f $tmp/env-done && $(cat "$tmp/pane-version") == 'codex-cli 0.162.1' ]] ||
-    fail unsupported_version 'Pane Codex version is unknown or unsupported.'
+  [[ -f $tmp/env-done && $(cat "$tmp/pane-version") == "$qualified_codex_version" ]] ||
+    fail unsupported_version 'Pane Codex version must match the qualified caller version.'
   log_home=$(cat "$tmp/pane-home")
   [[ $log_home == /* && $log_home != *$'\n'* && -d $log_home ]] ||
     fail log_home_unknown 'Pane startup log home is not an existing absolute directory.'
@@ -583,14 +588,15 @@ $(cat "$companion")"
   [[ $matched == 1 ]] || fail native_identity_pending 'Expected one fresh native log matching cwd, startup time and bootstrap token.'
   # Select only identity, context and cumulative counters; never return embedded
   # session instructions or transcripts. This is not a token aggregator.
-  until jq -es --arg marker "$marker" --arg known "$native_id" --arg model "$model" --arg effort "$effort" '
+  until jq -es --arg marker "$marker" --arg known "$native_id" --arg model "$model" --arg effort "$effort" \
+    --arg cli_version "${qualified_codex_version#codex-cli }" '
     [.[]|select(.type=="session_meta")|.payload] as $meta |
     [.[]|select(.type=="turn_context")|.payload] as $ctx |
     [.[]|select(.type=="event_msg" and .payload.type=="task_started")|.payload] as $start |
     [.[]|select(.type=="event_msg" and .payload.type=="task_complete")|.payload] as $completed |
     [.[]|select(.type=="event_msg" and .payload.type=="token_count" and .payload.info!=null)|.payload.info.total_token_usage] as $counts |
     [.[]|select(.type=="response_item" and .payload.role=="assistant" and .payload.phase=="final_answer")|.payload] as $answers |
-    select(($meta|length)==1 and $meta[0].cli_version=="0.162.1" and $meta[0].forked_from_id==null and
+    select(($meta|length)==1 and $meta[0].cli_version==$cli_version and $meta[0].forked_from_id==null and
       ($meta[0].id|test("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$")) and
       ($known=="" or $known==$meta[0].id) and ($ctx|length)==1 and
       ($model=="" or $model==$ctx[0].model) and ($effort=="" or $effort==$ctx[0].effort) and
