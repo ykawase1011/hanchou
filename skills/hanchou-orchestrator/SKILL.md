@@ -58,8 +58,9 @@ nor shell implementation. Both bundled shells are public interfaces.
 3. **Show Herdr.** On every sokkin launch, open a human-visible viewer tab for
    the receipt's exact host/session/workspace before assigning real work. Use
    the host's terminal-tab capability and Herdr's installed attach contract;
-   in Orca use its available terminal tooling, not another agent tab. Verify
-   the displayed workspace and leave the tab open. Same-session follow-ups
+   in Orca use its available terminal tooling, not another agent tab, and set
+   an explicit tab title `Herdr | <short mission name>`. Verify the tab title
+   and displayed workspace and leave the tab open. Same-session follow-ups
    reuse its verified tab; a replacement sokkin needs its own target. Resolve
    uncertain tab creation before retrying. If display is unavailable, report
    the blocker and connection details; do not silently assign without a viewer
