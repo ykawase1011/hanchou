@@ -43,6 +43,17 @@ skill/tool to create a tab in the supervisor's current workspace without moving
 or replacing the conversation. Other hosts may use their existing terminal tabs
 or windows. No Orca installation is required on those hosts.
 
+Create and verify tabs/workspaces in the background. Preserve the user's current
+focus, including the existing conversation; only an explicit request to switch
+the displayed location authorizes activation. In Orca, do not use `--focus`,
+`--activate`, `terminal switch`, or the revealing `--run-hooks` for creation or
+verification. Use public read/list/visual-layout observations without selecting
+the tab. Other hosts follow the same rule using their supported public controls.
+If non-activating creation or display verification is unavailable, report that
+limitation and connection details; do not bring a window forward or switch back
+to the conversation on the user's behalf. The headless exception below still
+requires explicit authority.
+
 In Orca, give the viewer an explicit tab title `Herdr | <short mission name>`
 using the user's language, for example `Herdr | Issue整理`. Add a short attempt
 suffix only when needed to distinguish tabs for the same mission. Use the
@@ -53,7 +64,8 @@ as well. Do not rely on the Herdr/agent's dynamic terminal title or rename its
 workspace, branch, session or agent to change the Orca tab label.
 
 Verify the matching tab ID's title in `terminal list --include-visual-layouts`
-(or the visible tab label); the terminal/pane title can still show Herdr's dynamic
+(or a non-activating observation of the tab label); the terminal/pane title can
+still show Herdr's dynamic
 title and is not the custom tab label. Preserve a title explicitly chosen by the
 user. If naming cannot be verified, report that limitation alongside the verified
 viewer connection; do not open a duplicate tab or restart the agent just to rename
@@ -64,7 +76,8 @@ Use the resolved Herdr executable and the returned `herdr.session` on the
 receipt's host. Herdr 0.9.5 provides `session attach NAME`; confirm the installed
 contract when missing from readiness. Do not use an unnamed/default session or
 create another server, workspace or agent to obtain a display. For a shared
-session, select the returned workspace using supported UI controls and verify
+session, use supported controls that preserve the user's focus to select the
+returned workspace and verify
 its identity; attachment to the right server alone is insufficient.
 
 Verify tab creation and actual Herdr workspace display, including any startup
