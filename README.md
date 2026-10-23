@@ -1,14 +1,46 @@
 # Hanchou v2
 
 Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herdr内の側近（sokkin）が
-作業・worker選択・検証・統合を担当するAgent Skillsです。班長のホストにOrcaは必須ではありません。
+作業・worker選択・検証・統合を担当するAgent Skillsです。**Orcaなしでも使えます。**
+
+```mermaid
+flowchart TD
+    Human["人間：目的・権限・完了条件"]
+    Leader["班長：依頼・結果報告・使用量監督"]
+    Human -->|依頼| Leader
+    Leader -->|結果・判断の相談| Human
+    Leader -->|起動要求| Launch["単発の起動シェル<br/>新規branch・worktreeを作成"]
+    subgraph Herdr["Herdr：実行を管理"]
+        Sokkin["側近：作業・worker選択・検証・統合<br/>専用workspace / 新規Git worktree"]
+        Worker["必要に応じたworker：割り当てられた作業"]
+        Sokkin -->|分担| Worker
+        Worker -->|成果・問題・使用量| Sokkin
+    end
+    Launch -->|起動| Sokkin
+    Leader -->|任務・完了条件・予算| Sokkin
+    Sokkin -->|成果・検証・使用量| Leader
+    Human -.->|状況を見る| Viewer["Herdr閲覧タブ"]
+    Viewer -.->|接続| Herdr
+    Orca["任意のOrcaホスト<br/>対話・作業場所・閲覧タブをまとめて扱う"]
+    Orca -.- Leader
+    Orca -.- Viewer
+```
+
+Orcaを使うと、班長との対話、worktreeごとの作業場所、Herdr閲覧タブを
+同じアプリでまとめて扱えて少し便利です。側近とworkerの実行はHerdrが管理し、
+閲覧タブを閉じても実行は続きます。Orcaは側近の実行基盤でも必須依存でもありません。
+Orcaへのアクセスを遮断した環境での実行・成果回収・使用量確認と、macOS / Orcaでの
+Herdr閲覧接続を[検証しています](docs/VALIDATION.md)。他ホストの表示機能や
+全provider・全環境の互換性を保証するものではありません。
 
 新しい側近を起動するたびに、同梱の`launch-sokkin.sh`が新規branchとGit worktreeを作り、
 依頼専用Herdr serverとworkspaceを用意し、最初のタブへ設定されたCodexまたはClaude Codeを起動します。
 元checkoutのbranch・index・人間の変更は保全します。
 班長は側近を起動するたびに、そのHerdrセッションを人間が確認できるタブを開き、
-対象workspaceの表示を確認してから実作業を渡します。同じ側近への追加指示では既存タブを使います。
-表示できない場合は理由と接続先を報告し、明示的な画面なし実行の指定がなければ割当を待ちます。
+対象workspaceの表示を確認してから実作業を渡します。作成・確認はバックグラウンドで行い、
+ユーザーが明示的に表示切替を求めない限り、現在のタブやworkspaceからフォーカスを移しません。
+同じ側近への追加指示では既存タブを使います。
+フォーカスを変えずに表示を確認できない場合も、理由と接続先を報告し、明示的な画面なし実行の指定がなければ割当を待ちます。
 タブは完了後も残し、閉じても実行中の側近は停止しません。
 検証済みCodex版では、同梱の`measure-session.sh`がnative sessionと既存usage toolを
 単発で照合します。計測値と予算判断を分け、未確定の処理を0には扱いません。

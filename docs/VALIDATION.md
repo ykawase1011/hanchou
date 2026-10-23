@@ -535,3 +535,16 @@ Issue整理任務の完遂、他provider、未知のCLI版の互換性を示す�
 agentやserverの再起動、接続先の変更、新しいviewer作成は行っていない。
 これは既存Orcaタブの命名経路の実機確認であり、改訂skillによる新規班長の一巡や
 他ホストの命名機能の検証ではない。
+
+### フォーカスを移さない閲覧手順（2026-10-23）
+
+班長skillの作成・確認をバックグラウンドに限定し、明示的な表示切替依頼がない限り
+現在のタブ／workspaceを維持する。Orcaのactivation操作を確認の代用にせず、
+公開read/list/visual-layoutで照合する。他ホストで非操作の確認ができない場合は
+限界を報告し、勝手に前面化しない。本番の起動・計測scriptは変更していない。
+
+README整備任務の班長から提供された公開CLI観測では、同じ親workspaceに
+`Herdr | README整備`タブを保持し、visual layoutのactiveTabIdは班長タブのままだった。
+班長が行ったbackground作成・readによる対象session/workspaceの照合を受け継ぎ、
+側近では追加viewerや表示切替を行っていない。これは当該macOS / Orca環境の限定証拠であり、
+他ホストや改訂skillによる新規起動一巡の検証ではない。
