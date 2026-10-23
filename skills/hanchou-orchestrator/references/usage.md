@@ -16,7 +16,7 @@ as a subscription-budget measure.
 
 ## Bundled read-only measurement
 
-For Codex 0.162.1 native source `cli` / ccusage 20.0.37, prefer
+For Codex 0.162.1 or 0.163.0 native source `cli` / ccusage 20.0.37, prefer
 `scripts/measure-session.sh` from this orchestrator skill. It reconciles the
 existing tool with native evidence in one bounded call; it does not implement a
 new collector or decide the budget. See its `--help` for the narrow interface.
@@ -30,7 +30,7 @@ unreported, including the final answer: reserve for it, do not repeatedly poll
 self for a settled total. At final acceptance measure the sokkin after its report
 with that assignment's marker and require a settled boundary. Preserve one latest
 cumulative receipt per native ID; do not sum repeated snapshots.
-During an active tool call, CLI 0.162.1 can write the response usage record before
+During an active tool call, CLI 0.162.1 and 0.163.0 can write the response usage record before
 the call and its matching `token_count` only after the call returns. The bundled
 script validates one such pending native response and copies its recorded counters
 into a temporary ccusage input row. `lastUsage.counterSource: token_usage_record`
@@ -105,7 +105,7 @@ time and parent relationship from launch/bootstrap evidence. Treat each
 independently started worker as another entry. The native-log home must come
 from the actual agent environment; never assume the supervisor's home matches.
 Resolve the matching native log before interpreting a zero or an empty result.
-For Codex 0.162.1, the current request text is in
+For Codex 0.162.1 and 0.163.0, the current request text is in
 `response_item.payload` with `role == "user"` and `content[].text`.
 Do not require an `event_msg/user_message` event: it may be absent. A compact
 request-marker check on the already-bound log is:

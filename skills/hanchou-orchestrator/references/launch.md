@@ -123,7 +123,7 @@ independently bind the new pane's native identity and settled usage.
 
 ### Qualified startup
 
-For **Codex 0.162.1 / ccusage 20.0.37**, add `--qualify-startup` and a sufficient
+For **Codex 0.162.1 or 0.163.0 / ccusage 20.0.37**, add `--qualify-startup` and a sufficient
 finite `--timeout-ms` (for example 60000). The mode checks dependency versions
 before creation, observes the pane's startup log home/version, sends exactly one
 fixed tool-free companion-role bootstrap, then corroborates native identity

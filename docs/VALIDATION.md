@@ -504,3 +504,23 @@ macOS / Orca / Herdr 0.9.5で、#72の受入済み専用sessionへ公開
 これは既存sessionへの表示経路の実機確認であり、改訂スキルを読んだ新規班長による
 自動起動一巡、他ホスト、共有sessionのworkspace選択、browser viewer、read-only化を
 検証したものではない。viewer表示は実行・計測・完了の証拠の代用にはしない。
+
+### Codex 0.163.0 の起動・使用量互換性（2026-10-23）
+
+CLI更新後の班長は、旧allowlistによる`unsupported_version`で実任務前に停止した。
+0.162.1を維持し、0.163.0だけを追加する。未知の版、fork、compaction、counter reset、
+不明なidentity/scopeは引き続き拒否する。起動時はcaller・pane・nativeログの版を
+同一に限定し、別の対応済み版へ途中で変わる場合も拒否する。
+
+macOS / Codex 0.163.0 / ccusage 20.0.37 / Herdr 0.9.5の実ログで確認した。
+班長（gpt-6-astra/high）のsettled累積191,132 tokens、および実行中の
+`token_usage_record`を使ったactive累積232,740 tokensは既存照合処理で一致した。
+activeは観測後の実行・最終応答を含まず、任務全体の確定値ではない。
+新しい専用server・fresh worktreeで側近（gpt-6-astra/medium）のtool-free
+bootstrapを実行し、process引数・native identity・版・settled累積21,223 tokensを
+照合して`startup_qualified`を得た。ユーザーのzsh起動時待機を避ける既存承認済みの
+process-local ZDOTDIRとupdate通知skipをこの試験に限り使用し、設定は変更していない。
+
+`make check`は両版の計測回帰、従来の起動回帰、0.163.0の正常起動・pane/native版不一致・
+counter不一致、およびlifecycle 15件を通過した。これは限定した起動・計測の検証であり、
+Issue整理任務の完遂、他provider、未知のCLI版の互換性を示すものではない。
