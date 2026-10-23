@@ -43,6 +43,23 @@ skill/tool to create a tab in the supervisor's current workspace without moving
 or replacing the conversation. Other hosts may use their existing terminal tabs
 or windows. No Orca installation is required on those hosts.
 
+In Orca, give the viewer an explicit tab title `Herdr | <short mission name>`
+using the user's language, for example `Herdr | Issue整理`. Add a short attempt
+suffix only when needed to distinguish tabs for the same mission. Use the
+installed Orca terminal contract to set the title at creation and, once the
+handle is known, explicitly rename that tab with `terminal rename --terminal
+HANDLE --title TITLE`. Apply this to a reused viewer shell or a reconnected tab
+as well. Do not rely on the Herdr/agent's dynamic terminal title or rename its
+workspace, branch, session or agent to change the Orca tab label.
+
+Verify the matching tab ID's title in `terminal list --include-visual-layouts`
+(or the visible tab label); the terminal/pane title can still show Herdr's dynamic
+title and is not the custom tab label. Preserve a title explicitly chosen by the
+user. If naming cannot be verified, report that limitation alongside the verified
+viewer connection; do not open a duplicate tab or restart the agent just to rename
+it. Keep the label stable across status changes rather than adding a title-update
+poller. Other hosts use their supported naming controls when available.
+
 Use the resolved Herdr executable and the returned `herdr.session` on the
 receipt's host. Herdr 0.9.5 provides `session attach NAME`; confirm the installed
 contract when missing from readiness. Do not use an unnamed/default session or
@@ -51,7 +68,7 @@ session, select the returned workspace using supported UI controls and verify
 its identity; attachment to the right server alone is insufficient.
 
 Verify tab creation and actual Herdr workspace display, including any startup
-overlay, before reporting success. Record the tab handle and session/workspace
+overlay, before reporting success. Record the tab handle, tab ID, chosen title and session/workspace
 alongside the existing launch receipt, not in a new registry. On timeout, inspect
 existing tabs before retrying. Reuse the verified tab for follow-ups to the same
 live sokkin; if closed, reconnect to that session. New attempts must display their

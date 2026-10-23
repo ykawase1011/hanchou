@@ -524,3 +524,14 @@ process-local ZDOTDIRとupdate通知skipをこの試験に限り使用し、設�
 `make check`は両版の計測回帰、従来の起動回帰、0.163.0の正常起動・pane/native版不一致・
 counter不一致、およびlifecycle 15件を通過した。これは限定した起動・計測の検証であり、
 Issue整理任務の完遂、他provider、未知のCLI版の互換性を示すものではない。
+
+### OrcaのHerdr閲覧タブの命名（2026-10-23）
+
+班長skillに、Orcaのviewerを`Herdr | 短い任務名`で明示的に命名し、tab IDと
+表示名を照合する手順を追加した。公開`terminal rename`を使い、既存の2つの閲覧タブを
+`Herdr | Issue整理`と`Herdr | Codex 0.163.0検証`へ変更した。後続の
+`terminal list --include-visual-layouts`で、それぞれ同じtab IDのtitleが一致した。
+通常のterminal/pane titleはHerdr由来の名前を表示し続けるため、命名の検証には使わない。
+agentやserverの再起動、接続先の変更、新しいviewer作成は行っていない。
+これは既存Orcaタブの命名経路の実機確認であり、改訂skillによる新規班長の一巡や
+他ホストの命名機能の検証ではない。
