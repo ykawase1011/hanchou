@@ -18,8 +18,8 @@ attempt. See [owned lifecycle](lifecycle.md) for its record and delayed cleanup.
 Explicit `--session NAME` instead selects an already-running shared server.
 Keep the same executable and session for subsequent calls; workspace/pane IDs are scoped to that server.
 The launcher checks current connectivity/inventory. Never silently fall back to
-the default server or a remote host. A viewer is optional and closing it does
-not terminate the server's agents. Reuse the caller/init readiness handoff for
+the default server or a remote host. Closing a viewer does not terminate the
+server's agents. Reuse the caller/init readiness handoff for
 tool paths/versions, log-home provenance and session configuration location;
 verify changed/mutable facts directly instead of touring the CLI command tree.
 
@@ -32,6 +32,41 @@ external notification behavior without claiming complete OS/mobile silence;
 only a specific conflicting behavior or an explicit all-alerts-off requirement
 needs resolution before work. Keep approvals and important results reachable.
 Do not rewrite shared/global settings or disable integrations speculatively.
+
+## Human-visible Herdr
+
+Every new sokkin launch includes a visible Herdr tab before real assignment,
+unless the user or pinned policy explicitly selects headless operation. The
+supervisor opens it through the host's existing terminal UI; the one-shot
+launcher remains independent of that UI. In Orca, use the available Orca terminal
+skill/tool to create a tab in the supervisor's current workspace without moving
+or replacing the conversation. Other hosts may use their existing terminal tabs
+or windows. No Orca installation is required on those hosts.
+
+Use the resolved Herdr executable and the returned `herdr.session` on the
+receipt's host. Herdr 0.9.5 provides `session attach NAME`; confirm the installed
+contract when missing from readiness. Do not use an unnamed/default session or
+create another server, workspace or agent to obtain a display. For a shared
+session, select the returned workspace using supported UI controls and verify
+its identity; attachment to the right server alone is insufficient.
+
+Verify tab creation and actual Herdr workspace display, including any startup
+overlay, before reporting success. Record the tab handle and session/workspace
+alongside the existing launch receipt, not in a new registry. On timeout, inspect
+existing tabs before retrying. Reuse the verified tab for follow-ups to the same
+live sokkin; if closed, reconnect to that session. New attempts must display their
+own target without repurposing another attempt's tab. Do not install optional
+integrations or change global terminal/provider settings merely to view it.
+
+If the host cannot display a viewer, report the exact limitation and reconnect
+details. Retain the launched attempt and hold real assignment unless headless
+operation is already authorized. Viewer failure is not evidence of agent failure
+and never justifies relaunching sokkin. A later viewer disconnect does not stop
+the running mission. Leave the tab available after completion; report that the
+agent exited when applicable. Normal owned-server lifecycle cleanup still applies.
+The native TUI accepts input: viewing intent is not technical read-only access.
+A browser viewer is an alternative only when already configured and verified;
+do not install a web plugin or expose a new listener as part of this step.
 
 ## Configuration and call
 
