@@ -10,6 +10,7 @@ Hanchouは4つのスキルと単発の側近起動シェルで構成する。
 | 起動 | `skills/hanchou-orchestrator/scripts/launch-sokkin.sh`は必ず新規branch・worktreeを作成・照合してから専用Herdr workspaceの最初のタブへ側近を起動する |
 | 保全 | 元checkoutのbranch切替・reset・stash・未コミット変更の移送を行わない。失敗時に元checkoutで代替実行しない |
 | 接続 | 版付きJSONでmission・attempt、設定元、worktree、Herdr接続先、provider・native ID、計測準備状態、失敗・残存資源を返す |
+| 人間向け表示 | 側近起動ごとに班長が対象Herdrのviewerタブを開き、workspace表示を確認して残す。同一側近への追加指示では再利用。表示不能時は明示的な画面なし実行の指定がない限り実作業の割当を待つ |
 | 作業開始 | 起動結果と側近の受領を照合し、native IDと計測元が対応してから実作業を渡す |
 | 使用量 | 入力・出力・cacheと親子実行を区別し、resume・fork・重複を扱う。欠測は不明。起動時点からの使用量も含める |
 | 制御 | 許可済みagent・model・認証経路と有限の予算・並列数・再試行上限を守る。計測不能・上限到達時は新規割当を止める |

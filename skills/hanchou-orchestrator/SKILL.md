@@ -55,7 +55,17 @@ nor shell implementation. Both bundled shells are public interfaces.
    update-notice skip uses `--skip-update-check`. Use `--help` only for an
    additional unresolved option. Save and return exit status and receipt in
    this call; do not create a script in one call just to execute it in the next.
-3. **Assign and wait.** A qualified receipt supplies `worktree`, `herdr`,
+3. **Show Herdr.** On every sokkin launch, open a human-visible viewer tab for
+   the receipt's exact host/session/workspace before assigning real work. Use
+   the host's terminal-tab capability and Herdr's installed attach contract;
+   in Orca use its available terminal tooling, not another agent tab. Verify
+   the displayed workspace and leave the tab open. Same-session follow-ups
+   reuse its verified tab; a replacement sokkin needs its own target. Resolve
+   uncertain tab creation before retrying. If display is unavailable, report
+   the blocker and connection details; do not silently assign without a viewer
+   unless the user or pinned policy explicitly permits headless operation.
+   See [viewer details](references/launch.md#human-visible-herdr).
+4. **Assign and wait.** A qualified receipt supplies `worktree`, `herdr`,
    `sokkin`, `sourceSnapshot`, and `usageReadiness`. Check `ok`,
    `stage == "startup_qualified"`, usage ready, identity/configuration and
    budget; reuse its process/model/native binding and bootstrap usage. Send
@@ -67,7 +77,7 @@ nor shell implementation. Both bundled shells are public interfaces.
    Bootstrap is already done; never resend it. Refresh only for intervening
    activity/delay or a concrete discrepancy. Failed or uncertain launches
    retain the same attempt and block assignment.
-4. **Accept and release.** Independently check the result, measure the settled
+5. **Accept and release.** Independently check the result, measure the settled
    assignment, preserve artifacts/receipts, compare source impacts and release
    owned resources as below. Batch dependent mechanical operations with
    assertions. Submission or idle alone is not completion.

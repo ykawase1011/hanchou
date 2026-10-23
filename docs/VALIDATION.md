@@ -488,3 +488,19 @@ finishがinstance_mismatchになることを再現。offline/live双方のfixtur
 live fixtureではユーザーのzsh起動設定によるssh-add待機も観測したため、公開workspace
 environment指定でテスト用ZDOTDIRを渡す。ユーザー設定は変更せず、本番launcherの
 起動環境にもこのテスト用設定を追加しない。
+
+### 側近起動時の人間向けHerdr表示（2026-10-23）
+
+班長の通常手順に、起動receiptのsession/workspaceをviewerタブで表示してから
+実作業を渡す段階を追加した。明示的なheadless指定、同じ側近への追加指示時の再利用、
+表示失敗・作成timeout時の既存タブ照合、完了後のタブ保全を規定する。
+起動シェルにホスト依存処理は追加せず、既存のターミナル機能を班長が操作する。
+
+macOS / Orca / Herdr 0.9.5で、#72の受入済み専用sessionへ公開
+`session attach NAME`を使って新しい可視タブから接続した。terminal handleの返却後、
+画面読取りで対象workspace、専用branchとcwd、終了済みCodexのnative IDを照合した。
+初回案内を進め、optional integrations画面は導入せず閉じた。対象workspaceの表示を
+再確認してタブを残した。対象の側近は既に終了しており、新しい任務・agentは起動していない。
+これは既存sessionへの表示経路の実機確認であり、改訂スキルを読んだ新規班長による
+自動起動一巡、他ホスト、共有sessionのworkspace選択、browser viewer、read-only化を
+検証したものではない。viewer表示は実行・計測・完了の証拠の代用にはしない。
