@@ -21,6 +21,11 @@ deployment. The example rows below are not a required questionnaire or defaults.
 - Publish or deploy: <decision; destination, checks, and conditions>
 - <Other project-specific action>: <decision; scope and conditions>
 
+Approval requests follow the delegated authority above: sokkin handles workers,
+Hanchou handles sokkin, and Hanchou asks the user about unresolved decisions or
+additional authority. This routing grants no new actions and does not override
+ask-each-time conditions or host/provider gates requiring the human personally.
+
 ## Checks and decisions
 
 - Before acting: <required tests, reviews, approvals, or other conditions>

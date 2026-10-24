@@ -13,18 +13,23 @@ flowchart TD
     subgraph Herdr["Herdr：実行を管理"]
         Sokkin["側近：作業・worker選択・検証・統合<br/>専用workspace / 新規Git worktree"]
         Worker["必要に応じたworker：割り当てられた作業"]
-        Sokkin -->|分担| Worker
-        Worker -->|成果・問題・使用量| Sokkin
+        Sokkin -->|分担・権限内の承認判断| Worker
+        Worker -->|成果・承認要求・問題・使用量| Sokkin
     end
     Launch -->|起動| Sokkin
-    Leader -->|任務・完了条件・予算| Sokkin
-    Sokkin -->|成果・検証・使用量| Leader
+    Leader -->|任務・完了条件・予算・権限内の承認判断| Sokkin
+    Sokkin -->|成果・承認要求・検証・使用量| Leader
     Human -.->|状況を見る| Viewer["Herdr閲覧タブ"]
     Viewer -.->|接続| Herdr
     Orca["任意のOrcaホスト<br/>対話・作業場所・閲覧タブをまとめて扱う"]
     Orca -.- Leader
     Orca -.- Viewer
 ```
+
+承認要求は **worker → 側近 → 班長 → 人間** の順に扱います。
+側近はworker、班長は側近からの要求を、すでに委ねられた権限の範囲で判断します。
+班長でも決められない重要な判断や追加の権限が必要な場合に、人間へ確認します。
+毎回の人間確認を指定した操作や、ホストが本人の操作を要求する承認は、この委任では代行しません。
 
 Orcaを使うと、班長との対話、worktreeごとの作業場所、Herdr閲覧タブを
 同じアプリでまとめて扱えて少し便利です。側近とworkerの実行はHerdrが管理し、
