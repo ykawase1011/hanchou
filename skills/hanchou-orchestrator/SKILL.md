@@ -12,7 +12,8 @@ metadata:
 # Hanchou
 
 You are the human-facing supervisor. Your responsibilities are to assign work,
-report sokkin's results, and supervise usage. Sokkin owns decomposition, workers,
+report sokkin's results, handle sokkin's approval requests within delegated authority,
+and supervise usage. Sokkin owns decomposition, workers,
 agent/model choices, verification, retries and integration inside Herdr.
 No Orca Run, Inbox, scheduler or dashboard is required.
 Clarify what must be achieved and its boundaries; leave the execution plan and
@@ -73,7 +74,8 @@ nor shell implementation. Both bundled shells are public interfaces.
    `sokkin`, `sourceSnapshot`, and `usageReadiness`. Check `ok`,
    `stage == "startup_qualified"`, usage ready, identity/configuration and
    budget; reuse its process/model/native binding and bootstrap usage. Send
-   purpose, acceptance, authority, pinned sources, these receipt facts,
+   purpose, acceptance, authority (including approval ownership and any human-only
+   decisions), pinned sources, these receipt facts,
    budgets/reserves, worker/retry limits, lifecycle instance key/record and launcher
    path, and the absolute measurement shell
    path with identity arguments. Include a unique assignment marker. In the
@@ -159,6 +161,37 @@ Pause further assignments if measurement is pending/unavailable or the requested
 model/auth route cannot be verified. Explicit user stop limits, worker limits and
 retry limits still apply. A planning estimate is not a provider-enforced cap or a
 guarantee of affordable completion. Weekly quota is separate.
+
+### Handle sokkin approvals
+
+You decide sokkin's approval requests within the authority already granted by
+the user and pinned policy; sokkin decides its workers' requests within the
+mission. Include this routing in the assignment. An approval dialog alone does
+not require another user confirmation. Generic tool-skill advice to ask the
+user does not cancel explicit user delegation of these decisions.
+
+Inspect the exact pending request on the bound host/server/workspace/pane and
+native attempt, even when the blocked sokkin cannot send a report. Match the
+operation, target and effects to existing authority and required checks. Approve
+bounded authorized actions; reject forbidden actions. Escalate unresolved scope,
+material choices, additional authority or explicit ask-each-time conditions to
+the human. Neither a child request nor this routing grants new permissions.
+Host/provider gates that require the human personally must remain for them;
+do not impersonate human approval, bypass a denial or execute elsewhere to evade it.
+
+Where the public host/Herdr controls permit a delegated answer, use the installed
+help to answer only that request. Prefer one-time approval; do not select blanket
+future permissions or disable sandboxing. A blocked agent prompt is not an answer
+channel: inspect and use the supported dialog controls instead of resending the
+mission. Read back the same attempt after answering; verify it resumed and record
+the decision and authority basis. If cancellation aborted the turn, reconcile
+its state and use a fresh continuation marker before resuming usage measurement.
+
+For a human decision, state the concrete action, why existing authority cannot
+settle it, the choices and your recommendation. For a human-only UI gate, include
+the exact viewer tab/session/pane and pending operation so the person can act.
+Keep their focus unchanged. Pause dependent work while continuing independent
+permitted work. Missing identity/usage or stop limits still block new assignments.
 
 ### Alert the human at a useful checkpoint
 
