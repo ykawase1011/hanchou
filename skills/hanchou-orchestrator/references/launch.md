@@ -72,6 +72,16 @@ viewer connection; do not open a duplicate tab or restart the agent just to rena
 it. Keep the label stable across status changes rather than adding a title-update
 poller. Other hosts use their supported naming controls when available.
 
+A successful read from a terminal does not by itself prove that the host has
+adopted it as a visible tab. In Orca, reconcile an `orphaned` result with the
+matching public visual layout before assignment. Keep the same sokkin and inspect
+the existing viewer; an uncertain result is not permission to create duplicates.
+If the first viewer is confirmed unadopted, a replacement in the verified
+supervisor workspace may attach to that same Herdr session. Record both handles
+for disposition and verify the replacement before assigning work. A different
+dynamic pane title alone does not show that the custom tab label was overwritten;
+read that tab ID's label before renaming or claiming a title-update race.
+
 Use the resolved Herdr executable and the returned `herdr.session` on the
 receipt's host. Herdr 0.9.5 provides `session attach NAME`; confirm the installed
 contract when missing from readiness. Do not use an unnamed/default session or
