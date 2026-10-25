@@ -38,6 +38,7 @@ if [[ $MOCK_MODE == hang ]]; then
   echo $! > "$MOCK_STATE/child.pid"
   wait
 fi
+[[ $MOCK_MODE != slow ]] || sleep 2
 path="$CODEX_HOME/sessions/2026/10/20/rollout-2026-10-20T00-00-00-00000000-0000-4000-8000-000000000001.jsonl"
 # The tool must receive no prompt/assistant/tool-result text.
 if rg -q 'PRIVATE_TRANSCRIPT|"content"|"instructions"' "$path"; then exit 93; fi
@@ -89,9 +90,18 @@ make_log() {
 }
 restore() { cp "$fixture/base.jsonl" "$log"; export MOCK_MODE=normal MOCK_VERSION=normal; }
 run_measure() {
-  bash "$measure" --provider codex --log-home "$fixture/home" --cwd "$fixture/project" \
+  local result status=0
+  # Use the production default deadline for correctness checks. Subsecond
+  # margins depend on host load and jq's clock precision, not evidence validity.
+  result=$(bash "$measure" --provider codex --log-home "$fixture/home" --cwd "$fixture/project" \
     --model fixture-model --effort medium --marker marker-current --started-after 2026-10-20T00:00:00Z \
-    --timeout-ms 1600 "$@"
+    "$@") || status=$?
+  printf '%s\n' "$result"
+  if ((status)); then
+    printf 'measure-session failed (exit=%s, mock=%s, codex=%s): %s\n' \
+      "$status" "$MOCK_MODE" "$HANCHOU_TEST_CODEX_VERSION" "$result" >&2
+  fi
+  return "$status"
 }
 bad() {
   local name=$1; shift
@@ -109,6 +119,11 @@ cmp "$log" "$fixture/base.jsonl" || fail 'measurement modified native log'
 [[ ! -e $(cat "$fixture/tool-home") ]] || fail 'temporary projection retained'
 run_measure > "$fixture/discovery.json"
 assert_json "$fixture/discovery.json" '.status=="ready"'
+# A correct tool response may take longer than the old 1600 ms test deadline.
+export MOCK_MODE=slow
+run_measure --native-log "$log" > "$fixture/slow.json"
+assert_json "$fixture/slow.json" '.status=="ready" and .tool.totalTokens==110'
+export MOCK_MODE=normal
 if [[ -n $MOCK_REAL_CCUSAGE ]]; then
   export MOCK_MODE=real
   run_measure --native-log "$log" > "$fixture/real-ccusage.json"
@@ -309,10 +324,10 @@ assert_json "$fixture/reset.json" '.error.code=="counter_reset"'
 restore; export MOCK_MODE=race
 jq -c 'select(.payload.type=="task_complete")' "$log" > "$fixture/append.jsonl"
 mutate 'select(.payload.type!="task_complete")'
-run_measure --native-log "$log" --timeout-ms 3000 > "$fixture/race.json"
+run_measure --native-log "$log" > "$fixture/race.json"
 assert_json "$fixture/race.json" '.status=="ready" and .lastUsage.cumulative.total_tokens==110'
 restore; export MOCK_MODE=hang
-bad hanging --native-log "$log" --timeout-ms 1200
+bad hanging --native-log "$log"
 [[ -s $fixture/helper.pid && -s $fixture/child.pid ]] || fail 'hanging helper did not run'
 for process in "$(cat "$fixture/helper.pid")" "$(cat "$fixture/child.pid")"; do
   ! kill -0 "$process" 2>/dev/null || fail "helper process $process survived timeout"

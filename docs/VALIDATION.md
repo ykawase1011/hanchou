@@ -569,3 +569,24 @@ workerの要求は側近、側近の要求は班長、班長の未解決判断�
 図のラベルと経路を目視確認した。二段の承認回答・再開と、権限外の要求だけを
 人間へ上げる実モデル／採用hostでの一巡は未実施であり、他providerのUI互換性も主張しない。
 未実施の一巡は[承認委任の実モデル検証 #79](https://github.com/ykawase1011/hanchou/issues/79)で追跡する。
+
+### 計測テストの期限と失敗診断（2026-10-25）
+
+macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが
+テスト指定の1,600ms期限内に照合できず、`invalid_native_log`で終了する経路を再現した。
+同じfixture・計測script・mockで期限だけ15,000msにした観測は1.928秒で
+`ready`、110 tokensに一致した。このjq 1.6の`now`は整数秒であり、短い期限の
+成否は時計精度とホスト負荷にも影響される。過去のB2/C1試行では失敗receiptが
+保存されていないため、同じ原因だったとは断定せず、当時の検証失敗は維持する。
+
+`tests/test-measure-session.sh`の正誤判定は計測scriptの既定10,000msを使う。
+2秒遅れる正しいtool応答の照合を追加し、race再読取りとhangしたhelper・子processの
+回収も同じ期限で検査する。失敗receiptはmock mode・fixture版・exitとともにstderrへ
+表示し、一時fixtureは従来どおり削除する。診断用の意図的失敗で表示と削除を確認した。
+本番2shellの期限・identity・counter判定、sandbox、固定設定は変更していない。
+
+`make check`は0.162.1/0.163.0双方の計測回帰とlifecycle 15件を含め通過した。
+0.163.0 fixtureの計測回帰はjq 1.7.1-appleでも通過した。
+拒否待ちにも既定期限を使うため、この環境の全検査は約11分だった。
+これはオフライン検証の安定化であり、実missionのトークン削減効果や過去試行の
+検証成功を示すものではない。
