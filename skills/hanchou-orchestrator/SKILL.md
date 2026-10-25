@@ -242,8 +242,13 @@ help to answer only that request. Prefer one-time approval; do not select blanke
 future permissions or disable sandboxing. A blocked agent prompt is not an answer
 channel: inspect and use the supported dialog controls instead of resending the
 mission. Read back the same attempt after answering; verify it resumed and record
-the decision and authority basis. If cancellation aborted the turn, reconcile
-its state and use a fresh continuation marker before resuming usage measurement.
+the decision and authority basis. Key-input acceptance alone does not prove the
+new state: an immediate wait/read may still return the previous blocked snapshot.
+Keep the same attempt and inspect its current native request boundary within the
+observation deadline; do not repeat the key or assignment on that stale state.
+If cancellation aborted the turn, confirm that boundary before sending a fresh
+continuation marker and resuming usage measurement. An unverified boundary stops
+dependent work; it is not permission to resend or relaunch.
 
 For a human decision, state the concrete action, why existing authority cannot
 settle it, the choices and your recommendation. For a human-only UI gate, include

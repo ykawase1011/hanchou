@@ -115,8 +115,12 @@ Use installed help and supported dialog controls only where delegated answers
 are permitted. Answer the current request once, without blanket future approvals
 or disabling sandboxing. Do not resend a mission to a blocked prompt. Read back
 the same attempt to verify resumption and record the decision and authority basis.
-If cancellation aborted a turn, reconcile it and give the continuation a fresh
-marker for usage measurement. Preserve viewer focus. Continue independent allowed
+Key-input acceptance alone does not prove the new state: an immediate wait/read
+may still return the previous blocked snapshot. Inspect the same native request
+boundary within the observation deadline without repeating the key or assignment.
+If cancellation aborted a turn, confirm that boundary and give the continuation a
+fresh marker for usage measurement. An unverified boundary stops dependent work;
+do not resend or relaunch. Preserve viewer focus. Continue independent allowed
 work while dependent work waits; identity/usage and stop-limit requirements remain.
 
 ## Verification and report
