@@ -226,6 +226,7 @@ Capture stdout and exit status separately. Stdout contains one JSON receipt:
 | `config.source`, `config.effective` | Pinned config path and effective values |
 | `worktree` | Source repository, new path/branch, fixed base and verified HEAD |
 | `herdr` | Local host, named session, returned workspace/tab/pane IDs |
+| `lifecycle` | Owned instance key/record and saved startup `status`; status is null for shared launches or before an owned record exists |
 | `sokkin` | Provider/name, requested model/effort/update-skip, observed model/native IDs and qualified process evidence |
 | `usageReadiness` | Default pending; opt-in qualified startup returns initial native/tool evidence and its boundary |
 | `error`, `resources` | Failure category and resources retained for reconciliation |
@@ -242,12 +243,36 @@ and preserve any additional content at risk. Compare at mission end as needed;
 the launch-time snapshot alone cannot prove preservation throughout execution.
 
 On failure after creation the script retains resources and returns known IDs.
-Read the same pane and inventory; inspect process identity before any start or
-resend. Update notices, project trust, authentication or shell startup can block
-readiness. Answer only within existing authority, then recheck the same agent.
-A stopped/not-yet-started process may be started in the **same attempt's** pane
-after proving no agent began; an unknown or started attempt must not be restarted
-blindly. Replacing an actual sokkin requires a fresh launch and preserved results.
+Inspect the same pane, inventory and process identity without sending real work
+or repeating bootstrap. Update notices, project trust, authentication or shell
+startup can block readiness. Answer only within existing authority; explicit
+denial and human-only decisions remain gates.
+
+An owned launch failure saves `UNKNOWN`; an interrupted launch may leave
+`STARTING`. Neither state has a supported promotion to `RUNNING`. Clearing a
+popup, observing a ready CLI, or obtaining native identity and settled usage
+manually does not repair that record. Do not bootstrap merely to try to recover
+it, edit the record, call `finish`/`resume` to bypass the state, or assign real
+work. `--skip-update-check` is an explicitly authorized process-local prevention
+option for a new launch, not recovery of an existing UNKNOWN instance.
+
+Preserve the failed receipt, record, any native usage and artifacts, including
+the failed attempt's cost. Establish which owned processes actually started;
+if cleanup is authorized, exit only those CLIs and verify termination before
+explicitly stopping their verified dedicated server. Preserve its history and
+unchanged failure record; do not report FINISHED, acceptance or timed reap.
+Remove a worktree only after preserving its contents and proving no remaining
+owner. If identity, activity or ownership is uncertain, retain resources and
+report the missing evidence. A separate, explicit decision within the user's
+authority may start a new attempt with a fresh branch/worktree after this
+reconciliation. Carry forward the failure and preserved results; do not silently
+replace an experiment's failed arm or bypass a denied operation.
+
+A shared launch has no owned lifecycle record. It still requires corroborated
+startup identity and usage before work; retain an uncertain or already-started
+agent, inspect the same pane, and never restart it blindly. A process proved
+never to have started may be started there only under the shared-session manual
+procedure. Replacing an actual sokkin requires a fresh launch and preserved results.
 
 If a CLI response or the whole receipt is lost, reconcile the unique attempt
 label/name, reported branch/path and current Herdr/Git state. No exactly-once or
@@ -255,8 +280,11 @@ automatic rollback guarantee is offered. Never force-delete retained resources.
 
 ## Bootstrap and mission
 
-The following manual bootstrap is needed only when the launcher did not already
-return qualified evidence. Do not repeat it after `startup_qualified`.
+Use the following manual bootstrap after a successful default `agent_ready`
+launch (owned record `RUNNING`), or for an explicitly selected shared-session
+manual startup after its identity is verified. It is not recovery from a failed
+qualification or an owned `STARTING`/`UNKNOWN` launch. Do not repeat it after
+`startup_qualified`.
 
 Allow one short bootstrap turn for role/instruction receipt only. Supply the
 already-verified launch metadata and the exact pinned sokkin instructions in

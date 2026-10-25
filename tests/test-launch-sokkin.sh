@@ -178,6 +178,7 @@ for attempt in first second; do
   run_launch --base "$base" --worktree-root "$fixture/sokkin worktrees" ${extra_args[@]+"${extra_args[@]}"} > "$fixture/$attempt.json" 2> "$fixture/$attempt.err"
   [[ "$(jq -s 'length' "$fixture/$attempt.json")" == 1 ]] || fail 'stdout must contain exactly one JSON object'
   assert_json "$fixture/$attempt.json" '.version == 2 and .ok == true and .missionId == "sample" and (.attemptId | type == "string" and length > 0)'
+  assert_json "$fixture/$attempt.json" '.lifecycle.owned == false and .lifecycle.status == null'
   assert_json "$fixture/$attempt.json" '.herdr.workspaceId == "fixture-workspace" and .herdr.tabId == "fixture-tab" and .herdr.paneId == "fixture-pane"'
   assert_json "$fixture/$attempt.json" '.sokkin.agent == "codex" and .sokkin.nativeThreadId == "fixture-native-thread" and .sokkin.nativeSessionId == null and .usageReadiness.status == "pending"'
   assert_json "$fixture/$attempt.json" '.sokkin.requestedModel == "gpt-6-astra" and .sokkin.requestedEffort == "medium"'
@@ -227,6 +228,7 @@ if run_launch --worktree-root "$fixture/failure worktrees" > "$fixture/start-fai
   fail 'start failure unexpectedly succeeded'
 fi
 assert_json "$fixture/start-failure.json" '.version == 2 and .ok == false and (.error != null) and (.worktree.path | type == "string")'
+assert_json "$fixture/start-failure.json" '.lifecycle.owned == false and .lifecycle.status == null'
 assert_json "$fixture/start-failure.json" '.herdr.workspaceId == "fixture-workspace" and .herdr.paneId == "fixture-pane"'
 failed_wt=$(jq -r '.worktree.path' "$fixture/start-failure.json")
 [[ -d "$failed_wt" ]] || fail 'start failure deleted potentially used worktree'

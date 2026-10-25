@@ -444,6 +444,26 @@ server/socket/pane PID消滅とCLOSED記録まで確認した。起動直後のs
 プロセスとsocket照合は協調する管理操作を対象とする。外部から同時にserverを入れ替える
 操作を公開CLIと原子的に排他する保証や、複数hostの回収、正確な24時間後の実行は提供しない。
 
+### 部分起動失敗の停止契約（2026-10-25、#84）
+
+Codex 0.163.0 / ccusage 20.0.37 / Herdr 0.9.5の限定実機試行では、更新案内で
+`agent_start_unconfirmed`となり、専用記録が`UNKNOWN` / nativeId=nullで残った。
+同じCLIで案内を一度Skipし、tool-free bootstrapのnative identity・実権限・settled usageを
+照合しても公開遷移では復旧できず、実任務の割当前に停止した。比較は失敗1回・完了0件・
+未実行3件のまま保持し、認定された失敗費用1,752,244 tokens / 28 responsesを除外しない。
+PR #83の性能改善は未立証であり、この修正を有利な再試行や比較完了とは扱わない。
+
+復旧に必要な元の実行条件を全て固定していない既存記録を、後付けbootstrapだけで昇格する
+機能は追加しない。起動receiptへ保存済み`lifecycle.status`を追加し、成功した既定起動の
+手動bootstrapと、`STARTING`/`UNKNOWN`で実作業を禁止する経路を手順上で分けた。
+所有・実稼働・成果・使用量を保全して明示終了し、別の新規試行は明示判断後に行う。
+`--skip-update-check`は新規起動の予防指定に限り、既存失敗の復旧ではない。
+
+offline回帰は正常/失敗起動receiptと保存状態の一致、共有/事前失敗時のnull、
+`STARTING`/`UNKNOWN`からfinish・resume・acceptの拒否、reapの保持と記録不変を確認する。
+後付けの完了文書・well-formed settled usage evidenceも昇格条件にしない。
+実Git・PID・socketを使うfixtureの検証であり、実AIの同一試行復旧や費用削減の証明ではない。
+
 ### PR #69: 完了・受入の証拠照合を補強（2026-10-22）
 
 完了時にもserver実体と、呼出し元が持つinstance／record／mission／attemptの対応を照合する。
