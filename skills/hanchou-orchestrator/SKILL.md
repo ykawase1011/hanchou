@@ -103,6 +103,10 @@ sources in place: record hashes for comparison, not copies of ignored config.
 The launch receipt already checks connectivity, inventory, fresh worktree and
 actual process identity; do not repeat those checks before assignment. For source
 comparisons use `git -C "$SOURCE" rev-parse --path-format=absolute --git-common-dir`.
+Suppress Git's optional index writes during source inspection with
+`git --no-optional-locks` or `GIT_OPTIONAL_LOCKS=0`, including commands submitted
+for individual host approval. A read-only inspection such as `git status` can
+otherwise refresh the human checkout's index metadata.
 Resolve genuinely missing authority or discrepancies before acting.
 
 Save complete stdout, stderr and exit status before selecting receipt fields for
@@ -112,6 +116,10 @@ the current decision; retain the full receipt for acceptance. A required missing
 or null field is an anomaly: inspect that receipt's relevant envelope and error,
 and stop dependent actions until resolved. Do not expand unrelated receipts or
 replace missing evidence with defaults.
+When manual identity or permission checks require native metadata, select only
+the needed fields from the bound session. Do not print entire metadata records
+with embedded instructions/account details; use the exact pane's process
+inventory instead of listing unrelated agents.
 
 ### Measurement and capacity
 
@@ -225,6 +233,9 @@ material choices, additional authority or explicit ask-each-time conditions to
 the human. Neither a child request nor this routing grants new permissions.
 Host/provider gates that require the human personally must remain for them;
 do not impersonate human approval, bypass a denial or execute elsewhere to evade it.
+If history collection is refused while the agent is blocked, read its current
+visible dialog through the public controls. A failed read does not establish that
+no request exists or permit resending the mission.
 
 Where the public host/Herdr controls permit a delegated answer, use the installed
 help to answer only that request. Prefer one-time approval; do not select blanket

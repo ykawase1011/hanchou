@@ -107,6 +107,9 @@ authorized actions; reject forbidden ones. Ask Hanchou about ambiguity, expanded
 scope or explicit human confirmation requirements, with the concrete action,
 authority gap, choices and recommendation. Host/provider human-only gates remain
 for the human via Hanchou; do not bypass denials or execute elsewhere to evade them.
+If history collection is refused while the worker is blocked, read its current
+visible dialog through the public controls. A failed read does not establish that
+no request exists or permit resending the assignment.
 
 Use installed help and supported dialog controls only where delegated answers
 are permitted. Answer the current request once, without blanket future approvals
@@ -128,6 +131,9 @@ unavailable or denied, report the environmental blocker and actual tool receipt;
 do not label unexecuted assertions as product failures or mark required checks passed.
 Keep secrets and unnecessary transcript text out of reports. Distinguish tests,
 reasoning-only review, runtime health and actual user-visible acceptance.
+For manual native identity or permission checks, select only the needed fields
+from the bound session, not whole metadata records with embedded instructions
+or account details. Inspect the exact worker pane's processes, not unrelated agents.
 
 Report: mission/attempt; current state; acceptance results; artifacts and commits;
 checks run; unresolved problems; each independently launched session's usage and
