@@ -27,7 +27,8 @@ request boundary, reserving for usage not yet recorded. This skill has no separa
 `references/usage.md`. Other qualified routes use the supplied usage contract. Do not invent
 additional required files. For a long test or wait, use long foreground waits at both tool
 layers: where supported, `exec_command`/`write_stdin` wait 30000 ms and the outer
-execution wrapper/continuation waits 60000 ms. Consume pending inner sessions in
+execution wrapper/continuation waits 60000 ms, starting with the first call,
+including the initial test invocation. Consume pending inner sessions in
 that same bounded execution when possible. Do not spend a fresh model request
 on each 1000 ms empty poll; every such request can charge the full cached input.
 Other hosts use equivalent supported bounds. Recheck usage when results settle
