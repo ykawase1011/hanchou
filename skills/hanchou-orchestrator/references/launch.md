@@ -151,6 +151,29 @@ reuse. The successful launcher receipt covers its current inventory/readiness
 checks. Use the bounded startup qualification below where supported; otherwise
 independently bind the new pane's native identity and settled usage.
 
+### Explicit manual approvals
+
+When the mission explicitly selects manual approval, Codex **0.163.0** supports
+`--manual-approvals --qualify-startup`. The launcher passes
+`--sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer="user"`
+in addition to `--no-daemon`, preserving model/effort and global configuration.
+It rejects Claude, other Codex versions, missing startup qualification and
+lifecycle operations before creating resources. This is a one-launch selection;
+omitting the option keeps the existing provider configuration behavior.
+
+Qualified startup checks the exact process arguments and the tool-free native
+turn's sandbox type, approval policy and reviewer. A successful receipt has
+`sokkin.requestedManualApprovals == true` and
+`sokkin.observedPermissions == {"sandbox":"workspace-write","approvalPolicy":"on-request","approvalsReviewer":"user"}`.
+Missing or mismatched native values fail closed and retain the attempt for
+inspection, with no real assignment. They do not trigger another mode or launch.
+The permission evidence covers those three fields at bootstrap; it does not
+certify other configured writable paths, network access, hooks or future turns.
+Mission authority, exact-request checks and human-only gates still apply.
+This mode does not prove the worker → sokkin → supervisor approval chain works;
+that live validation remains tracked in Issue #79. Never use it to retry an
+action already denied by automatic review or to evade a human-only gate.
+
 ### Native automatic approval review
 
 An explicit request for automatic permission review does not select an automatic

@@ -8,7 +8,7 @@
 - 配布対象は4スキルと単発のBash起動・計測スクリプト。旧cron、kaizen、issue公開helper、status-view、Orca用参照、旧テストを削除。
 - `make check`: 構造、リンク、shell構文、実Gitとmock Herdrによる起動試験、Bash 3.2回帰試験。ネットワーク・認証・実agentを必要としない。
 - 起動試験は新規branch/worktree、元checkoutのstaged/unstaged/untracked保全、設定override、異常値、cwd/provider不一致、途中失敗時の資源保全を検査する。mock成功はHerdr実機成功とは別。
-- 39回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
+- 40回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否、Claudeへの手動承認オプション拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
 - `skills@1.7.4`を一時Git projectで実行。Codex/Claude Code向けに4スキルだけを選択し、全ファイルの一致、launcher実行権限、references/assetsの保持、導入先での`--help`を確認。global/userインストールは変更しない。[正確な導入コマンド](INSTALLATION.md)。
 
 ### 初期化時のツール導入確認
@@ -619,6 +619,30 @@ toolは`gpt-5.6-luna`・`isFallback: true`を返したため、reviewer計測は
 本番shellの対応scopeとglobal installは変更していない。これはn=1の機能probeであり、
 旧版と候補版のend-to-end比較やtoken・wall改善の証明ではない。費用scopeの残件は
 [#67](https://github.com/ykawase1011/hanchou/issues/67)、承認経路は[#79](https://github.com/ykawase1011/hanchou/issues/79)で追跡する。
+
+### 起動時の手動承認モード指定（2026-10-25、#79）
+
+二段承認の次の試験準備で、launcherがsandboxと承認先を起動元設定から継承し、
+指定した手動モードを固定できない点を確認した。任務が明示選択した場合だけ使う
+`--manual-approvals --qualify-startup`を追加し、Codex 0.163.0に限定した。
+`workspace-write`・`on-request`・`user`をprocess引数とtool-free bootstrapの
+native turn contextで照合し、receiptに要求と観測を分けて返す。
+既定の起動、他provider、global設定、installed skillsは変更しない。
+
+offline試験は正しい引数とnative値、sandbox／承認方針／reviewerの不一致、
+観測値欠落、未対応版、資格確認なし、Claude、lifecycleとの併用を検査する。
+不一致での別modeへのfallbackや同一UNKNOWNの昇格は提供しない。
+この照合はbootstrap時の3項目に限り、追加writable path・network・hookの
+全設定や後続turnの継続的な保証ではない。二段の承認委任、拒否・取消・本人必須gateの
+実機受入や費用改善は本変更の合格条件に含めず、#79／#67をopenで維持する。
+
+macOS / Herdr 0.9.5 / Codex 0.163.0 / ccusage 20.0.37、Astra mediumの
+fresh起動1件で、明示許可済みのprocess-local update-check抑止とこのoptionを併用した。
+`RUNNING`・`startup_qualified`、実process引数、nativeの3項目・source `cli`、
+bootstrap使用量readyを確認してから、同じセッションで独立した開発レビューを行った。
+レビューは指摘なしで、終了記録に必要なprocess確認は通常sandboxの個別承認を
+経て成功した。外側ownerのhost routeは未認定として別計上しており、
+これは全階層の費用認定やworkerからの二段承認の証明ではない。
 
 ### 計測テストの期限と失敗診断（2026-10-25）
 
