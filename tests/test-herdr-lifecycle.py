@@ -147,7 +147,32 @@ class Lifecycle(unittest.TestCase):
 
     def finish(self):
         report = self.tmp/'report.txt'; report.write_text('Results and artifact locations preserved.\n')
-        self.op('finish','--evidence',str(report))
+        return self.op('finish','--evidence',str(report))
+
+    def assert_transition_receipt(self, receipt, operation):
+        saved = json.loads(self.record.read_text())
+        self.assertEqual(receipt['operation'], operation)
+        self.assertEqual(receipt['recordReadback'], 'matched')
+        self.assertEqual(receipt['record'], str(self.record))
+        for key in ('instanceKey', 'status', 'missionId', 'attemptId', 'nativeId', 'worktree'):
+            self.assertEqual(receipt[key], saved[key])
+        if saved.get('finishedAt'):
+            completion = receipt['completion']
+            self.assertEqual(completion['finishedAt'], saved['finishedAt'])
+            report = Path(completion['report']['path'])
+            self.assertEqual(report, self.record.parent/'report.txt')
+            self.assertEqual(completion['report']['gitBlobId'], self.git('hash-object',str(report)).decode().strip())
+        else:
+            self.assertIsNone(receipt['completion'])
+        if saved.get('acceptedAt'):
+            acceptance = receipt['acceptance']
+            self.assertEqual(acceptance['acceptedAt'], saved['acceptedAt'])
+            evidence = Path(acceptance['path'])
+            self.assertEqual(evidence, self.record.parent/'acceptance.json')
+            self.assertEqual(acceptance['gitBlobId'], self.git('hash-object',str(evidence)).decode().strip())
+        else:
+            self.assertIsNone(receipt['acceptance'])
+        self.assertEqual(receipt['closedAt'], saved.get('closedAt'))
 
     def accept(self, **kw):
         evidence = self.tmp/'accept.json'
@@ -249,18 +274,40 @@ class Lifecycle(unittest.TestCase):
 
     def test_lifecycle_and_preservation(self):
         self.launch(); self.assertEqual(json.loads(self.record.read_text())['status'],'RUNNING')
-        self.finish()
+        self.assert_transition_receipt(self.finish(), 'finish')
         self.assertEqual(self.op('reap')['action'],'retained')
-        self.op('resume')
+        self.assert_transition_receipt(self.op('resume'), 'resume')
         s=json.loads(self.record.read_text()); self.assertEqual(s['status'],'RUNNING'); self.assertIsNone(s['finishedAt']); self.assertIsNone(s['acceptedAt'])
         self.finish(); self.age()
         self.assertEqual(self.op('reap')['action'],'retained')  # no acceptance after resume
-        self.accept(); self.op('resume',ok=False); self.assertEqual(self.op('reap')['status'],'CLOSED')
+        self.assert_transition_receipt(self.accept(), 'accept')
+        self.op('resume',ok=False)
+        closed = self.op('reap')
+        self.assertEqual(closed['status'],'CLOSED')
+        self.assert_transition_receipt(closed, 'reap')
         self.assertFalse((self.server/'s').exists())
         self.assertTrue(Path(self.launch_receipt['worktree']['path']).is_dir())
         self.assertTrue((self.record.parent/'report.txt').is_file())
         self.assertEqual(self.op('reap')['action'],'retained')
         self.assertEqual(self.snapshot(),self.baseline)
+
+    def test_lifecycle_does_not_report_unpersisted_transition(self):
+        self.launch(); self.finish()
+        previous = self.record.read_bytes()
+        # Simulate a successful rename command that did not persist the new state.
+        # The receipt must not certify the intended RUNNING state from memory.
+        bindir = self.tmp/'drop-write-bin'; bindir.mkdir(exist_ok=True)
+        mv = bindir/'mv'
+        mv.write_text('#!/bin/sh\nif [ "$3" = "$DROP_WRITE" ]; then exit 0; fi\nexec /bin/mv "$@"\n')
+        mv.chmod(0o755)
+        env = dict(self.env, PATH=str(bindir)+os.pathsep+self.env['PATH'],
+                   DROP_WRITE=str(self.record.parent/'.instance-next'))
+        failed = self.op('resume',ok=False,env=env)
+        self.assertFalse(failed['ok'])
+        self.assertEqual(failed['error']['code'],'record_readback_failed')
+        self.assertEqual(self.record.read_bytes(),previous)
+        self.assertTrue((self.server/'s').exists())
+        self.assert_transition_receipt(self.op('resume'), 'resume')
 
     def test_server_survives_launch_tool_group_cleanup(self):
         import time

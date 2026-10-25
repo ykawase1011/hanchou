@@ -54,6 +54,19 @@ the supervisor accepted the result, or that the CLI has exited. Do not mark a
 paused, blocked, failed or still-running assignment FINISHED merely to reclaim it.
 Shared-session missions have no lifecycle record and use ordinary result reporting.
 
+A successful transition receipt reads back the saved record before returning
+`recordReadback: "matched"`. It includes `operation`, mission/attempt, native ID,
+worktree, and the current `completion` and `acceptance` boundaries. `completion`
+contains `finishedAt` and `report.path`/`report.gitBlobId`; `acceptance` contains
+`acceptedAt`, `path` and `gitBlobId`. An absent boundary is `null`, including both
+after resume. Reuse these fields for the next mechanical check and preserve the
+full receipt; a second read solely to obtain the same transition fields is
+unnecessary. Read the referenced evidence to judge the work and verify its hash.
+This receipt does not replace settled usage, independent acceptance or process
+exit checks. On `record_readback_failed`, the write may already have occurred:
+inspect the same record before any retry. A retained reap result is not a new
+transition and keeps its existing `action`/`reason` receipt.
+
 For FINISHED-to-accept, keep dependent mechanical checks in one bounded tool
 execution where supported, with assertions before each next operation:
 match the instance/report and `finishedAt`; obtain the final reply's settled
@@ -64,7 +77,7 @@ Batching does not replace the supervisor's judgment or the checks below. Missing
 evidence, active usage, a failed assertion or a pending approval stops dependent
 operations; inspect the same attempt instead of repeating completion or exit.
 Use installed help for unresolved command syntax, including pane selectors;
-do not guess positional arguments. Read back acceptance before the ordinary
+do not guess positional arguments. Verify the matched acceptance receipt before the ordinary
 reap checkpoint; a retained server is not a failed acceptance or permission to
 force cleanup.
 
