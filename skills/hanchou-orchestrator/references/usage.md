@@ -28,8 +28,9 @@ A ready receipt describes the session cumulative scope, current request boundary
 observed native/tool counters and freshness. Active requests have usage still
 unreported, including the final answer: reserve for it, do not repeatedly poll
 self for a settled total. At final acceptance measure the sokkin after its report
-with that assignment's marker and require a settled boundary. Preserve one latest
-cumulative receipt per native ID; do not sum repeated snapshots.
+with that assignment's marker and require a settled boundary. Count one latest
+cumulative receipt per native ID; retain earlier checkpoints as evidence, not
+additional usage entries.
 During an active tool call, CLI 0.162.1 and 0.163.0 can write the response usage record before
 the call and its matching `token_count` only after the call returns. The bundled
 script validates one such pending native response and copies its recorded counters
@@ -176,6 +177,40 @@ zero-usage session, including when its serialization is unsupported.
 - State whether the total includes the supervisor itself. If its host exposes
   no attributable measurement, report the execution subtotal and missing scope,
   not a complete Hanchou total.
+
+## Checkpoint intervals and cost scope
+
+For cost calibration, name the intended preparation, execution and finalization
+boundaries before work. Reuse the existing launch, assignment and acceptance
+checks; do not add model turns just to fill a phase table. Retain each receipt's
+native identity, provider/tool versions, cumulative components, `observedAt`,
+`lastUsage.observedThrough`, current-request state and scope alongside the event
+it supports. Keep these evidence checkpoints separate from the single latest
+accounting entry for that session.
+
+Subtract cumulative components only between qualified receipts with the same
+native session, compatible counter semantics and unchanged inclusion scope.
+Require nondecreasing components; a reset, incompatible scope or missing boundary
+leaves the interval unavailable. A qualified same-session continuation keeps the
+earlier cumulative usage. These differences allocate an already counted total;
+they are never added to that total again. Apply the provider's cache/reasoning
+rules above to both endpoints.
+
+An active checkpoint is a recorded response boundary, not an exact phase end.
+Call its difference an observation interval and state any in-flight or boundary
+gap. A filename such as `preaccept` or the receipt's collection time cannot prove
+that every token belongs to acceptance. Use an exact phase label only when the
+attribution is independently supported; otherwise keep combined intervals or
+unknown phases. A later settled total closes that session's reported scope, not
+the missing semantic boundaries within it.
+
+List the supervisor, sokkin, independent workers/reviewers, failed starts/retries
+and any outer caller/harness separately, with their included-child relationships
+and qualification. Report disjoint qualified totals, unqualified observations and
+missing scope separately. A completed product trial's subtotal does not cover
+the caller's preparation, control, cleanup and handoff. An unsupported caller's
+raw counters may expose that cost but cannot qualify it or authorize new work;
+retain discrepancies and do not claim a complete campaign total or savings.
 
 ## Freshness and budget gate
 
