@@ -682,6 +682,40 @@ bootstrapや途中snapshotを足していない。準備・個別承認・報告
 確立していない。[#79](https://github.com/ykawase1011/hanchou/issues/79) と
 [#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
 
+### 手動承認の取消と同じnativeでの継続（2026-10-25、#79／#67）
+
+PR #87 の merge commit `c48f7cd` の tracked skills を別途凍結し、macOS /
+Herdr 0.9.5 / Codex 0.163.0 / ccusage 20.0.37 で取消境界を1件確認した。
+対象は設定に従う sokkin（Astra medium）1件、worker 0、再試行0。
+新規worktreeと明示的manual modeで起動し、native source `cli`、実processの
+PATH・model・権限3項目とbootstrap使用量を確認してから割り当てた。
+外側ownerは未認定hostの試験担当であり、認定済み班長として扱っていない。
+
+通常sandboxで拒まれた無害な外部marker書込みのnative承認画面を確認し、
+公開キー操作でEscを1回送った。直後のwait/readは旧blocked状態を返し、まだ
+中断eventを確認できないassertionで後続処理が止まった。キーや依頼を再送せず、
+同じ試行の後続観測で `turn_aborted` とidleを確認した。中断した依頼のmarkerを
+指定した既存計測shellは `current_request_aborted` として拒否した。
+
+同じ生存nativeへ新markerの継続依頼を送り、計測readyを確認してから報告を作成した。
+取消対象の書込みは再試行・代行せず、対象ファイルの不存在を独立確認した。
+継続promptのwaitは一度timeoutしたが、同じ試行を観測し、再送していない。
+報告保存のfinish操作は別の具体的な要求として一回承認した。
+最終settled cumulativeは **346,004 tokens / 12 responses**。
+非cache input 20,711、cache read 321,280、output 4,013の合計であり、
+reasoning 60はoutputの内数。bootstrap・中断前後のsnapshotを加算していない。
+外側の準備・操作・整理費用は未認定rawの別枠で、campaign全体の認定総量はない。
+
+全成果・native・receiptを保存し、CLI実終了、全idle shellのdurable cwdへの移動を
+確認してからFINISHEDを受入れた。serverは86,400秒の条件が未経過のため保持し、
+受入れ後のpane操作は行っていない。観測に基づき、キー受理だけで状態遷移を
+断定せず、同じ試行のnative境界を期限内に確認する手順を明確化した。
+この追記後の手順の新規実機再試験、workerからの委任拒否、人間本人必須gate、
+Claude／auto-review／非対話経路は未検証。n=1の取消・継続確認であり、
+旧receipt比較の完了0件を置換せず、性能改善も確立していない。
+[#79](https://github.com/ykawase1011/hanchou/issues/79) と
+[#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
+
 ### 計測テストの期限と失敗診断（2026-10-25）
 
 macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが
