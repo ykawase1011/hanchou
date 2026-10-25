@@ -72,6 +72,15 @@ with a stated next checkpoint or pause for the supervisor's decision. Never
 silently widen scope/worker/retry authority or override an explicit stop limit.
 Do not create another sokkin hierarchy or an independent background scheduler.
 
+If the mission pins a tool-shell environment, pass that requirement to workers
+and apply it to actual tool calls, including any required PATH or non-login shell.
+A qualified agent process does not establish the environment of every later
+tool shell. Use supported per-call controls; do not edit global shell startup
+files. For a concrete mismatch, inspect the bound commands and record the
+deviation separately from the task result. An instruction to use an environment
+is not evidence that it was used; stop dependent work when a required environment
+cannot be established.
+
 Use only the official Claude Code CLI with subscription authentication when
 Claude is selected. Check the actual launch environment, reject API billing,
 and do not enable usage credits, extra usage or provider fallback to bypass a
