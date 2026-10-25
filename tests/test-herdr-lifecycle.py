@@ -133,6 +133,8 @@ class Lifecycle(unittest.TestCase):
         r = self.run_script('--mission','fixture', **kw)
         self.assertTrue(r['lifecycle']['owned'])
         self.record = Path(r['lifecycle']['record'])
+        self.assertEqual(r['lifecycle']['status'], json.loads(self.record.read_text())['status'])
+        self.assertEqual(r['lifecycle']['status'], 'RUNNING' if kw.get('ok', True) else 'UNKNOWN')
         self.key = r['lifecycle']['instanceKey']
         self.server = self.servers / r['herdr']['session']
         self.launch_receipt = r
@@ -187,6 +189,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(result['error']['code'],'process_inspection_unavailable')
         self.assertEqual(result['stage'],'preflight')
         self.assertEqual(result['resources'],[])
+        self.assertIsNone(result['lifecycle']['status'])
         self.assertEqual(before,(self.git('worktree','list','--porcelain'),sorted(self.servers.iterdir())))
         self.assertEqual(self.snapshot(),self.baseline)
 
@@ -350,8 +353,29 @@ class Lifecycle(unittest.TestCase):
     def test_uncertain_launch_is_retained(self):
         self.launch(ok=False,env=dict(self.env,MOCK_START_FAIL='1'))
         self.assertEqual(json.loads(self.record.read_text())['status'],'UNKNOWN')
+        self.assertIsNone(json.loads(self.record.read_text())['nativeId'])
+        self.assert_partial_launch_cannot_complete()
+
+    def test_interrupted_starting_record_cannot_complete(self):
+        self.launch()
+        # Fixture for interruption before the launcher persisted its final receipt.
+        self.edit(status='STARTING',nativeId=None)
+        self.assert_partial_launch_cannot_complete()
+
+    def assert_partial_launch_cannot_complete(self):
+        original = self.record.read_bytes()
+        report = self.tmp/'partial-report.txt'
+        report.write_text('Later bootstrap acknowledged; not mission completion.\n')
+        for operation in ('finish','resume'):
+            args = ('--evidence',str(report)) if operation == 'finish' else ()
+            result = self.op(operation,*args,ok=False)
+            self.assertEqual(result['error']['code'],'invalid_transition')
+            self.assertEqual(self.record.read_bytes(),original)
+        # Even a well-formed settled usage receipt cannot promote the failed start.
+        self.assertEqual(self.accept(ok=False)['error']['code'],'invalid_transition')
+        self.assertEqual(self.record.read_bytes(),original)
         self.assertEqual(self.op('reap')['action'],'retained')
-        self.op('finish','--evidence',str(self.tmp/'report.txt'),ok=False)
+        self.assertEqual(self.record.read_bytes(),original)
         self.assertTrue((self.server/'s').exists())
 
     def test_stop_failure_is_not_closed(self):

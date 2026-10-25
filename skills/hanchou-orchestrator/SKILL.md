@@ -84,6 +84,10 @@ nor shell implementation. Both bundled shells are public interfaces.
    Bootstrap is already done; never resend it. Refresh only for intervening
    activity/delay or a concrete discrepancy. Failed or uncertain launches
    retain the same attempt and block assignment.
+   For owned launches, `lifecycle.status` reports the saved startup state.
+   `STARTING`/`UNKNOWN` cannot be promoted through manual bootstrap, `finish`,
+   or `resume`; preserve the failure and follow the
+   [partial-failure procedure](references/launch.md#receipt-and-partial-failure).
 5. **Accept and release.** Independently check the result, measure the settled
    assignment, preserve artifacts/receipts, compare source impacts and release
    owned resources as below. Batch dependent mechanical operations with

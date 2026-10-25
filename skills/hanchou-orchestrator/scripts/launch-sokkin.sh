@@ -30,6 +30,8 @@ Default success means agent readiness only. Opt-in startup qualification returns
 initial identity/usage evidence, never mission completion or final usage.
 Blocked/uncertain starts preserve resources and return their identity. Do not
 blindly rerun: inspect the returned workspace/pane and original attempt first.
+Owned STARTING/UNKNOWN records cannot be promoted by manual bootstrap or resume;
+preserve the failure and withhold real work. A new attempt needs a separate decision.
 HELP
 }
 if [[ ${1:-} == --help && $# == 1 ]]; then usage; exit 0; fi
@@ -56,13 +58,14 @@ server_pid= server_birth= server_socket= server_inode= state= inventory=
 owned=false
 
 receipt() {
-  local ok=$1
+  local ok=$1 lifecycle_status=
   if [[ $owned == true && -n $record && -f $record ]]; then
     state=$(jq -c --arg status "$(if [[ $ok == true ]]; then printf RUNNING; else printf UNKNOWN; fi)" \
       --arg workspace "$workspace" --arg pane "$pane" --arg path "$wt" --arg branch "$branch" \
       --arg native "$native_id" --argjson resources "$resources" '.nativeId=(if $native=="" then null else $native end) | .status=$status | .workspaceId=$workspace | .paneId=$pane |
         .worktree={path:$path,branch:$branch} | .resources=$resources' "$record")
     state_write "$state" || return 1
+    lifecycle_status=$(jq -r .status <<<"$state")
   fi
   jq -n --argjson ok "$ok" --arg stage "$stage" --arg mission "$mission" \
     --arg attempt "$attempt" --arg config "$config_path" --argjson effective "$effective" \
@@ -72,6 +75,7 @@ receipt() {
     --arg started "$started_at" --argjson snapshot "$source_snapshot" --argjson skipUpdate "$skip_update_check" \
     --arg observedModel "$observed_model" --arg observedEffort "$observed_effort" --argjson usage "$usage_readiness" \
     --argjson process "$observed_process" --arg record "$record" --arg instance "$instance" --argjson owned "$owned" \
+    --arg lifecycleStatus "$lifecycle_status" \
     --arg code "$error_code" --arg upstream "$upstream_code" --arg message "$error_message" --argjson resources "$resources" '
     def optional: if . == "" then null else . end;
     {version:2,ok:$ok,stage:$stage,startedAt:($started|optional),sourceSnapshot:$snapshot,
@@ -79,7 +83,7 @@ receipt() {
      config:{source:($config|optional),effective:$effective},
      worktree:{repository:($project|optional),path:($path|optional),branch:($branch|optional),
        baseCommit:($base|optional),head:($head|optional)},
-     lifecycle:{owned:$owned,instanceKey:($instance|optional),record:($record|optional)},
+     lifecycle:{owned:$owned,instanceKey:($instance|optional),record:($record|optional),status:($lifecycleStatus|optional)},
      herdr:{host:"local",session:($session|optional),workspaceId:($workspace|optional),
        tabId:($tab|optional),paneId:($pane|optional)},
      sokkin:{agent:($agent|optional),name:($name|optional),requestedModel:($effective.sokkin.model // null),

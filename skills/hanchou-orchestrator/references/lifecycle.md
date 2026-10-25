@@ -35,6 +35,13 @@ worktree and pane identities. The server cwd is the durable instance directory,
 not the disposable worktree. `STARTING`/`UNKNOWN` record a partial or uncertain
 launch; neither is eligible for timed cleanup. Preserve the receipt and inspect
 the same attempt instead of retrying a new launch blindly.
+There is no supported `STARTING`/`UNKNOWN` to `RUNNING` transition. Manual
+bootstrap, native identity/usage evidence and clearing an initial CLI popup do
+not promote the record. `finish` requires `RUNNING`; `resume` requires an
+unaccepted `FINISHED` record. Withhold real work, preserve the failure and its
+cost, and use the [partial-failure procedure](launch.md#receipt-and-partial-failure)
+for explicit cleanup and a separate new-attempt decision. Do not edit lifecycle
+state or report cleanup of a failed attempt as successful finish/accept/reap.
 
 ## Completion and acceptance
 

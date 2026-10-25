@@ -137,7 +137,7 @@ stdoutにバージョン付きJSONを1件返し、診断ログはstderrへ分け
 | `config` | 設定元pathと今回適用した設定。認証情報を含めない |
 | `worktree` | 実path、branch、固定base commit、起動時HEAD、元repositoryの識別情報 |
 | `herdr` | host／serverの接続先、workspace／tab／pane ID。共有server全体への所有権は意味しない |
-| `lifecycle` | 専用serverの所有区分、instance key、設定元に固定した記録の絶対path |
+| `lifecycle` | 専用serverの所有区分、instance key、設定元に固定した記録の絶対path、起動時に保存したstatus。共有起動や記録作成前はstatusがnull |
 | `sokkin` | agent種別、実行名、要求modelと観測できたmodel、native thread/session ID。未取得値はnull |
 | `usageReadiness` | 計測準備の`ready`／`pending`／`unavailable`と理由。token値自体の正本にはしない |
 | `error`, `resources` | 失敗理由、今回作った資源と残存・削除済み・状態不明の区別。成功時も作成対象を特定できる情報を返す |
@@ -146,9 +146,13 @@ stdoutにバージョン付きJSONを1件返し、診断ログはstderrへ分け
 
 事前検証で失敗した場合は資源を作らない。部分失敗では作成済み資源を残して識別情報を返す。起動時は自動削除せず、班長が所有・実稼働・成果を照合して回収する。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
 
+専用起動が失敗して保存した`UNKNOWN`、または中断で残った`STARTING`から`RUNNING`への昇格は提供しない。現在の記録は復旧に必要な元のbase・model・権限・process条件の全てを固定していないため、手動bootstrapやnative identity・usageの後付けだけで実作業を許可しない。`finish`は`RUNNING`、`resume`は未受入`FINISHED`に限る。失敗receipt・記録・成果・費用を保全し、所有と実稼働を照合して許可範囲で明示的に終了・回収する。失敗記録を手で変更せず、完了・受入・期限回収と表現しない。新規試行は照合後の別の明示判断でfresh branch/worktreeから開始し、失敗実験の有利な置換にはしない。`--skip-update-check`は新規起動のprocess-local予防指定であり、既存UNKNOWNの復旧ではない。
+
 ### 5.4 再開
 
 側近以下の配置やworktree作成の要否は側近に委ね、本書でworkerのworktree・tab・workspace構成を固定しない。
+
+専用起動の部分失敗は5.3の停止条件に従い、以下の追加指示による再開の対象にしない。
 
 同じ生存中の側近へ追加指示を送ることは新規起動ではない。新しい側近への置換・再起動では、再試行でも新規worktree／branchを作成し、保全した成果を明示的に引き継ぐ。停止した側近を古いcheckout上で自動復活させる例外は設けない。viewerの再接続はエージェント起動ではない。
 
