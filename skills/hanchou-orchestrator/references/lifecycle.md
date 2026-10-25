@@ -54,6 +54,24 @@ the supervisor accepted the result, or that the CLI has exited. Do not mark a
 paused, blocked, failed or still-running assignment FINISHED merely to reclaim it.
 Shared-session missions have no lifecycle record and use ordinary result reporting.
 
+For FINISHED-to-accept, keep dependent mechanical checks in one bounded tool
+execution where supported, with assertions before each next operation:
+match the instance/report and `finishedAt`; obtain the final reply's settled
+measurement using the current assignment marker and native binding; after
+independent acceptance and artifact preservation, exit the owned CLI and verify
+termination; then submit acceptance. Preserve each full receipt and exit status.
+Batching does not replace the supervisor's judgment or the checks below. Missing
+evidence, active usage, a failed assertion or a pending approval stops dependent
+operations; inspect the same attempt instead of repeating completion or exit.
+Use installed help for unresolved command syntax, including pane selectors;
+do not guess positional arguments. Read back acceptance before the ordinary
+reap checkpoint; a retained server is not a failed acceptance or permission to
+force cleanup.
+
+The lifecycle record's `reportHash` and `acceptanceHash` are Git blob object IDs
+from `git hash-object`, not file SHA-256 checksums. Use that contract when checking
+the preserved report and acceptance; archive checksums are separate evidence.
+
 The supervisor checks acceptance criteria, preserves artifacts outside disposable
 panes/worktrees, obtains the final settled usage for sokkin and independent
 workers, exits their CLIs, and verifies process termination. Only then record

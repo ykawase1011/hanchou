@@ -80,6 +80,7 @@ nor shell implementation. Both bundled shells are public interfaces.
    path, and the absolute measurement shell
    path with identity arguments. Include a unique assignment marker. In the
    same bounded tool execution, wait and fetch the report, not only wait status.
+   Apply the two-layer wait settings below to this call and each later observation.
    Bootstrap is already done; never resend it. Refresh only for intervening
    activity/delay or a concrete discrepancy. Failed or uncertain launches
    retain the same attempt and block assignment.
@@ -95,6 +96,14 @@ The launch receipt already checks connectivity, inventory, fresh worktree and
 actual process identity; do not repeat those checks before assignment. For source
 comparisons use `git -C "$SOURCE" rev-parse --path-format=absolute --git-common-dir`.
 Resolve genuinely missing authority or discrepancies before acting.
+
+Save complete stdout, stderr and exit status before selecting receipt fields for
+review. Use the observed response envelope, not guessed field paths. Read the
+bound identity, status, usage/scope/freshness and evidence locations needed for
+the current decision; retain the full receipt for acceptance. A required missing
+or null field is an anomaly: inspect that receipt's relevant envelope and error,
+and stop dependent actions until resolved. Do not expand unrelated receipts or
+replace missing evidence with defaults.
 
 ### Measurement and capacity
 
@@ -141,14 +150,39 @@ assignment; never replace it with zero or a weaker manual check.
 
 Use the host's authorized connection route consistently. Readiness may identify
 an individual approval route for Herdr/shared Git; it is not permission to bypass
-controls. Keep measurement/launch/wait/cleanup foreground waits long at both layers:
-`exec_command`/`write_stdin` 30000 ms and outer wrapper/continuation 60000 ms where
-supported. Consume an inner pending session inside that same bounded outer call
-when possible. Set these waits on the first call, including the initial self
-measurement; a 1000 ms yield can create a full-context continuation just to
-retrieve the result. Do not spend a new model request on every short poll. A pending
-approval or timeout requires inspecting/waiting on the same attempt, not resend.
-Follow higher-priority host progress-reporting requirements.
+controls. For measurement/launch/wait/cleanup, explicitly set both wait layers
+on the first call and every continuation, including the initial self measurement.
+Give the outer wrapper more time than one inner wait plus result collection:
+for example, `exec_command`/`write_stdin` 30000 ms and outer wrapper 60000 ms
+where supported. Equal inner/outer defaults can require two model round trips
+to collect one wait. If the wrapper yields a running cell, continue that same
+cell with the long outer wait (60000 ms where supported), not a short default
+or a second inner poll. Within an open bounded wrapper, consume the same pending
+inner session when possible. An unchanged timeout is a checkpoint on the same
+Herdr attempt, not permission to resend the mission. Inspect a pending approval
+at that checkpoint and use its authorized answer route. Keep waits bounded and
+follow higher-priority host progress-reporting requirements.
+
+Continue the actual session of a still-running bounded foreground observation
+for the same bound attempt; do not start an equivalent observation alongside it.
+A completed session cannot be continued. Prefer combining repeated public waits
+and state/report reads only when the selected host operation has verified all
+of these return conditions:
+
+- State waits return on idle/done, blocked and unknown, and read failures return
+  control. Include unknown explicitly when the installed wait defaults omit it.
+- Current-assignment reports are detected independently of idle/done. An output
+  match is only a cue: snapshots can include old or echoed markers. Read the
+  report and verify its assignment/attempt binding before treating it as new.
+- One fixed wall deadline covers waits, reads and result collection, with each
+  blocking call bounded by the remaining time. Return earlier for the next usage,
+  authority or required progress checkpoint; never renew the deadline inside it.
+
+If any condition is unverified, use one bounded public wait followed by state
+and report inspection at each checkpoint. Do not claim a combined observation
+meets those conditions merely because each wait has a timeout. Expose results
+for progress and approval inspection. Do not detach an observation loop, answer
+approvals automatically, or resend work inside it.
 
 ## Supervise
 
