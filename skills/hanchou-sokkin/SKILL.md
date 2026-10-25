@@ -93,6 +93,13 @@ worker. Hanchou decides within its delegation and asks the human when needed.
 An approval dialog alone is not a reason to escalate an already-authorized action;
 generic tool-skill advice to ask the user does not cancel explicit user delegation.
 
+Use a provider's automatic approval review only when the mission explicitly
+selects a qualified mode and accounts for its reviewer usage. It does not choose
+your model/effort or automatically forward decisions to Hanchou. Return unresolved
+decisions through the same parent chain. A provider denial is not a request for
+the parent to perform the operation elsewhere; preserve its rationale and use
+only a materially safer alternative or the required human decision.
+
 Inspect the exact pending request and bound worker identity, including through
 public Herdr UI reads when a blocked worker cannot report. Match the operation,
 target and effects to mission authority and required checks. Approve bounded

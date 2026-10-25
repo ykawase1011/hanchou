@@ -204,6 +204,11 @@ mission. Include this routing in the assignment. An approval dialog alone does
 not require another user confirmation. Generic tool-skill advice to ask the
 user does not cancel explicit user delegation of these decisions.
 
+Native automatic approval review is a permission mode, not model/effort selection
+or a route to Hanchou. Use it only when explicitly requested and qualified under
+the [launch contract](references/launch.md#native-automatic-approval-review),
+including its reviewer usage. Keep the same parent and human decision boundaries.
+
 Inspect the exact pending request on the bound host/server/workspace/pane and
 native attempt, even when the blocked sokkin cannot send a report. Match the
 operation, target and effects to existing authority and required checks. Approve

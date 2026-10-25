@@ -164,6 +164,13 @@ zero-usage session, including when its serialization is unsupported.
 - Codex child threads are separate IDs. Fork/child copied parent history is not
   new usage; qualification requires the corresponding parent logs. Missing parent
   history cannot be declared complete merely because the tool returns a number.
+- Native automatic-review agents/classifiers also belong in the accounting scope.
+  Bind their parent, native identity and model; verify whether the existing tool
+  includes them in the parent's total before adding anything. Codex 0.163.0 was
+  observed using a separate `guardian_review` thread. The bundled measurement
+  supports source `cli`, not that reviewer source. A matching numeric total with
+  a fallback model label is unqualified. Report such raw observations separately;
+  a ready parent receipt neither measures the reviewer nor makes its cost zero.
 - Resuming the same native ID updates its existing cumulative entry; never add
   the previous cumulative total again. Preserve failed attempts in the total.
 - State whether the total includes the supervisor itself. If its host exposes

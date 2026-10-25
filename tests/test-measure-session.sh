@@ -285,6 +285,18 @@ cp "$log" "$fixture/home/sessions/duplicate/${log##*/}"
 bad ambiguous --native-id "$id"
 rm -rf "$fixture/home/sessions/duplicate"
 
+# Native auto-review uses a separate guardian source, even when session_id names
+# the ordinary parent. Its counters must not be accepted as a qualified CLI log.
+restore
+mutate 'if .type=="session_meta" then
+  .payload.source={subagent:{other:"guardian"}} |
+  .payload.thread_source="guardian_review" |
+  .payload.session_id="00000000-0000-4000-8000-000000000099" |
+  .payload.parent_thread_id=.payload.session_id
+  else . end'
+bad guardian-source --native-id "$id" --native-log "$log"
+assert_json "$fixture/guardian-source.json" '.error.code=="unsupported_history"'
+
 for change in \
   'if .type=="session_meta" then del(.payload.id) else . end' \
   'if .type=="session_meta" then del(.payload.model_provider) else . end' \
