@@ -644,6 +644,44 @@ bootstrap使用量readyを確認してから、同じセッションで独立し
 経て成功した。外側ownerのhost routeは未認定として別計上しており、
 これは全階層の費用認定やworkerからの二段承認の証明ではない。
 
+### 手動承認の二段経路と終了手順（2026-10-25、#79／#67）
+
+PR #86 の merge commit `9309824` の tracked skills を別途凍結し、macOS /
+Herdr 0.9.5 / Codex 0.163.0 / ccusage 20.0.37 で機能試験を1件実施した。
+認定済み supervisor（Astra high）、設定に従う sokkin（Astra medium）、
+worker（gpt-6.1-sol low）各1件、再試行0。supervisor／workerは公開CLIから
+専用Herdr paneへ起動し、sokkinは明示的なmanual／startup qualification指定で
+launcherから起動した。全員のnative identity・source `cli`・bootstrapの
+`workspace-write`／`on-request`／`user`・使用量readyを割当て前に確認した。
+
+通常sandboxで拒まれた無害なmarker書込みについて、worker→sokkin と
+sokkin→supervisor の各native要求を直属の親が一回だけ承認し、同じnative
+sessionで再開した。指定の25-byteファイル2個を独立照合した。
+外側ownerはsupervisor自身の個別要求だけに回答し、workerへ直接回答していない。
+これは許可済み操作への委任回答であり、拒否や人間本人必須gateの回避を認めない。
+
+ただし外側から4回の是正取消し（human index保護、metadata／process出力の限定、
+受入れ前の全shellのcwd退避、検証失敗のshellへの伝播）が必要だった。
+sokkinも過大な出力を予定した1 turnを取り消してから、同じnativeを新markerで
+継続した。blocked中のhistory読取り拒否はvisible dialogで確認し、`/exit`の
+引数誤りは送信前に拒否された。失敗と継続の費用を含む結果で、無介入の合格ではない。
+これらを受けて手順を明確化したが、追記後の手順を新たな実機試験で再検証してはいない。
+
+最終settled cumulativeはsupervisor 6,833,722、sokkin 2,334,854、worker
+142,720 tokens、3件合計9,311,296。各nativeの最終値を一度だけ計上し、
+bootstrapや途中snapshotを足していない。準備・個別承認・報告・終了処理を含む。
+外側ownerの大きな準備・監督費用は未認定のraw値として別計上し、campaign全体の
+認定合計・料金・subscription消費率は算出していない。
+
+両child CLIの実終了とidle shellを確認し、両shellを所有するdurable directoryへ
+移して実cwdを照合した後に、FINISHEDを受入れた。24時間保持条件によりserverは
+保持し、受入れ後のpane操作は行っていない。通常reapは既存busy資源の保持で
+全体exit 1だったが、新instanceのaccept成功と未経過による保持を個別に確認した。
+この結果はworkerの拒否・取消、人間本人必須gate、Claude／auto-review／
+非対話経路を証明しない。旧receipt比較の完了0件という結果を置換せず、性能改善も
+確立していない。[#79](https://github.com/ykawase1011/hanchou/issues/79) と
+[#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
+
 ### 計測テストの期限と失敗診断（2026-10-25）
 
 macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが

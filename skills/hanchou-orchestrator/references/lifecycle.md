@@ -70,6 +70,10 @@ termination; then submit acceptance. Preserve each full receipt and exit status.
 Batching does not replace the supervisor's judgment or the checks below. Missing
 evidence, active usage, a failed assertion or a pending approval stops dependent
 operations; inspect the same attempt instead of repeating completion or exit.
+Make that stop effective in the shell: explicitly propagate failed reads,
+JSON parsing and Python/assertion commands before any later mutation. An ordinary
+shell can continue after a failed child command. Handle expected nonzero results,
+such as an absent PID, separately from unexpected verification failures.
 Use installed help for unresolved command syntax, including pane selectors;
 do not guess positional arguments. Read back acceptance before the ordinary
 reap checkpoint; a retained server is not a failed acceptance or permission to
@@ -81,8 +85,15 @@ the preserved report and acceptance; archive checksums are separate evidence.
 
 The supervisor checks acceptance criteria, preserves artifacts outside disposable
 panes/worktrees, obtains the final settled usage for sokkin and independent
-workers, exits their CLIs, and verifies process termination. Only then record
-acceptance with a local JSON file containing:
+workers, exits their CLIs, and verifies process termination. If completed
+worktrees will be removed while the accepted server is retained, move every
+verified idle pane shell out of those worktrees to an owned durable directory
+through the public pane controls **before acceptance**. Check each shell's actual
+cwd and idle process state afterwards. This includes worker panes. Do not change
+an accepted pane later to make its worktree disposable; retain the worktree until
+ordinary lifecycle cleanup if that preparation was omitted.
+
+Only then record acceptance with a local JSON file containing:
 
 ```json
 {
