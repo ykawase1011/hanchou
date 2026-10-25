@@ -796,6 +796,47 @@ OS/mobile通知の到達は未検証。旧receipt比較の完了0件を置換せ
 確立していない。[#79](https://github.com/ykawase1011/hanchou/issues/79) と
 [#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
 
+### 側近によるworkerの取消と継続（2026-10-25、#79／#67）
+
+merge commit `545729c` のtracked skillsを凍結し、macOS / Herdr 0.9.5 /
+Codex 0.163.0 / ccusage 20.0.37で1件実施した。設定に従う側近Astra medium、
+側近が選んだworker gpt-6.1-sol low各1件、再試行0。workerは側近の専用子worktreeに
+配置し、実path・親子関係・host・project・base・common Git・originを確認した。
+両nativeのsource `cli`、model・effort・bootstrapの権限3項目・実行ファイル・PATH・
+使用量readyを割当前に照合し、同じnamed serverの背景viewerを維持した。
+
+workerの無害な外部marker書込みは通常sandboxで拒まれ、native承認待ちになった。
+側近が対象UIとworker PIDを照合し、公開Herdr操作でEscを1回だけ送った。
+同じnativeの`turn_aborted`とidleを確認し、旧markerの計測は
+`current_request_aborted`として拒否された。側近は書込みを撤回し、同じ生存workerへ
+新markerの継続を1回送った。workerは使用量readyを確認して不在確認とローカル報告を
+完了し、側近と外側も対象の不存在を独立確認した。取消対象の再試行・代行はない。
+
+外側は未認定hostの試験担当であり、workerのUIへ直接回答していない。側近自身の
+インフラ要求への個別native承認は19件。ただしworker起動前に、必要な読取りの失敗を
+後続のpane操作へ伝播しないbatchを外側が1回取り消した。側近のabortを確認後に
+新markerで継続したため、無介入の合格ではない。さらに外側がworker割当・継続前の
+側近使用量を2回更新して補助した。初期診断の一部は個別receipt保存がなくnative記録に
+残り、短い待機も2回あった。受入に必要なworker証拠は個別に保存した。
+この観測を受け、失敗時に後続変更を止める要件を側近の起動・承認手順にも明記した。
+追記後の手順を新しい実機試行で受け入れたという主張ではない。
+
+最終settled cumulativeは側近 **1,806,984 tokens / 33応答**、worker
+**126,090 / 6**、合計 **1,933,074 / 39**。非cache input 60,342、cache read
+1,856,896、output 15,836の合計で、reasoning 404はoutputの内数。各nativeの最終値を
+一度だけ計上し、bootstrap・取消・失敗・承認・報告を含む。側近は途中合計1,388,104の
+時点で、暫定見積200万に対する残りが終了留保70万を下回ると報告し、追加試行をせず
+保存・終了へ限定した。外側も見積超過の可能性を会話へ示した。外側の準備・制御・整理・
+引継ぎ費用は未認定rawの別枠であり、完全なcampaign総量・料金・subscription率はない。
+
+成果・両native・receipt・Git bundleを保存し、両CLIの実終了と全idle shellのdurable cwdを
+確認してFINISHEDを受入れた。両worktreeとviewerを削除し、serverは86,400秒の条件で
+保持した。受入後のpane操作はない。これは側近がworkerの取消を扱ったn=1の限定観測で、
+完全な三階層、workerの明示禁止判断、provider本人必須gate、Claude／auto-review／非対話、
+OS/mobile通知の到達は証明しない。旧比較の完了0件を置換せず、性能改善も確立していない。
+[#79](https://github.com/ykawase1011/hanchou/issues/79) と
+[#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
+
 ### 計測テストの期限と失敗診断（2026-10-25）
 
 macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが
