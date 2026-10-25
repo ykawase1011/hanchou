@@ -151,6 +151,40 @@ reuse. The successful launcher receipt covers its current inventory/readiness
 checks. Use the bounded startup qualification below where supported; otherwise
 independently bind the new pane's native identity and settled usage.
 
+### Native automatic approval review
+
+An explicit request for automatic permission review does not select an automatic
+model or effort. Preserve the configured model/effort and use only the installed
+provider's supported mode. Verify the actual native settings and a bounded
+disposable probe before adopting it for real work. Help text alone does not prove
+availability, review behavior, usage coverage or a route to the Hanchou parent.
+Do not change global security settings, reviewer policy or hooks to make a probe pass.
+
+The [Codex CLI contract](https://learn.chatgpt.com/docs/developer-commands?surface=cli)
+offers `--approve-for-me` with workspace-write and on-request approvals; it conflicts
+with explicit sandbox/approval flags. [Claude Code's `--permission-mode auto`](https://code.claude.com/docs/en/permission-modes)
+uses classifier review, while explicit ask rules and user-interaction gates can
+still prompt. Its noninteractive behavior differs. These are provider modes,
+not additional options accepted by `launch-sokkin.sh`. Do not replace either with
+bypass flags, `never`/`dontAsk`, broad future approvals or weaker protections.
+
+Preserve worker → sokkin → supervisor → human decisions wherever a request remains.
+Do not assume the native reviewer forwards a refusal to that chain. Inspect the
+same attempt and retain the exact action, target and rationale. An
+[automatic-review denial](https://learn.chatgpt.com/docs/sandboxing/auto-review)
+permits a materially safer alternative or the required human decision, not the
+same outcome through a different agent, tool or execution location. A human-only
+override remains for the human. A successful harmless approval does not qualify
+denials, cancellations, fallback behavior or other providers.
+
+Reviewer usage is part of the mission even when no worker was explicitly started.
+The ordinary agent's ready receipt does not include another native reviewer.
+Apply the [usage scope checks](usage.md#accounting) to those reviewers before real
+assignment. If their identity, model or tool scope is unqualified, retain the
+probe evidence and report the missing scope; do not treat it as zero or broaden
+the parser to make the mode pass. Continue independent work through an already
+qualified mode only when it does not evade a denied action.
+
 ### Qualified startup
 
 For **Codex 0.162.1 or 0.163.0 / ccusage 20.0.37**, add `--qualify-startup` and a sufficient

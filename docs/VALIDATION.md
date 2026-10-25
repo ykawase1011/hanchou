@@ -570,6 +570,33 @@ workerの要求は側近、側近の要求は班長、班長の未解決判断�
 人間へ上げる実モデル／採用hostでの一巡は未実施であり、他providerのUI互換性も主張しない。
 未実施の一巡は[承認委任の実モデル検証 #79](https://github.com/ykawase1011/hanchou/issues/79)で追跡する。
 
+### native自動承認reviewの限定probe（2026-10-25）
+
+macOS、Herdr 0.9.5、Codex 0.163.0、Astra mediumのfresh CLI 1件で、
+`--approve-for-me`を明示した開発用probeを実施した。実process引数とnativeの
+`workspace-write`・`on-request`・`auto_review`を照合し、tool-free bootstrapの
+使用量を既存scriptで確認してから、2個の無害なファイルを作成した。
+workspace外の1個は通常sandboxで拒まれ、native reviewerの`allow`後に成功した。
+親による承認キー入力、包括許可、global設定変更は行っていない。
+
+意図的に未決とした選択は実行せず直属の親へ報告され、同じCLIが親の回答を受領した。
+これは通常の報告・継続promptの確認であり、providerの承認UIや拒否がHanchouの
+親へ自動転送されることの証明ではない。自動review拒否、人間本人必須gate、取消、
+複数review、Claude auto、非対話fallbackは未検証である。
+
+主threadの最終settled値は118,218 tokens、6応答。別の`guardian_review` threadは
+nativeのparent/thread/turn対応を確認でき、1応答のraw値は9,054 tokensだった。
+ccusage 20.0.37の合計も9,054だったが、native model `codex-auto-review`に対して
+toolは`gpt-5.6-luna`・`isFallback: true`を返したため、reviewer計測は未認定とした。
+同梱`measure-session.sh`もこのsourceを`unsupported_history`として拒否した。
+主threadのreadyを全体のreadyに広げず、reviewerを0や認定済み合計へ混ぜていない。
+
+この観測に基づき、自動承認reviewをmodel選択と区別し、親・人間gateとreviewerの
+使用量scopeを保つ手順、および実際のguardian sourceを拒否する回帰を追加した。
+本番shellの対応scopeとglobal installは変更していない。これはn=1の機能probeであり、
+旧版と候補版のend-to-end比較やtoken・wall改善の証明ではない。費用scopeの残件は
+[#67](https://github.com/ykawase1011/hanchou/issues/67)、承認経路は[#79](https://github.com/ykawase1011/hanchou/issues/79)で追跡する。
+
 ### 計測テストの期限と失敗診断（2026-10-25）
 
 macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが
