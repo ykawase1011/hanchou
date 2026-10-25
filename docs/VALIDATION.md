@@ -457,6 +457,9 @@ PR #83の性能改善は未立証であり、この修正を有利な再試行�
 機能は追加しない。起動receiptへ保存済み`lifecycle.status`を追加し、成功した既定起動の
 手動bootstrapと、`STARTING`/`UNKNOWN`で実作業を禁止する経路を手順上で分けた。
 所有・実稼働・成果・使用量を保全して明示終了し、別の新規試行は明示判断後に行う。
+明示停止にも全pane・server子プロセス・他ownerの照合を要求する。稼働処理が残る場合は
+保持し、停止直前の元server実体照合と停止後のserver/socket/pane process消滅を確認する。
+stop receiptだけを終了証拠とせず、失敗記録とは別のcleanup証拠を保存する。
 `--skip-update-check`は新規起動の予防指定に限り、既存失敗の復旧ではない。
 
 offline回帰は正常/失敗起動receiptと保存状態の一致、共有/事前失敗時のnull、

@@ -258,9 +258,18 @@ option for a new launch, not recovery of an existing UNKNOWN instance.
 
 Preserve the failed receipt, record, any native usage and artifacts, including
 the failed attempt's cost. Establish which owned processes actually started;
-if cleanup is authorized, exit only those CLIs and verify termination before
-explicitly stopping their verified dedicated server. Preserve its history and
-unchanged failure record; do not report FINISHED, acceptance or timed reap.
+if cleanup is authorized, exit only those CLIs and verify termination. Before
+stopping a dedicated server, inspect every pane and server descendant for other
+owners, agents, foreground commands and background jobs. Retain it while any
+work or uncertain ownership remains; separately authorize and preserve any
+remaining owned work before ending it. Proceed only after the full inventory
+shows verified idle shells and no other descendant processes. Recheck the saved
+host/server PID, birth time and socket identity immediately before the targeted
+public stop. Verify disappearance of that server, socket and its pane processes
+afterward; a stop receipt alone is insufficient. Missing identity or unverifiable
+termination means retain/report, not success. Preserve separate cleanup evidence,
+server history and the unchanged failure record; do not report FINISHED,
+acceptance or timed reap.
 Remove a worktree only after preserving its contents and proving no remaining
 owner. If identity, activity or ownership is uncertain, retain resources and
 report the missing evidence. A separate, explicit decision within the user's
