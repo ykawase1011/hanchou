@@ -179,6 +179,7 @@ done
 
 # /bin/bash is macOS Bash 3.2: set -u rejects an unguarded empty array expansion.
 printf '%s\n' '{"version":2,"sokkin":{"agent":"claude","model":null}}' > "$fixture/claude-default.json"
+assert_config_rejected claude-manual-approvals "$fixture/claude-default.json" unsupported_option --manual-approvals --qualify-startup
 : > "$MOCK_REVIEW_CALLS"
 rc=0
 run_launch "$fixture/claude-default.json" > "$fixture/claude-default.receipt.json" \

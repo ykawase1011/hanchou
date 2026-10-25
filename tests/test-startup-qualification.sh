@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-startup-test.XXXXXX")
-trap 'rm -rf "$fixture"' EXIT
+trap 'rc=$?; if [[ $rc != 0 ]]; then cat "$fixture/receipt" "$fixture/error" >&2 || true; fi; rm -rf "$fixture"; exit "$rc"' EXIT
 mkdir -p "$fixture/bin" "$fixture/source/.hanchou" "$fixture/native"
 export FIXTURE="$fixture" CODEX_HOME="$fixture/native" MOCK_MODE=success
 export HANCHOU_TEST_CODEX_VERSION=${HANCHOU_TEST_CODEX_VERSION:-0.162.1}
@@ -84,7 +84,13 @@ case "$1 $2" in
      {type:"session_meta",payload:{id:"11111111-1111-1111-1111-111111111111",cwd:$cwd,
        timestamp:$at,model_provider:"openai",cli_version:(if $mode=="native-version" then "0.162.1" else $version end),
        forked_from_id:(if $mode=="fork" then "parent" else null end)}},
-     {type:"turn_context",payload:{model:(if $mode=="model" then "wrong" else "gpt-6-astra" end),effort:"medium"}},
+     {type:"turn_context",payload:({model:(if $mode=="model" then "wrong" else "gpt-6-astra" end),effort:"medium"} +
+       (if ($mode|startswith("manual-")) then {
+         sandbox_policy:{type:(if $mode=="manual-sandbox" then "danger-full-access" else "workspace-write" end)},
+         approval_policy:(if $mode=="manual-policy" then "never" else "on-request" end),
+         approvals_reviewer:(if $mode=="manual-reviewer" then "auto_review" else "user" end)} |
+         if $mode=="manual-missing" then del(.approvals_reviewer) else . end
+       else {} end))},
      {type:"event_msg",payload:{type:"task_started",turn_id:"turn"}},
      {type:"response_item",payload:{type:"message",role:"user",content:[{type:"input_text",text:$prompt}]}},
      (if $mode=="tool" then {type:"response_item",payload:{type:"custom_tool_call"}} else empty end),
@@ -119,9 +125,13 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delaye
   rm -rf "$CODEX_HOME/sessions" "$fixture/wrapper-home"
   : > "$fixture/calls"
   rc=0
-  launch > "$fixture/receipt" 2> "$fixture/error" || rc=$?
+  if [[ $mode == manual-* ]]; then
+    launch --manual-approvals --skip-update-check > "$fixture/receipt" 2> "$fixture/error" || rc=$?
+  else
+    launch > "$fixture/receipt" 2> "$fixture/error" || rc=$?
+  fi
   jq -es 'length==1' "$fixture/receipt" >/dev/null
-  if [[ $mode == success || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts ]]; then
+  if [[ $mode == success || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == manual-success ]]; then
     [[ $rc == 0 ]]
     jq -e '.ok and .stage=="startup_qualified" and .usageReadiness.status=="ready" and
       .sokkin.observedModel=="gpt-6-astra" and .sokkin.observedEffort=="medium" and
@@ -131,6 +141,19 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delaye
     [[ $rc != 0 ]]
     jq -e '.ok==false and .usageReadiness.status!="ready" and .herdr.paneId=="w1:p1"' "$fixture/receipt" >/dev/null
     [[ -d $(jq -r .worktree.path "$fixture/receipt") ]]
+  fi
+  if [[ $mode == manual-* ]]; then
+    jq -e '.sokkin.requestedManualApprovals and .sokkin.requestedSkipUpdateCheck' "$fixture/receipt" >/dev/null
+    jq -e '.==["--model","gpt-6-astra","--no-daemon","--sandbox","workspace-write",
+      "--ask-for-approval","on-request","-c","approvals_reviewer=\"user\"",
+      "-c","check_for_update_on_startup=false","-c","model_reasoning_effort=\"medium\""]' "$fixture/agent-args" >/dev/null
+    if [[ $mode == manual-success ]]; then
+      jq -e '.sokkin.observedPermissions=={sandbox:"workspace-write",approvalPolicy:"on-request",approvalsReviewer:"user"}' "$fixture/receipt" >/dev/null
+    else
+      jq -e '.error.code=="bootstrap_evidence_mismatch" and .sokkin.observedPermissions==null' "$fixture/receipt" >/dev/null
+    fi
+  else
+    jq -e '.sokkin.requestedManualApprovals==false and .sokkin.observedPermissions==null' "$fixture/receipt" >/dev/null
   fi
   prompt_count=1
   [[ $mode != process-args && $mode != pane-version ]] || prompt_count=0
@@ -152,3 +175,19 @@ for version in codex usage; do
   [[ ! -s $fixture/calls ]]
 done
 printf 'startup qualification: unsupported versions ok\n'
+
+# Manual mode cannot silently fall back to unqualified startup or another version.
+export MOCK_CODEX_VERSION=0.162.1 MOCK_USAGE_VERSION=20.0.37
+: > "$fixture/calls"
+if launch --manual-approvals > "$fixture/receipt" 2> "$fixture/error"; then exit 1; fi
+jq -e '.error.code=="unsupported_version" and .resources==[]' "$fixture/receipt" >/dev/null
+[[ ! -s $fixture/calls ]]
+if "$root/skills/hanchou-orchestrator/scripts/launch-sokkin.sh" --project "$fixture/source" \
+  --mission manual --manual-approvals > "$fixture/receipt" 2> "$fixture/error"; then exit 1; fi
+jq -e '.error.code=="unsupported_option" and .resources==[]' "$fixture/receipt" >/dev/null
+[[ ! -s $fixture/calls ]]
+if "$root/skills/hanchou-orchestrator/scripts/launch-sokkin.sh" --project "$fixture/source" \
+  --lifecycle reap --manual-approvals > "$fixture/receipt" 2> "$fixture/error"; then exit 1; fi
+jq -e '.error.code=="invalid_operation" and .resources==[]' "$fixture/receipt" >/dev/null
+[[ ! -s $fixture/calls ]]
+printf 'startup qualification: manual-mode preflight restrictions ok\n'

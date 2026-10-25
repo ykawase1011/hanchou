@@ -56,6 +56,10 @@ nor shell implementation. Both bundled shells are public interfaces.
    update-notice skip uses `--skip-update-check`. Use `--help` only for an
    additional unresolved option. Save and return exit status and receipt in
    this call; do not create a script in one call just to execute it in the next.
+   For explicitly selected manual approvals on Codex 0.163.0, add
+   `--manual-approvals` with `--qualify-startup`; require the receipt's
+   `observedPermissions` to confirm workspace-write/on-request/user.
+   See the [manual approval contract](references/launch.md#explicit-manual-approvals).
 3. **Show Herdr.** On every sokkin launch, open a human-visible viewer tab for
    the receipt's exact host/session/workspace before assigning real work. Use
    the host's terminal-tab capability and Herdr's installed attach contract;

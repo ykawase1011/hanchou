@@ -17,6 +17,7 @@ Usage: launch-sokkin.sh --project PATH --mission SLUG [options]
   --worktree-root PATH   Absolute directory outside existing checkouts
   --timeout-ms NUMBER    Agent readiness timeout, 3001..300000 (default 30000)
   --skip-update-check    Codex only; explicit per-launch update-check opt-out
+  --manual-approvals     Codex 0.163.0 only; qualified workspace-write/on-request/user
   --qualify-startup      Codex 0.162.1/0.163.0 + ccusage 20.0.37: tool-free bootstrap
   --help                 Show this help without contacting Herdr
 
@@ -47,6 +48,7 @@ stage=preflight error_code=unexpected_failure error_message='Launch did not fini
 upstream_code=
 effective='{}' agent_info='{}' resources='[]' emitted=false
 source_snapshot=null skip_update_check=false
+manual_approvals=false observed_permissions=null
 qualify_startup=false usage_readiness='{"status":"pending","reason":"Verify native identity, settled usage and scope before real work."}'
 observed_model= observed_effort= companion= log_home=
 usage_pid=
@@ -73,6 +75,7 @@ receipt() {
     --arg session "$session" --arg workspace "$workspace" --arg tab "$tab" --arg pane "$pane" \
     --arg agent "$kind" --arg name "$agent_name" --arg native "$native_id" \
     --arg started "$started_at" --argjson snapshot "$source_snapshot" --argjson skipUpdate "$skip_update_check" \
+    --argjson manualApprovals "$manual_approvals" --argjson permissions "$observed_permissions" \
     --arg observedModel "$observed_model" --arg observedEffort "$observed_effort" --argjson usage "$usage_readiness" \
     --argjson process "$observed_process" --arg record "$record" --arg instance "$instance" --argjson owned "$owned" \
     --arg lifecycleStatus "$lifecycle_status" \
@@ -89,6 +92,7 @@ receipt() {
      sokkin:{agent:($agent|optional),name:($name|optional),requestedModel:($effective.sokkin.model // null),
        observedModel:($observedModel|optional),requestedEffort:($effective.sokkin.effort // null),observedEffort:($observedEffort|optional),
        requestedSkipUpdateCheck:$skipUpdate,
+       requestedManualApprovals:$manualApprovals,observedPermissions:$permissions,
        process:$process,
        nativeThreadId:(if $agent=="codex" then ($native|optional) else null end),
        nativeSessionId:(if $agent=="claude" then ($native|optional) else null end)},
@@ -306,6 +310,7 @@ lifecycle_operation() {
 
 while [[ $# -gt 0 ]]; do
   if [[ $1 == --skip-update-check ]]; then skip_update_check=true; shift; continue; fi
+  if [[ $1 == --manual-approvals ]]; then manual_approvals=true; shift; continue; fi
   if [[ $1 == --qualify-startup ]]; then qualify_startup=true; shift; continue; fi
   need_value "$@"
   case $1 in
@@ -323,7 +328,7 @@ done
 project=$(cd "$project" && pwd -P)
 herdr() { command "$herdr_bin" --session "$session" "$@"; }
 if [[ -n $lifecycle ]]; then
-  [[ -z $mission && -z $session && -z $config_path && -z $agent_override && -z $model_override && -z $effort_override && -z $worktree_root && $base == HEAD && $qualify_startup == false && $skip_update_check == false ]] || fail invalid_operation 'Do not combine lifecycle and launch options.'
+  [[ -z $mission && -z $session && -z $config_path && -z $agent_override && -z $model_override && -z $effort_override && -z $worktree_root && $base == HEAD && $qualify_startup == false && $skip_update_check == false && $manual_approvals == false ]] || fail invalid_operation 'Do not combine lifecycle and launch options.'
   [[ $(git -C "$project" rev-parse --show-toplevel 2>/dev/null) == "$project" ]] || fail invalid_project 'Select the pinned Git checkout root.'
   require_process_inspection
   lifecycle_operation
@@ -361,6 +366,7 @@ effective=$(jq -c --arg agent "$agent_override" --arg model "$model_override" --
   if $effort!="" then .sokkin.effort=$effort else . end' <<<"$effective")
 kind=$(jq -r .sokkin.agent <<<"$effective")
 [[ $skip_update_check == false || $kind == codex ]] || fail unsupported_option 'Update-check opt-out is supported only for Codex.'
+[[ $manual_approvals == false || ( $kind == codex && $qualify_startup == true ) ]] || fail unsupported_option 'Manual approvals require Codex and --qualify-startup.'
 model=$(jq -r '.sokkin.model // empty' <<<"$effective")
 effort=$(jq -r '.sokkin.effort // empty' <<<"$effective")
 [[ -z $model || $model =~ ^[a-zA-Z0-9][a-zA-Z0-9._:/+-]{0,99}$ ]] || fail invalid_model 'Model must be a native model identifier.'
@@ -369,6 +375,8 @@ if [[ $qualify_startup == true ]]; then
   [[ $kind == codex ]] || fail unsupported_option 'Startup qualification currently supports Codex only.'
   command -v ccusage >/dev/null 2>&1 || fail missing_usage_tool 'Startup qualification requires ccusage.'
   qualified_codex_version=$(codex --version)
+  [[ $manual_approvals == false || $qualified_codex_version == 'codex-cli 0.163.0' ]] ||
+    fail unsupported_version 'Manual approvals currently support Codex 0.163.0 only.'
   case $qualified_codex_version in
     'codex-cli 0.162.1'|'codex-cli 0.163.0') ;;
     *) fail unsupported_version 'Startup qualification requires Codex 0.162.1 or 0.163.0.';;
@@ -521,6 +529,9 @@ stage=agent_start
 agent_args=()
 [[ -z $model ]] || agent_args+=(--model "$model")
 if [[ $kind == codex ]]; then agent_args+=(--no-daemon); fi
+if [[ $manual_approvals == true ]]; then
+  agent_args+=(--sandbox workspace-write --ask-for-approval on-request -c 'approvals_reviewer="user"')
+fi
 if [[ $skip_update_check == true ]]; then agent_args+=(-c check_for_update_on_startup=false); fi
 if [[ -n $effort ]]; then
   if [[ $kind == codex ]]; then agent_args+=(-c "model_reasoning_effort=\"$effort\"")
@@ -593,6 +604,7 @@ $(cat "$companion")"
   # Select only identity, context and cumulative counters; never return embedded
   # session instructions or transcripts. This is not a token aggregator.
   until jq -es --arg marker "$marker" --arg known "$native_id" --arg model "$model" --arg effort "$effort" \
+    --argjson manual "$manual_approvals" \
     --arg cli_version "${qualified_codex_version#codex-cli }" '
     [.[]|select(.type=="session_meta")|.payload] as $meta |
     [.[]|select(.type=="turn_context")|.payload] as $ctx |
@@ -604,6 +616,8 @@ $(cat "$companion")"
       ($meta[0].id|test("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$")) and
       ($known=="" or $known==$meta[0].id) and ($ctx|length)==1 and
       ($model=="" or $model==$ctx[0].model) and ($effort=="" or $effort==$ctx[0].effort) and
+      ($manual==false or ($ctx[0].sandbox_policy.type=="workspace-write" and
+        $ctx[0].approval_policy=="on-request" and $ctx[0].approvals_reviewer=="user")) and
       ($start|length)==1 and ($completed|length)==1 and $start[0].turn_id==$completed[0].turn_id and
       ($answers|length)==1 and any($answers[0].content[]?; (.text // "" | contains($marker))) and
       (all(.[]; .type!="response_item" or .payload.type=="message" or .payload.type=="reasoning")) and
@@ -613,6 +627,8 @@ $(cat "$companion")"
       ($counts[-1] | .cached_input_tokens<=.input_tokens and .reasoning_output_tokens<=.output_tokens and
         .total_tokens==(.input_tokens+.output_tokens))) |
     {nativeId:$meta[0].id,model:$ctx[0].model,effort:$ctx[0].effort,
+      permissions:(if $manual then {sandbox:$ctx[0].sandbox_policy.type,
+        approvalPolicy:$ctx[0].approval_policy,approvalsReviewer:$ctx[0].approvals_reviewer} else null end),
       nativeUsage:$counts[-1],cliVersion:$meta[0].cli_version,bootstrapToken:$marker}
     ' "$native_log" > "$tmp/native.json" 2> "$tmp/native-error"; do
     if [[ $? == 3 ]]; then
@@ -626,6 +642,7 @@ $(cat "$companion")"
   native_id=$(jq -r .nativeId "$tmp/native.json")
   observed_model=$(jq -r '.model // empty' "$tmp/native.json")
   observed_effort=$(jq -r '.effort // empty' "$tmp/native.json")
+  observed_permissions=$(jq -c .permissions "$tmp/native.json")
   [[ -n $observed_model ]] || fail observed_model_unknown 'Native model is missing.'
   # Settle this one initial observation within the same startup deadline.
   while :; do

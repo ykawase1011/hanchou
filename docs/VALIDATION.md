@@ -620,6 +620,22 @@ toolは`gpt-5.6-luna`・`isFallback: true`を返したため、reviewer計測は
 旧版と候補版のend-to-end比較やtoken・wall改善の証明ではない。費用scopeの残件は
 [#67](https://github.com/ykawase1011/hanchou/issues/67)、承認経路は[#79](https://github.com/ykawase1011/hanchou/issues/79)で追跡する。
 
+### 起動時の手動承認モード指定（2026-10-25、#79）
+
+二段承認の次の試験準備で、launcherがsandboxと承認先を起動元設定から継承し、
+指定した手動モードを固定できない点を確認した。任務が明示選択した場合だけ使う
+`--manual-approvals --qualify-startup`を追加し、Codex 0.163.0に限定した。
+`workspace-write`・`on-request`・`user`をprocess引数とtool-free bootstrapの
+native turn contextで照合し、receiptに要求と観測を分けて返す。
+既定の起動、他provider、global設定、installed skillsは変更しない。
+
+offline試験は正しい引数とnative値、sandbox／承認方針／reviewerの不一致、
+観測値欠落、未対応版、資格確認なし、Claude、lifecycleとの併用を検査する。
+不一致での別modeへのfallbackや同一UNKNOWNの昇格は提供しない。
+この照合はbootstrap時の3項目に限り、追加writable path・network・hookの
+全設定や後続turnの継続的な保証ではない。二段の承認委任、拒否・取消・本人必須gateの
+実機受入や費用改善は本変更の合格条件に含めず、#79／#67をopenで維持する。
+
 ### 計測テストの期限と失敗診断（2026-10-25）
 
 macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが
