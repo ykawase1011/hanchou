@@ -884,6 +884,52 @@ model・介入条件の過去試行との削減率は算出しない。性能改
 [#79](https://github.com/ykawase1011/hanchou/issues/79) と
 [#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
 
+### 固定tool-shell環境のworkerへの伝達（2026-10-25、#79／#67）
+
+PR #92 の merge commit `f009adb` のtracked skillsを凍結し、追加された環境伝達手順を
+macOS / Herdr 0.9.5 / Codex 0.163.0 / ccusage 20.0.37で1件確認した。
+設定に従う側近Astra mediumと、側近が選んだworker gpt-6.1-sol low各1件、再試行0。
+実path・親子関係・host・project・固定base・common Git・origin、両nativeのsource `cli`、
+model・effort・bootstrapの権限3項目・実行ファイル・PATH・使用量を割当前に照合した。
+同じnamed serverの背景viewerを保持し、workerは専用の子worktreeへ配置した。
+
+任務は固定PATHとnon-login指定を側近・workerの実tool callへ適用し、workerが観測した
+環境をJSONへ保存・再読取りするもの。workerの実shell呼出し2回と側近の25回すべてに
+明示PATHと`login:false`があり、対応するnative tool outputも保存した。
+側近と外側が成果と実コマンドを独立に照合し、公式Codex 0.163.0、cwd・base・PATH、
+non-login条件の一致を確認した。要求shellは`/bin/bash`、診断値はBash 5.3.8だったが、
+workerの実shell binary自体は独立同定していない。任務でも環境条件を明示しており、
+このn=1からskill文面だけの因果効果を主張しない。前段階の逸脱・失敗を置換しない。
+
+**全protocolの無逸脱合格ではない。** 外側が渡した開始時刻の`+00:00`表記は計測shellに
+拒否され、側近はworker起動前に同じ時刻の`Z`表記で計測を確認した。初回のOrca socket
+読取り拒否、helpのexit 2、Codex version確認時のPATH-alias権限警告を保存した。
+初期2 batchの証拠はnative上の集約出力で、個別commandのstdout/stderr/exitが揃わず、
+process環境の読取りもPATH等の選択項目だけを保存している。worker退出直後の古い状態を
+保持し、退出入力は再送しなかったが、空のpane-run receiptを誤解して同じdurable `cd`を
+1回重複送信した。結果とこれらの手順上の逸脱を分けている。
+
+外側は未認定hostの試験担当で、側近への個別native承認10件、product agentへの是正取消0、
+worker UIへの直接回答0。viewerの任意SSH鍵解除待ちは1回取り消し、認証情報を入力せず
+ローカル接続した。外側のreport field・command抽出・保存済みarchiveのguard失敗も保持し、
+その確認中は後続の退出・受入れを止めた。無介入の合格とは扱わない。
+
+最終settled cumulativeは側近 **1,663,394 tokens / 30 responses**、worker **85,232 / 4**、
+合計 **1,748,626 / 34**。非cache input 64,562、cache read 1,666,944、output 17,120の
+合計で、reasoning 1,700はoutputの内数。各nativeの最終累積を一度だけ計上した。
+側近は割当前887,745で留保圧迫の可能性、終了前1,589,699で暫定200万見積りの残り410,301が
+終了留保70万を下回る点を会話へ報告した。追加試行をせず、finishと最終返信へ限定して継続した。
+外側も注意を示した。外側の準備・制御・失敗・整理・報告と独立レビューは別枠で、元の人間root
+準備分は欠測。完全なcampaign総量・料金・subscription率はない。
+
+成果・native・receipt・Git bundleを保存し、両CLIの実終了と全idle shellのdurable cwdを確認して
+FINISHEDを受け入れた。両worktree、viewer、未使用worker shellを削除し、serverは86,400秒の
+保持条件に従って残した。受入後のpane操作はない。新しい実機観測は固定環境伝達の限定範囲で、
+完全な承認階層、provider本人必須gate、Claude／auto-review／非対話、OS/mobile通知を証明しない。
+旧比較の完了0件を置換せず、性能改善は未確立。
+[#79](https://github.com/ykawase1011/hanchou/issues/79) と
+[#67](https://github.com/ykawase1011/hanchou/issues/67) はopenで追跡する。
+
 ### 計測テストの期限と失敗診断（2026-10-25）
 
 macOS / Bash 3.2 / jq 1.6 / ccusage 20.0.37で、正常な最初のsettled fixtureが
