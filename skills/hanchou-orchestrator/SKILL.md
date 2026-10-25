@@ -160,6 +160,9 @@ it does not prove the work is impossible or permit silently raising a hard limit
 Measurement returns evidence; the agent owns estimates and supervision.
 
 An active self cannot measure its own final reply: reserve and report that gap.
+For phase/caller cost calibration, retain the existing checkpoint receipts and
+follow [cost scope](references/usage.md#checkpoint-intervals-and-cost-scope);
+active observation intervals are not exact phase costs or extra accounting entries.
 At sokkin completion, require the assignment's settled measurement **before**
 deleting its cwd; retain that receipt afterwards. A continuation requires the
 latest request's marker/start window; matching historical aborts keep cumulative

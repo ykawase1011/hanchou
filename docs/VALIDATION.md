@@ -138,6 +138,44 @@ PR #68の受入対象は、計測Shellの限定契約と回帰、実ログでの
 注意を埋もれさせない会話報告は[#22](https://github.com/ykawase1011/hanchou/issues/22)で追跡する。
 新しいdaemon・scheduler・通知配送機構は追加せず、既存host機能を使う。
 
+### 完了試行のcheckpointとcaller費用の照合（2026-10-25、#67）
+
+stage09の保存済み`measure-session.sh` receiptsを、同一native・版・scopeと
+単調なcounterで照合した。新規の機能試行、使用量parserの追加、削除済みcwdでの
+再計測ではない。班長・側近・独立reviewは別nativeで、各receiptの子包含は空。
+最終値を各1回だけ数えた既計上小計 **5,412,014 tokens** は変わらない。
+内訳は非cache input 214,093、cache read 5,143,424、output 54,497。
+reasoning output 5,952はoutputの内数で、再加算しない。
+
+班長の代表checkpointを以下に示す。時刻はreceiptの取得時刻ではなく
+`lastUsage.observedThrough`のUTC。差分はこの表の前行からの観測区間である。
+
+| 観測境界 | 最終記録時刻 | 状態 | 累積tokens | 前行との差分 |
+| --- | --- | --- | ---: | ---: |
+| bootstrap | 17:35:35.371 | settled | 19,548 | — |
+| 起動前の観測 | 17:42:27.794 | active | 543,720 | 524,172 |
+| 割当前の観測 | 17:55:14.657 | active | 2,115,705 | 1,571,985 |
+| 受入前の観測 | 18:03:37.498 | active | 3,319,808 | 1,204,103 |
+| 最終応答後 | 18:13:07.770 | settled | 4,372,392 | 1,052,584 |
+
+active境界には未記録処理があり、差分を厳密な準備・本作業・終了処理の費用とは
+呼ばない。割当前のviewer是正・取消、承認往復、受入・保存・報告も含む。
+側近はbootstrap 21,706から最終368,297、独立reviewは21,676から671,325。
+bootstrapや途中値を最終累積へ再加算していない。
+
+外側owner08はsource=vscode／0.164.0で未認定。native完了と公開Orca done後の
+一意response raw合計は **21,824,873 / 162 responses**、最後のnative counterは
+21,572,791で不一致を保持した。この会話には前ownerの整理、試行の準備・制御、
+文書修正・検証・review制御・整理・引継ぎが含まれ、認定済みの工程別差分ではない。
+元human-rootの準備差分は欠測、今回の照合callerの費用も別scopeである。
+raw値を認定小計に混ぜて完全なcampaign総量・削減率・料金・サブスク率を主張しない。
+
+証跡はcampaignの`stage-10-cost-scope/RECEIPT_AUDIT.json`と
+`SOURCE_MANIFEST.json`（元receiptのSHA256・identity・時刻・成分・区間差分）、
+`OWNER_08_RAW_USAGE.json`、`OWNER_08_RETIRE_CLEANUP.json`。
+工程境界の保存とcaller scopeの報告手順を明確化したが、新手順のlive acceptanceではない。
+旧比較はcompleted0／failed1／unrun3のままで、性能改善は未確立。#67は継続する。
+
 ### 班長の準備費用（Issue #63）
 
 2026-10-20の初期化済み新タブ試験では、Sol / mediumの班長が側近への実作業送信前に
