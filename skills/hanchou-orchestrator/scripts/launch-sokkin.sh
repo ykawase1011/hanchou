@@ -304,7 +304,19 @@ lifecycle_operation() {
     *) fail invalid_operation 'Lifecycle operation must be finish, accept, resume or reap.';;
   esac
   state_write "$state"
-  jq -nc --arg id "$instance" --arg record "$record" --arg status "$(jq -r .status <<<"$state")" '{ok:true,instanceKey:$id,record:$record,status:$status}'
+  # Return the persisted transition boundary, not just the requested status.
+  # Keep report contents and usage payloads in their preserved evidence files.
+  jq -ces --argjson expected "$state" --arg operation "$lifecycle" \
+    --arg record "$record" --arg dir "$instance_dir" '
+    if length!=1 or .[0]!=$expected then error("record readback mismatch") else .[0] |
+      {ok:true,instanceKey,record:$record,status,operation:$operation,
+       missionId,attemptId,nativeId,worktree,recordReadback:"matched",
+       completion:(if .finishedAt!=null and .reportHash!=null then
+         {finishedAt,report:{path:($dir+"/report.txt"),gitBlobId:.reportHash}} else null end),
+       acceptance:(if .acceptedAt!=null and .acceptanceHash!=null then
+         {acceptedAt,path:($dir+"/acceptance.json"),gitBlobId:.acceptanceHash} else null end),
+       closedAt:(.closedAt // null)}
+    end' "$record" || fail record_readback_failed 'The lifecycle write was attempted but its persisted record did not match; inspect this instance before retrying.'
   emitted=true; exit 0
 }
 
