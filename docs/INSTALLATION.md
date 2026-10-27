@@ -79,6 +79,17 @@ Herdr 0.9.5／ccusage 20.0.37は検証基準であり、導入方法や最低版
 ```
 
 `.hanchou/config.json`は機械向け起動値、`.hanchou/policy.md`は人間向け責務・権限です。
+人間への班長の説明を日本語、側近・workerとの連絡を英語にする場合は、対応する
+launcherと側近スキルを選択した後、新しい明示的な利用の前にrootへ次を追加できます。
+
+```json
+"languages": {"human": "ja", "agents": "en"}
+```
+
+これは既存JSONに追加する任意の項目です。省略・nullは従来の言語を維持し、明示的な
+ユーザー／mission指示を優先します。成果物の言語や承認権限は変更しません。
+[値の形式と伝達範囲](../skills/hanchou-orchestrator/references/launch.md#communication-languages)を参照してください。
+旧launcherは未知のキーを拒否するため、実行中の依頼・固定比較が使う設定へ先行追加しません。
 テンプレートは新規設定用です。明示指定や既存設定を優先し、再実行で上書きしません。
 `model`／`effort`のnull・省略は引き続きCLI既定値を意味します。
 側近は判断品質を優先し、workerは作業に十分な低消費の候補を選ぶ方針です。

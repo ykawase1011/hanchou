@@ -11,6 +11,27 @@
 - 40回帰ケースはClaude既定modelの空配列、不正JSON時の単一failure receipt、false model、不正scalar設定、両providerのeffort引数、caller/paneでのAPI・不明認証の拒否、Claudeへの手動承認オプション拒否を検査する。caller拒否では資源未作成、pane拒否では資源と識別情報を保持してagent未起動となる。
 - `skills@1.7.4`を一時Git projectで実行。Codex/Claude Code向けに4スキルだけを選択し、全ファイルの一致、launcher実行権限、references/assetsの保持、導入先での`--help`を確認。global/userインストールは変更しない。[正確な導入コマンド](INSTALLATION.md)。
 
+### 通信言語の任意設定（2026-10-27）
+
+`languages.human`／`languages.agents`をversion 2の任意設定として追加した。
+言語設定の回帰とbootstrap検査は`make check`に含まれる。
+実Git・mock Herdr/providerによる検査で、旧形式、object／fieldの省略・null、
+片側指定、両providerのreceiptと設定ファイル保持、不正なキー・型・タグ・改行・
+指示文等の資源作成前拒否を確認した。bootstrapの実送信引数から両fieldを読み、
+未指定の相手へ値を流用しないことを検査した。
+
+独立レビューで、明示的な言語上書きがmissionより先のbootstrap受領文へ届かない
+問題を修正した。qualified bootstrapは固定protocol tokenだけを許し、前後の空白を
+除く余分な文章や別commentaryを拒否する回帰を追加した。通常の連絡は上書き指示を
+含むmission受領後に始まる。修正後の独立再レビューで指摘解消を確認した。
+4スキルの`quick_validate.py`も合格した。
+
+人間への日本語説明／内部の英語相談、成果物だけ別言語、明示的なmission上書き、
+省略・nullの4ケースは指示の独立レビューで確認した。これとmock transport検査は、
+モデルによる翻訳・worker伝達・init/update保存のnative end-to-end実証ではない。
+今回の変更で新たな推論smoke testや全言語の流暢さ検査は行っていない。
+既存PR83比較の旧head測定を本機能の測定へ流用していない。
+
 ### 初期化時のツール導入確認
 
 `hanchou-init`に導入状況・PATH・版・管理元の確認と、不足時に導入方法を

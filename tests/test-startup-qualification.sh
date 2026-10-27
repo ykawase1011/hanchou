@@ -95,12 +95,15 @@ case "$1 $2" in
      {type:"response_item",payload:{type:"message",role:"user",content:[{type:"input_text",text:$prompt}]}},
      (if $mode=="tool" then {type:"response_item",payload:{type:"custom_tool_call"}} else empty end),
      (if $mode=="builtin-tool" then {type:"response_item",payload:{type:"web_search_call"}} else empty end),
+     (if $mode=="startup-commentary" then {type:"response_item",payload:{type:"message",role:"assistant",phase:"commentary",
+       content:[{type:"output_text",text:"Acknowledged."}]}} else empty end),
      {type:"event_msg",payload:{type:"token_count",info:{total_token_usage:{
        input_tokens:100,cached_input_tokens:(if $mode=="missing-count" then 100 elif $mode=="negative-count" then 101 else 20 end),
        output_tokens:3,reasoning_output_tokens:1,
        cache_write_input_tokens:0,total_tokens:103}}}},
      {type:"response_item",payload:{type:"message",role:"assistant",phase:"final_answer",
-       content:[{type:"output_text",text:(if $mode=="echo" then "Not acknowledged." else "Acknowledged `"+$marker+"`." end)}]}},
+       content:[{type:"output_text",text:(if $mode=="echo" then "Not acknowledged."
+         elif $mode=="startup-prose" then "Acknowledged `"+$marker+"`." else $marker end)}]}},
      (if $mode=="incomplete" or $mode=="delayed-log" then empty else {type:"event_msg",payload:{type:"task_complete",turn_id:"turn"}} end)
      ' > "$log"
    if [[ $MOCK_MODE == delayed-log ]]; then
@@ -120,8 +123,14 @@ launch() {
     --project "$fixture/source" --mission startup --session fixture \
     --worktree-root "$fixture/worktrees" --qualify-startup --timeout-ms 3001 "$@"
 }
-for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
+for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
   export MOCK_MODE=$mode
+  jq --arg mode "$mode" '
+    if $mode=="language-both" then .languages={human:"ja",agents:"en"}
+    elif $mode=="language-human" then .languages={human:"zh-Hant"}
+    elif $mode=="language-agents" then .languages={agents:"pt-BR"}
+    elif $mode=="language-null" then .languages=null
+    else . end' "$root/skills/hanchou-init/assets/config-template.json" > "$fixture/source/.hanchou/config.json"
   rm -rf "$CODEX_HOME/sessions" "$fixture/wrapper-home"
   : > "$fixture/calls"
   rc=0
@@ -131,12 +140,24 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delaye
     launch > "$fixture/receipt" 2> "$fixture/error" || rc=$?
   fi
   jq -es 'length==1' "$fixture/receipt" >/dev/null
-  if [[ $mode == success || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == manual-success ]]; then
+  if [[ $mode == success || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == manual-success ]]; then
     [[ $rc == 0 ]]
     jq -e '.ok and .stage=="startup_qualified" and .usageReadiness.status=="ready" and
       .sokkin.observedModel=="gpt-6-astra" and .sokkin.observedEffort=="medium" and
       .sokkin.process.argumentsMatchLaunch and .sokkin.process.pid==999999 and
       .usageReadiness.tool.totalTokens==103 and .usageReadiness.includedChildren==[]' "$fixture/receipt" >/dev/null
+    # Inspect the actual prompt sent to the mock transport, not a separately
+    # constructed prompt. Both audiences reach bootstrap without borrowing a
+    # missing preference from the other. The machine protocol remains exact.
+    jq -se --slurpfile config "$fixture/source/.hanchou/config.json" '
+      [.[]|select(.[2]=="agent" and .[3]=="prompt")|.[5]] as $prompts |
+      ($prompts|length)==1 and
+      ([$prompts[0]|split("\n")[]|
+        select(startswith("Communication language defaults (JSON data): "))|
+        ltrimstr("Communication language defaults (JSON data): ")|fromjson] ==
+       [($config[0].languages // {} | {human:.human,agents:.agents})])' "$fixture/calls" >/dev/null
+    jq -e --slurpfile config "$fixture/source/.hanchou/config.json" \
+      '.config.effective==$config[0]' "$fixture/receipt" >/dev/null
   else
     [[ $rc != 0 ]]
     jq -e '.ok==false and .usageReadiness.status!="ready" and .herdr.paneId=="w1:p1"' "$fixture/receipt" >/dev/null
@@ -160,6 +181,9 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success no-herdr-id delayed-log delaye
   jq -se --argjson count "$prompt_count" '[.[]|select(.[2]=="agent" and .[3]=="prompt")]|length==$count' "$fixture/calls" >/dev/null
   if [[ $mode == process-args ]]; then
     jq -e '.error.code=="process_identity_mismatch" and (. | tostring | contains("sensitive-value") | not)' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == startup-prose || $mode == startup-commentary ]]; then
+    jq -e '.error.code=="bootstrap_evidence_mismatch" and (.resources|length)>0' "$fixture/receipt" >/dev/null
   fi
   if [[ $mode == timeout ]]; then
     ! kill -0 "$(cat "$fixture/usage-pid")" 2>/dev/null

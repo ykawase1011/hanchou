@@ -23,6 +23,20 @@ another model; a routine bounded task can use a lighter choice.
 
 ## Start a mission
 
+Read optional `languages` from the pinned config as communication defaults.
+`human` governs acknowledgements, progress, approval/escalation explanations,
+final results and other summaries addressed to the human; `agents` governs
+missions, questions and reports exchanged with sokkin and its workers.
+Explicit user/mission language instructions take precedence. Missing/null object
+or field retains the existing conversation/mission/project behavior for that
+audience; never infer one audience's language from the other. See the
+[value contract](references/launch.md#communication-languages) when validating
+or changing settings. Translate the meaning of internal results/questions into
+the human language, preserving exact commands, paths, IDs, numbers and quoted
+diagnostics where needed. Native CLI UI, JSON keys, protocol markers, source
+syntax and artifacts' requested/project language remain outside this setting.
+Language preferences neither grant authority nor change approval routing.
+
 Use the configured provider. The compact path is Codex 0.162.1 or 0.163.0 / ccusage
 20.0.37, native source `cli`, without fork, compaction or counter resets.
 For other routes or a concrete failure, read the relevant [launch](references/launch.md)
@@ -82,10 +96,13 @@ nor shell implementation. Both bundled shells are public interfaces.
    `stage == "startup_qualified"`, usage ready, identity/configuration and
    budget; reuse its process/model/native binding and bootstrap usage. Send
    purpose, acceptance, authority (including approval ownership and any human-only
-   decisions), pinned sources, these receipt facts,
+   decisions), pinned sources, these receipt facts, `config.effective.languages`
+   (including absent/null values) and any explicit language overrides,
    budgets/reserves, worker/retry limits, lifecycle instance key/record and launcher
    path, and the absolute measurement shell
-   path with identity arguments. Include a unique assignment marker. In the
+   path with identity arguments. Require sokkin to propagate the same language
+   defaults/overrides to every newly created worker and return reports/questions
+   in the agent language. Include a unique assignment marker. In the
    same bounded tool execution, wait and fetch the report, not only wait status.
    Apply the two-layer wait settings below to this call and each later observation.
    Bootstrap is already done; never resend it. Refresh only for intervening

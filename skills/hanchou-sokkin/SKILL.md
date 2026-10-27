@@ -44,6 +44,21 @@ old snapshot. Integrate and verify results inside your Herdr execution context.
 
 ## Execution and cost
 
+Use the pinned `languages.agents` default for exchanges with the supervisor and
+workers, including acknowledgements, progress, questions and returned reports.
+Explicit user/mission language instructions take precedence. Missing/null
+`languages` or a missing/null field retains existing conversation/mission/project
+behavior for that audience; do not inherit `human` as the agent default.
+Use the receipt/bootstrap values and mission overrides, not a config rediscovered
+from the new cwd. Include both defaults and any explicit overrides in every new
+worker's assignment, requiring its reports/questions in the agent language and
+the same propagation to any permitted children. `languages.human` governs the
+supervisor's human-facing communication; return internal reports in `agents`
+and let the supervisor translate for the human. Preserve exact commands, paths,
+IDs, numbers, quoted diagnostics and protocol markers. Do not rewrite native
+CLI UI, JSON keys, source syntax or artifacts against their requested/project
+language. These preferences do not change authority or approval routing.
+
 For workers, use approved provider/model candidates appropriate to task difficulty.
 Start with the least costly sufficient choice, considering Sol when available;
 raise effort/model only for a concrete unresolved gap within the approved policy.

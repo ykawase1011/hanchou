@@ -119,11 +119,47 @@ Use the selected project's `.hanchou/config.json`:
 This is the new-project `hanchou-init` template, not a launcher fallback.
 Existing values and explicit mission overrides take precedence.
 Optional `sokkin.effort` accepts `low`, `medium`, `high` or null. No other keys
-are supported. Agent is `codex` or `claude`; model is a native model identifier
+are supported inside `sokkin`. The root also accepts optional `languages` below.
+Agent is `codex` or `claude`; model is a native model identifier
 or null. Null delegates to the official CLI's configured
 default, so verify the observed model/effort before real work. Keep budgets,
 allowed model/effort choices, concurrency and retry limits in the pinned policy
 or mission, not speculative configuration fields.
+
+### Communication languages
+
+Optionally add `"languages":{"human":"ja","agents":"en"}` to the version 2
+root. Only `human` and `agents` are accepted in this object. A tag must be an
+ASCII string of at most 63 characters: 2–8 letters followed by zero or more
+hyphen-separated groups of 1–8 letters/digits, with no whitespace (for example
+`ja`, `en`, `pt-BR`, `zh-Hant`). This is a language-tag-shaped subset, not a
+registry lookup or a guarantee of model fluency. Underscores, empty strings,
+free-form instructions and other types are rejected before creating resources.
+Tags are preserved as supplied; matching their meaning is case-insensitive.
+
+Omitted/null `languages`, `{}`, and omitted/null fields impose no preference
+for that audience: retain current conversation/mission/project behavior. Do not
+copy the other field as a fallback. Explicit user/mission language instructions
+override config defaults without changing the pinned file.
+
+`human` covers the supervisor's acknowledgement, progress, approval/escalation
+explanations and final summaries. `agents` covers supervisor→sokkin and
+sokkin↔workers, including returned questions/reports and new worker assignments.
+The supervisor conveys internal meaning in `human`, retaining commands, paths,
+IDs, numbers and quoted diagnostics exactly where necessary. Native CLI UI,
+JSON keys, protocol markers, source syntax and artifacts' requested/project
+language are unaffected. No permission or approval rule changes.
+
+The receipt retains the validated config at `config.effective.languages`, with
+omissions/nulls preserved. Qualified bootstrap carries both fields (omissions
+represented as null). For manual bootstrap and every mission, the supervisor
+passes these receipt defaults plus any explicit overrides; sokkin propagates
+them to new workers. Qualified bootstrap accepts only the exact startup marker
+(surrounding whitespace is ignored), with no prose/commentary. Mission overrides
+therefore arrive before any language-bearing reply; markers are not translated.
+Install/select compatible launcher and companion code before enabling these
+keys for a fresh explicit invocation. Updating skills does not rewrite a live
+fixed config or change existing missions.
 
 Invoke the installed script by its resolved path, using quoted arguments:
 
@@ -329,7 +365,8 @@ qualification or an owned `STARTING`/`UNKNOWN` launch. Do not repeat it after
 `startup_qualified`.
 
 Allow one short bootstrap turn for role/instruction receipt only. Supply the
-already-verified launch metadata and the exact pinned sokkin instructions in
+already-verified launch metadata, `config.effective.languages` and explicit
+language overrides, and the exact pinned sokkin instructions in
 that message, and request an acknowledgment without tools, file reads or worker
 dispatch. The supervisor resolves native identity and measures the settled
 response before real work. This avoids repeated full-context responses and
@@ -357,6 +394,8 @@ Send a compact mission containing:
 - Absolute pinned sokkin skill, policy and usage-reference paths (or their exact
   contents when not readable from the execution environment).
 - Purpose, acceptance criteria, allowed actions and artifact destination.
+- Receipt language defaults and explicit overrides; require propagation to new
+  workers and internal reports/questions in the agent language.
 - Token budget, reserved verification/report capacity, finite concurrency/retry
   limits, permitted provider/model/effort choices and measurement freshness.
 - Reporting conditions: completion, decision needed, budget or unrecoverable

@@ -351,11 +351,15 @@ config_path=${config_path:-"$project/.hanchou/config.json"}
 [[ -f $config_path ]] || fail missing_config 'Initialize the selected project configuration first.'
 config_path=$(cd "$(dirname "$config_path")" && printf '%s/%s' "$(pwd -P)" "$(basename "$config_path")")
 parsed_config=$(jq -ces 'if length == 1 then .[0] else error("multiple documents") end' "$config_path" 2>/dev/null) || fail invalid_config 'Configuration must contain one valid JSON object.'
-jq -e 'type=="object" and .version==2 and (.sokkin|type=="object") and
+jq -e 'def language_tag:
+    .==null or (type=="string" and length<=63 and test("^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*\\z"));
+  type=="object" and .version==2 and (.sokkin|type=="object") and
   (.sokkin.agent=="codex" or .sokkin.agent=="claude") and
   (.sokkin.model==null or (.sokkin.model|type=="string")) and
   (.sokkin.effort==null or .sokkin.effort=="low" or .sokkin.effort=="medium" or .sokkin.effort=="high") and
-  ((keys-["version","sokkin"]|length)==0) and
+  (.languages==null or (.languages|type=="object" and
+    ((keys-["human","agents"]|length)==0) and (.human|language_tag) and (.agents|language_tag))) and
+  ((keys-["version","sokkin","languages"]|length)==0) and
   ((.sokkin|keys-["agent","model","effort"]|length)==0)' <<<"$parsed_config" >/dev/null 2>&1 || fail invalid_config 'Unsupported configuration version, agent or field.'
 effective=$parsed_config
 [[ -z $agent_override || $agent_override == codex || $agent_override == claude ]] || fail invalid_agent 'Agent must be codex or claude.'
@@ -564,14 +568,19 @@ if [[ $qualify_startup == true ]]; then
     fail process_identity_mismatch 'Foreground process/cwd or arguments differ from this launch; inspect the same pane. Unexpected arguments are not copied into the receipt.'
   observed_process=$process_candidate
   marker="HANCHOU_STARTUP_$attempt"
+  language_defaults=$(jq -c '.languages // {} | {human:.human,agents:.agents}' <<<"$effective")
   # No arbitrary prompt/mission interface: this single turn may acknowledge only.
   bootstrap="Act as this mission's sokkin under the exact companion instructions below.
 This is startup qualification ONLY for mission $mission, attempt $attempt.
 Your verified fresh cwd is $wt; pane $pane in local Herdr session $session.
 Do not use tools, read files, start workers or perform real work. Native identity
-and usage are pending. Reply once with the token $marker and wait for a qualified
-mission assignment. These restrictions apply to this bootstrap despite the
+and usage are pending. Reply once with only the token $marker, without prose
+or commentary, and wait for a qualified mission assignment. These restrictions apply to this bootstrap despite the
 ordinary execution workflow in the following instructions.
+
+Communication language defaults (JSON data): $language_defaults
+Apply the companion's language rules below. Explicit language overrides arrive
+with the mission assignment; this startup reply is only the protocol token.
 
 $(cat "$companion")"
   deadline=$((SECONDS + (10#$timeout_ms + 999) / 1000))
@@ -619,7 +628,9 @@ $(cat "$companion")"
       ($manual==false or ($ctx[0].sandbox_policy.type=="workspace-write" and
         $ctx[0].approval_policy=="on-request" and $ctx[0].approvals_reviewer=="user")) and
       ($start|length)==1 and ($completed|length)==1 and $start[0].turn_id==$completed[0].turn_id and
-      ($answers|length)==1 and any($answers[0].content[]?; (.text // "" | contains($marker))) and
+      ($answers|length)==1 and
+      ([.[]|select(.type=="response_item" and .payload.type=="message" and .payload.role=="assistant")]|length)==1 and
+      ([$answers[0].content[]? | .text // ""] | join("") | gsub("^\\s+|\\s+$";""))==$marker and
       (all(.[]; .type!="response_item" or .payload.type=="message" or .payload.type=="reasoning")) and
       ($counts|length)>0 and all($counts[]; .==$counts[-1]) and
       ($counts[-1] | [.input_tokens,.cached_input_tokens,.output_tokens,.reasoning_output_tokens,.total_tokens] |
