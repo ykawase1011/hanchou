@@ -108,6 +108,17 @@ flowchart TD
 
 今回の依頼で明示された一時指定は設定値より優先するが、永続設定へ自動で書き戻さない。起動スクリプトは確定済み設定を受け取り検証する。設定未作成時は初期化でagentを選び、明示的な一時指定もないまま勝手に別agentを起動しない。壊れた設定や未対応agent／model指定は起動前にエラーとし、別providerへのfallbackを行わない。
 
+任意のroot設定`languages`は`human`（班長の人間向け説明・進捗・承認相談・最終報告）と
+`agents`（班長→側近、側近↔workerの依頼・質問・返却報告）を独立に指定する。
+例は`"languages":{"human":"ja","agents":"en"}`。object／fieldの省略・nullは
+その相手への既存の会話・mission・projectの言語を維持し、他方の値を継承しない。
+明示的なユーザー／mission指示を優先する。班長は内部報告の意味を人間向け言語で伝え、
+必要なコマンド・path・ID・数値・診断原文を保持する。native UI・JSONキー・protocol marker・
+コード構文・成果物自身の指定言語や権限は変更しない。
+値の形式と伝達契約は[起動契約](../skills/hanchou-orchestrator/references/launch.md#communication-languages)を正本とする。
+起動前に検証し、receipt／bootstrap／missionから新規workerまで渡す。旧設定は引き続き受理し、
+初期化・更新で既存値や省略を上書きしない。
+
 ### 5.2 新規依頼の起動順序
 
 班長は対象・依頼・設定を確定し、スキルに同梱する`launch-sokkin.sh`を呼ぶ。以下の配置・起動処理はスクリプトにまとめ、新規worktree作成を省略するオプションは設けない。JSONの読取り・生成には`jq`を使い、文字列連結でJSONや実行コマンドを組み立てない。引数を適切に引用して既存CLIへ渡す。対応shellはBash 3.2以上とし、依存ツールは資源作成前に検証する。起動処理にPython／TypeScriptの実行環境は要求しない。

@@ -25,6 +25,11 @@ copies without resolving their edits. For the v2 migration, inventory old
 verified obsolete Hanchou installs within the authorized scope, preserving
 customizations and user `.hanchou` data. Old schedules/resources require their
 own migration disposition; uninstalling a skill does not stop them.
+Preserve communication language settings, including omissions/nulls, along with
+other project settings. Do not add `languages` to a live fixed config as part of
+a skill update. Enable it only when requested, after selecting a compatible
+launcher and companion for a fresh explicit invocation; old launchers reject
+unknown keys. Running conversations retain their pinned mission settings.
 
 Verify the installed files and executable modes of `launch-sokkin.sh` and
 `measure-session.sh`. Distinguish

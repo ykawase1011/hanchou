@@ -77,6 +77,16 @@ values, take precedence. Do not replace them with the template on reinitializati
 For another provider, choose its supported model/effort rather than carrying
 Codex model names across. Never infer consent to API billing from a model choice.
 Claude is subscription-only. Configuration is JSON data, not shell code.
+Optional `languages` selects communication defaults independently: `human` for
+the supervisor's human-facing messages and `agents` for supervisor/sokkin/worker
+exchanges. For example, `"languages":{"human":"ja","agents":"en"}` requests
+Japanese human messages and English internal reports/questions. Use only the
+validated [language-tag values and null semantics](../hanchou-orchestrator/references/launch.md#communication-languages).
+Leave unrequested preferences absent; preserve existing values, nulls and
+omissions during init/update. Explicit user/mission instructions override these
+defaults without writing them back. This does not translate policy/artifacts
+or change permissions. Select a compatible launcher and companion before enabling
+new keys; do not change a fixed config used by an older running mission.
 Budget and allowed model choices may be recorded in `policy.md` or the mission.
 Optional `sokkin.effort` is `low`, `medium`, `high` or null; null/omission uses the
 CLI default. A bounded routine mission may explicitly choose a lighter sokkin,
