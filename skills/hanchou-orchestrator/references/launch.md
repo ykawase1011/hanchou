@@ -154,7 +154,9 @@ The receipt retains the validated config at `config.effective.languages`, with
 omissions/nulls preserved. Qualified bootstrap carries both fields (omissions
 represented as null). For manual bootstrap and every mission, the supervisor
 passes these receipt defaults plus any explicit overrides; sokkin propagates
-them to new workers. The exact startup marker remains unchanged in all languages.
+them to new workers. Qualified bootstrap accepts only the exact startup marker
+(surrounding whitespace is ignored), with no prose/commentary. Mission overrides
+therefore arrive before any language-bearing reply; markers are not translated.
 Install/select compatible launcher and companion code before enabling these
 keys for a fresh explicit invocation. Updating skills does not rewrite a live
 fixed config or change existing missions.

@@ -95,12 +95,15 @@ case "$1 $2" in
      {type:"response_item",payload:{type:"message",role:"user",content:[{type:"input_text",text:$prompt}]}},
      (if $mode=="tool" then {type:"response_item",payload:{type:"custom_tool_call"}} else empty end),
      (if $mode=="builtin-tool" then {type:"response_item",payload:{type:"web_search_call"}} else empty end),
+     (if $mode=="startup-commentary" then {type:"response_item",payload:{type:"message",role:"assistant",phase:"commentary",
+       content:[{type:"output_text",text:"Acknowledged."}]}} else empty end),
      {type:"event_msg",payload:{type:"token_count",info:{total_token_usage:{
        input_tokens:100,cached_input_tokens:(if $mode=="missing-count" then 100 elif $mode=="negative-count" then 101 else 20 end),
        output_tokens:3,reasoning_output_tokens:1,
        cache_write_input_tokens:0,total_tokens:103}}}},
      {type:"response_item",payload:{type:"message",role:"assistant",phase:"final_answer",
-       content:[{type:"output_text",text:(if $mode=="echo" then "Not acknowledged." else "Acknowledged `"+$marker+"`." end)}]}},
+       content:[{type:"output_text",text:(if $mode=="echo" then "Not acknowledged."
+         elif $mode=="startup-prose" then "Acknowledged `"+$marker+"`." else $marker end)}]}},
      (if $mode=="incomplete" or $mode=="delayed-log" then empty else {type:"event_msg",payload:{type:"task_complete",turn_id:"turn"}} end)
      ' > "$log"
    if [[ $MOCK_MODE == delayed-log ]]; then
@@ -120,7 +123,7 @@ launch() {
     --project "$fixture/source" --mission startup --session fixture \
     --worktree-root "$fixture/worktrees" --qualify-startup --timeout-ms 3001 "$@"
 }
-for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human language-agents language-null no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
+for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
   export MOCK_MODE=$mode
   jq --arg mode "$mode" '
     if $mode=="language-both" then .languages={human:"ja",agents:"en"}
@@ -178,6 +181,9 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human l
   jq -se --argjson count "$prompt_count" '[.[]|select(.[2]=="agent" and .[3]=="prompt")]|length==$count' "$fixture/calls" >/dev/null
   if [[ $mode == process-args ]]; then
     jq -e '.error.code=="process_identity_mismatch" and (. | tostring | contains("sensitive-value") | not)' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == startup-prose || $mode == startup-commentary ]]; then
+    jq -e '.error.code=="bootstrap_evidence_mismatch" and (.resources|length)>0' "$fixture/receipt" >/dev/null
   fi
   if [[ $mode == timeout ]]; then
     ! kill -0 "$(cat "$fixture/usage-pid")" 2>/dev/null

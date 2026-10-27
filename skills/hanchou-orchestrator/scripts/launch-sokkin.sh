@@ -574,19 +574,13 @@ if [[ $qualify_startup == true ]]; then
 This is startup qualification ONLY for mission $mission, attempt $attempt.
 Your verified fresh cwd is $wt; pane $pane in local Herdr session $session.
 Do not use tools, read files, start workers or perform real work. Native identity
-and usage are pending. Reply once with the token $marker and wait for a qualified
-mission assignment. These restrictions apply to this bootstrap despite the
+and usage are pending. Reply once with only the token $marker, without prose
+or commentary, and wait for a qualified mission assignment. These restrictions apply to this bootstrap despite the
 ordinary execution workflow in the following instructions.
 
 Communication language defaults (JSON data): $language_defaults
-Explicit user/mission language instructions take precedence. Null means retain
-the existing conversation/mission/project language for that audience. Use agents
-for exchanges with the supervisor and workers, including reports and questions;
-pass these defaults and explicit overrides to every new worker. Human is for
-the supervisor's human-facing summaries, not the internal return report.
-Preserve exact commands, paths, IDs, numbers, quoted diagnostics and protocol
-markers. Do not change native CLI UI, JSON keys, source syntax, artifact language
-requirements or approval authority. The startup token above remains exact.
+Apply the companion's language rules below. Explicit language overrides arrive
+with the mission assignment; this startup reply is only the protocol token.
 
 $(cat "$companion")"
   deadline=$((SECONDS + (10#$timeout_ms + 999) / 1000))
@@ -634,7 +628,9 @@ $(cat "$companion")"
       ($manual==false or ($ctx[0].sandbox_policy.type=="workspace-write" and
         $ctx[0].approval_policy=="on-request" and $ctx[0].approvals_reviewer=="user")) and
       ($start|length)==1 and ($completed|length)==1 and $start[0].turn_id==$completed[0].turn_id and
-      ($answers|length)==1 and any($answers[0].content[]?; (.text // "" | contains($marker))) and
+      ($answers|length)==1 and
+      ([.[]|select(.type=="response_item" and .payload.type=="message" and .payload.role=="assistant")]|length)==1 and
+      ([$answers[0].content[]? | .text // ""] | join("") | gsub("^\\s+|\\s+$";""))==$marker and
       (all(.[]; .type!="response_item" or .payload.type=="message" or .payload.type=="reasoning")) and
       ($counts|length)>0 and all($counts[]; .==$counts[-1]) and
       ($counts[-1] | [.input_tokens,.cached_input_tokens,.output_tokens,.reasoning_output_tokens,.total_tokens] |
