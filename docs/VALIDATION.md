@@ -540,6 +540,19 @@ cache creation・出力の非負整数と合計、reasoningが出力の内数で
 正常な回収を確認する。macOS / Herdr 0.9.5のserver-only実機試験も更新したreceipt形式で
 `CLOSED`まで成功した。agent起動・使用量は引き続きfixtureであり、実AI完遂の証明ではない。
 
+### 遷移receiptの保存済み境界を返す変更（2026-10-25）
+
+finish／accept／resume／回収済みreapは、書込み後のinstance記録を読み戻して
+要求した状態との一致を確認し、mission／attempt／native／worktreeと、完了・受入の
+時刻、保存先、Git blob IDを返す。resume後は旧reportが残っていても完了・受入境界を
+nullで返す。記録の不一致は`record_readback_failed`となり、成功receiptを返さない。
+受入の使用量・独立判断・process照合や、reapの24時間条件は変更していない。
+
+実Git・process・Unix socketとmock Herdrを使う回帰で4遷移の保存済み証拠との一致、
+およびrenameが成功を返しても書込みが反映されない場合の拒否を確認した。
+receiptの再利用で追加読取りを減らす候補であり、fresh actorのend-to-end比較は
+未実施。tokens・wallの改善は未立証で、同じコードのcheck通過を行動改善と扱わない。
+
 ### 起動tool終了後の専用server保全（2026-10-22）
 
 mainの実Codex試験でbootstrap qualification（21,184 tokens）は成功したが、
