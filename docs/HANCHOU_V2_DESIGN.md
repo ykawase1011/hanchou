@@ -400,6 +400,14 @@ Herdrでもworkspaceの閉鎖とworktreeの削除は別の操作である。実�
 
 これはチェック時の回収であり、24時間後の定刻実行やcron、常駐監視、共有serverの移管を追加しない。班長を呼ばない期間は24時間を超えて残り得る。共有server、部分失敗・未受入・稼働中・識別不能・時刻不正の記録は自動停止しない。Herdr履歴・記録・Git worktree/branchは期限回収で削除しない。記録のlockと実体照合は協調する呼出しを対象とし、同じ権限で同時に外部からserverを差し替える操作を安全に原子化するものではない。具体的な更新契約は[ライフサイクル手順](../skills/hanchou-orchestrator/references/lifecycle.md)を参照する。
 
+反復する記録・report・所有processの手書き照合を置き換えるため、既存起動shellの
+`--lifecycle inspect --instance KEY`で1件を読取り専用観測できる。保存済み成功起動の
+identity、RUNNING/FINISHED記録、同じserver実体、完了reportの実pathとGit blob hash、
+所有pane/processとquiet状態を返す。lock取得やstate更新をせず、既存lock・途中変更・
+識別不能・未知状態を拒否し、一時観測は終了時に削除する。有限の観測結果であり、
+確定使用量・品質・保全・CLI終了の判断や受入・回収権限は与えない。受入処理は実体と
+証拠を再検証する。新たな常駐処理・実行ファイル・独自会計は追加しない。
+
 ## 11. 実現可能性と残る制約
 
 | 項目 | 現時点の判定 | 本運用までに必要なこと |
