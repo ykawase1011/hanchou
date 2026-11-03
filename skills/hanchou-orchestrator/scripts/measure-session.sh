@@ -9,7 +9,8 @@ Usage: measure-session.sh --provider codex --log-home ABS --cwd ABS
   [--native-id UUID] [--native-log ABS] [--timeout-ms N]
 
 Reads one nonforked Codex 0.162.1 or 0.163.0 CLI session with ccusage 20.0.37.
-UTC_ISO is YYYY-MM-DDTHH:MM:SS[.fraction]Z, the current task start lower bound.
+UTC_ISO is YYYY-MM-DDTHH:MM:SS[.fraction]Z or the same with +00:00.
+It is the current task start lower bound; other/unknown offsets are rejected.
 Without --native-log, discovery stays in LOG_HOME/sessions and checks at most
 256 files modified since that bound. Supply an exact log for older/large homes.
 The latest task must contain the marker and match cwd/model/effort. Active tasks
@@ -73,10 +74,15 @@ done
 log_home=$(cd "$log_home" && pwd -P)
 cwd=$(cd "$cwd" && pwd -P)
 [[ -d $log_home/sessions && ! -L $log_home/sessions ]] || fail invalid_path 'The actual log home must contain a nonsymlink sessions directory.'
+# Both spellings identify UTC. Normalize only the explicit zero offset; never
+# round the fractional lower bound or interpret a local/unknown timezone.
+case $started_after in *+00:00) started_after=${started_after%+00:00}Z;; esac
 start_epoch=$(jq -ner --arg at "$started_after" '
   $at | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$")) |
-  . as $t | (sub("\\.[0-9]+Z$";"Z") | fromdateiso8601) +
-  (if ($t|contains(".")) then ($t|capture("\\.(?<fraction>[0-9]+)Z$").fraction|"0."+.|tonumber) else 0 end)' 2>/dev/null) || fail invalid_argument 'Start bound must be a valid UTC ISO timestamp.'
+  . as $t | sub("\\.[0-9]+Z$";"Z") as $whole |
+  ($whole | fromdateiso8601) as $seconds |
+  select(($seconds | strftime("%Y-%m-%dT%H:%M:%SZ"))==$whole) |
+  $seconds + (if ($t|contains(".")) then ($t|capture("\\.(?<fraction>[0-9]+)Z$").fraction|"0."+.|tonumber) else 0 end)' 2>/dev/null) || fail invalid_argument 'Start bound must be a valid UTC ISO timestamp ending in Z or +00:00.'
 deadline=$(jq -nr --argjson ms "$((10#$timeout_ms))" 'now*1000+$ms|floor')
 remaining() { [[ $(jq -nr 'now*1000|floor') -lt $deadline ]]; }
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-measure.XXXXXX") || fail temporary_failure 'Cannot create private measurement scratch space.'

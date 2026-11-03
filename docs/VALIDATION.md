@@ -1091,3 +1091,17 @@ installed Herdr 0.9.5のhelpと既存試験を確認し、実agentを起動し�
 研究Cの名目13分も最後のwait/read分を超え得るため厳密期限と扱わない。
 本番shell・認証・権限・役割分担を変えず、常駐監視・自動承認・新規実行ファイルを追加しない。
 nativeログ、完全receipt、機械固有pathは公開Gitへ入れず、公開記録は条件・観測・限界に絞る。
+
+### 計測開始下限のUTC表記互換性（2026-11-03）
+
+比較試験で、同じUTC時刻を`+00:00`で渡したため、`Z`だけを受理する計測引数で
+停止した事実を確認した。開始下限に限り、明示的な`+00:00`を`Z`へ正規化する。
+小数秒は保持し、非UTC・unknown offset・存在しない日時は拒否する。
+nativeログの書換え、対応版・identity・使用量counterの条件変更は行わない。
+
+Codex 0.162.1/0.163.0のfixtureで両表記のrequest boundary・使用量一致と、
+小数秒を越えた下限・不正日時の拒否を確認した。macOS / Bash 3.2で
+`make check`全体が成功し、lifecycle 16件を含め約925秒だった。
+実Codex 0.163.0 / ccusage 20.0.37のfresh CLI 2件のtool-free bootstrapと、
+うち1件の調査任務の最終settled計測も`+00:00`で照合できた。
+これは引数互換性の確認であり、Hanchou全体のtoken削減率や他providerの認定ではない。
