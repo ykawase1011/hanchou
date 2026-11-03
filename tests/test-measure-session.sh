@@ -117,6 +117,24 @@ run_measure --native-id "$id" --native-log "$log" > "$fixture/settled.json"
 assert_json "$fixture/settled.json" '.status=="ready" and .currentRequest.state=="settled" and .lastUsage.cumulative.total_tokens==110 and .tool.inputTokens==40 and .tool.cacheReadTokens==60 and .tool.reasoningOutputTokens==4 and .scope.includedChildren==[]'
 cmp "$log" "$fixture/base.jsonl" || fail 'measurement modified native log'
 [[ ! -e $(cat "$fixture/tool-home") ]] || fail 'temporary projection retained'
+# Equivalent explicit UTC spellings must keep the same exact task boundary and
+# counters. This includes the +00:00 form emitted by common ISO date helpers.
+for start_bound in 2026-10-20T00:00:01Z 2026-10-20T00:00:01+00:00 \
+  2026-10-20T00:00:01.000Z 2026-10-20T00:00:01.000+00:00; do
+  run_measure --native-log "$log" --started-after "$start_bound" > "$fixture/utc-equivalent.json"
+  jq -es '.[0].currentRequest==.[1].currentRequest and .[0].lastUsage==.[1].lastUsage and
+    .[0].tool==.[1].tool' "$fixture/settled.json" "$fixture/utc-equivalent.json" >/dev/null || fail 'UTC spelling changed the measured request or usage'
+done
+for start_bound in 2026-10-20T00:00:01.001Z 2026-10-20T00:00:01.001+00:00; do
+  bad fractional-utc-bound --native-log "$log" --started-after "$start_bound"
+  assert_json "$fixture/fractional-utc-bound.json" '.error.code=="current_request_mismatch"'
+done
+for start_bound in 2026-10-20T00:00:00+09:00 2026-10-20T00:00:00-00:00 \
+  2026-10-20T00:00:00 2026-02-30T00:00:00Z 2026-02-30T00:00:00+00:00 \
+  2026-10-20T24:00:00Z 2026-10-20T00:00:60Z; do
+  bad invalid-utc-bound --native-log "$log" --started-after "$start_bound"
+  assert_json "$fixture/invalid-utc-bound.json" '.error.code=="invalid_argument"'
+done
 run_measure > "$fixture/discovery.json"
 assert_json "$fixture/discovery.json" '.status=="ready"'
 # A correct tool response may take longer than the old 1600 ms test deadline.

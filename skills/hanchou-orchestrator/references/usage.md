@@ -23,6 +23,9 @@ new collector or decide the budget. See its `--help` for the narrow interface.
 Pass the actual log home, expected physical cwd/model/effort, a current-request start-time
 lower bound and a unique marker from the current request. Reuse known native ID
 and log path. Without identity hints it searches only that home for one match.
+The start bound accepts explicit UTC timestamps ending in `Z` or `+00:00`,
+including fractional seconds. Both identify the same instant; the script keeps
+the fractional lower bound and rejects other/unknown offsets or invalid dates.
 
 A ready receipt describes the session cumulative scope, current request boundary,
 observed native/tool counters and freshness. Active requests have usage still
