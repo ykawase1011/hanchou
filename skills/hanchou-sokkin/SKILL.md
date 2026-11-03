@@ -19,8 +19,11 @@ A second receipt-and-wait exchange is unnecessary unless evidence conflicts.
 Missing identity, usage, billing route or authority is a blocker, not zero cost.
 
 For qualified Codex, use the supplied absolute `measure-session.sh` and verified
-identity arguments with the current assignment marker/start window. Do not write
-a native parser or reread its implementation. This skill has no usage reference;
+identity arguments with the sender's literal current assignment marker and
+pre-send UTC lower bound. Do not derive the bound from the later native user
+message or widen a failed window. Missing/conflicting binding blocks dependent
+work; return the missing fact. Do not write a native parser or reread its
+implementation. This skill has no usage reference;
 other qualified routes use the supervisor's supplied contract. Save full stdout,
 stderr and exit status in an owned working receipt directory in this verified
 worktree, then return only needed identity, counters, scope/freshness, request

@@ -22,6 +22,11 @@ native-session usage. Include your own usage, workers, failed attempts and
 bootstrap; annotate native children included in a parent's total and do not add
 those twice. Missing or stale usage stops additional assignments. Treat the
 budget as a planning estimate unless the mission explicitly sets a stop limit.
+Before serializing/submitting a worker assignment, capture its unique marker and
+UTC lower bound and include both literal values with verified native/log/cwd/
+model/effort facts. Referenced receipts need absolute receiver-readable paths.
+Reuse this pre-send binding for measurement; a later user-message timestamp or a
+widened failed window cannot replace it. Do this in the existing dispatch call.
 Report projected overruns, threatened reserve, unexpected per-turn cost or
 unproductive preparation/retries to the supervisor at the next available
 checkpoint, before exhaustion. Include observed usage/scope/freshness, remaining

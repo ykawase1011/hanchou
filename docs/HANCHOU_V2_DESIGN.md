@@ -251,6 +251,12 @@ Codexの公開インターフェースは[App Server資料](https://learn.chatgp
 
 開始時刻下限はUTCを明示した`Z`と`+00:00`の両表記を受理し、小数秒を保持して同じ時点へ照合する。非UTC・unknown offset・存在しない日時を補正して受理しない。nativeログの形式・identity・counter判定を緩めるものではない。
 
+新しい依頼では送信者が本文の構築・送信前に開始下限を取得し、一意markerとともに
+literal値を依頼本文へ含める。既知のnative ID/log/cwd/model/effortと、受信者が読める
+絶対receipt pathを渡し、同じbindingで実行前計測・最終受入を行う。nativeのuser-message
+時刻は`task_started`より後になり得るため代用しない。欠落・矛盾なら依存作業を止め、
+失敗済みwindowを広げて救済しない。側近からworkerへの依頼にも適用し、追加の判断turnは設けない。
+
 同じsession内で、対応する`turn_aborted`の後に一意な新しい`task_started`が続く履歴は、最新依頼のmarker・開始下限・contextを改めて照合する。中断前の記録済み使用量も累積値に残し、再開前後の累積を加算しない。終了イベントの不一致・二重終了・順序逆転は拒否する。最新依頼自体が中断済みなら`current_request_aborted`として利用不能を返し、最終確定量や完遂の証拠にしない。これは同じ生存sessionの計測範囲であり、側近を古いworktreeで再起動する許可ではない。
 
 Codex 0.162.1の自己計測では、応答の`token_usage_record`がtool実行前、対応する

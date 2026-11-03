@@ -129,6 +129,18 @@ for start_bound in 2026-10-20T00:00:01.001Z 2026-10-20T00:00:01.001+00:00; do
   bad fractional-utc-bound --native-log "$log" --started-after "$start_bound"
   assert_json "$fixture/fractional-utc-bound.json" '.error.code=="current_request_mismatch"'
 done
+# A request can start before its user-message row is recorded. Preserve the
+# sender's pre-send bound; selecting the later message must still fail closed.
+mutate 'if .payload.type=="task_started" then .timestamp="2026-10-20T00:00:01.106Z"
+  elif .type=="response_item" and .payload.role=="user" then .timestamp="2026-10-20T00:00:01.298Z"
+  else . end'
+cp "$log" "$fixture/pre-send-native.jsonl"
+run_measure --native-log "$log" --started-after 2026-10-20T00:00:01.105999Z > "$fixture/pre-send.json"
+assert_json "$fixture/pre-send.json" '.status=="ready" and .currentRequest.state=="settled" and .tool.totalTokens==110'
+bad later-user-message-bound --native-log "$log" --started-after 2026-10-20T00:00:01.298Z
+assert_json "$fixture/later-user-message-bound.json" '.error.code=="current_request_mismatch"'
+cmp "$log" "$fixture/pre-send-native.jsonl" || fail 'request binding checks modified native log'
+restore
 for start_bound in 2026-10-20T00:00:00+09:00 2026-10-20T00:00:00-00:00 \
   2026-10-20T00:00:00 2026-02-30T00:00:00Z 2026-02-30T00:00:00+00:00 \
   2026-10-20T24:00:00Z 2026-10-20T00:00:60Z; do
