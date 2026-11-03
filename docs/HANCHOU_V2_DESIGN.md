@@ -135,6 +135,10 @@ qualified bootstrapの送信と完了確認を分ける。Herdrの状態変化�
 送信成功だけでreadyにはせず、遅延・未開始・不一致をnative証拠で区別する。送信操作自体の
 失敗は再送せず、取得できた限定形式の上流エラーコードを保存する。既存UNKNOWNの昇格は追加しない。
 
+認定起動ではforeground processのPIDだけでなく開始時刻も保存し、bootstrap照合後にも
+同じPID・開始時刻・pane・cwd・起動引数を確認する。これはprocessの照合であり、native
+identityや使用量を代替しない。欠測・置換・曖昧なprocess一覧は認定せず同じ試行を保持する。
+
 明示的な`--session NAME`は既存共有serverを使う互換経路であり、所有記録や自動停止の権限を付けない。専用serverのcwdは保存先instance directoryとし、削除可能な実行worktreeへ依存させない。
 専用serverは呼出し元toolと独立したprocess groupで起動し、PIDとPGIDの一致を確認する。`nohup`だけに依存せず、tool終了時のprocess group後片付けを越えて生存させる。
 
@@ -412,6 +416,11 @@ identity、RUNNING/FINISHED記録、同じserver実体、完了reportの実path�
 識別不能・未知状態を拒否し、一時観測は終了時に削除する。有限の観測結果であり、
 確定使用量・品質・保全・CLI終了の判断や受入・回収権限は与えない。受入処理は実体と
 証拠を再検証する。新たな常駐処理・実行ファイル・独自会計は追加しない。
+
+Herdrの稼働agentにnative metadataがない場合、`inspect`は引き続き利用不能とする。
+通常の完了処理では成功起動に結び付いたFINISHED記録・report hash・最終native使用量を
+先に確認し、成果保全と所有CLIの正常終了を経てから`inspect`でquiet inventoryを再検証する。
+metadata欠測を一致へ変換したり、既存の失敗試行をこの順序で成功へ変更したりしない。
 
 ## 11. 実現可能性と残る制約
 
