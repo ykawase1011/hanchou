@@ -130,6 +130,11 @@ flowchart TD
 5. 実際のcwd・branch・HEAD、起動したagentを照合する。既定は`agent_ready`／usage pendingで終了する。検証済みCodex／ccusage版向けの任意`--qualify-startup`は、同梱側近指示のtool-free受領を1回だけ送信し、固有cwd・時刻・marker・native metadataと初回使用量を照合して`startup_qualified`／readyを返す。実作業・任意prompt・再送・継続集計は行わず終了する。不明・不一致は資源を残して失敗し、作業を許可しない。
 6. 班長は戻り値の接続先を使って人間向けHerdrタブを開き、対象workspaceの表示を確認する。観測範囲・鮮度・予算を確認してから実作業を渡す。qualified receiptの確認処理を毎回書き直さない。他provider等の手動bootstrapでも受領と計測可能性を先に確定する。起動時点からの使用量も含める。表示不能時は理由と接続先を報告し、明示的な画面なし実行の指定がなければ割当を待つ。
 
+qualified bootstrapの送信と完了確認を分ける。Herdrの状態変化を待つ`--wait`は使わず、
+固定指示を一度送信した後、同じ有限deadline内で厳密なnative完了・初回使用量を照合する。
+送信成功だけでreadyにはせず、遅延・未開始・不一致をnative証拠で区別する。送信操作自体の
+失敗は再送せず、取得できた限定形式の上流エラーコードを保存する。既存UNKNOWNの昇格は追加しない。
+
 明示的な`--session NAME`は既存共有serverを使う互換経路であり、所有記録や自動停止の権限を付けない。専用serverのcwdは保存先instance directoryとし、削除可能な実行worktreeへ依存させない。
 専用serverは呼出し元toolと独立したprocess groupで起動し、PIDとPGIDの一致を確認する。`nohup`だけに依存せず、tool終了時のprocess group後片付けを越えて生存させる。
 

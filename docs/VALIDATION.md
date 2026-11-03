@@ -1199,3 +1199,15 @@ server logではbootstrap送信が約5.35秒でエラーを返し、その約4.0
 pane processの停止、専用worktree削除を確認し、UNKNOWN記録・履歴・既存4 serverを
 保持した。inspectに到達していないため、この対から往復削減・同品質比率・効率改善を
 主張しない。起動時の限定した診断保存と、再送しない同一呼出し内の確認待ちを次に検討する。
+
+### bootstrap送信とnative完了確認の分離（2026-11-04）
+
+前節の遅延開始を受け、固定bootstrapの送信からHerdrの状態待機`--wait`を外した。
+送信ack自体を完了とは扱わず、既存の有限deadlineとfresh native identity、単一の
+tool-free応答、実権限・model、ccusage照合でreadyを判断する。送信エラーは停止し、
+形式を限定した上流コードだけを既存receiptへ残す。UNKNOWNの昇格や再送は追加しない。
+
+offline fixtureでは、状態待機が失敗した後にnative依頼が現れる条件を変更前に再現した。
+送信のみの経路では遅延した正しい応答を認定し、未開始、複数候補、tool使用、送信エラー、
+不正なエラーJSON、権限不一致を拒否する。実Git・mock CLIによる契約検査であり、
+旧実機失敗の取得できなかった上流コードを特定した証拠や、効率改善の証明ではない。

@@ -790,7 +790,12 @@ Resolve its relative references against that directory, not the execution cwd.
 
 $(cat "$companion")"
   deadline=$((SECONDS + (10#$timeout_ms + 999) / 1000))
-  if ! herdr agent prompt "$pane" "$bootstrap" --wait --timeout "$timeout_ms" > "$tmp/bootstrap.json" 2> "$tmp/error"; then
+  # A prompt write is not completion. Herdr's --wait has a separate five-second
+  # activity gate that can expire before a cold CLI starts the delivered request.
+  # Submit once, then prove this exact bootstrap using native evidence below.
+  if ! herdr agent prompt "$pane" "$bootstrap" --timeout "$timeout_ms" > "$tmp/bootstrap.json" 2> "$tmp/error"; then
+    upstream_code=$(jq -ers 'select(length==1) | .[0].error.code |
+      select(type=="string" and test("^[a-z_]{1,80}$"))' "$tmp/error" 2>/dev/null) || upstream_code=
     fail bootstrap_unconfirmed 'Bootstrap submission/completion is uncertain; inspect the same attempt, never resend blindly.'
   fi
   # Fresh files only, then exact cwd/time/nonce/native metadata. Never choose the

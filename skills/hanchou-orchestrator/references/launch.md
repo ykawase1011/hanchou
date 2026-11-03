@@ -265,6 +265,12 @@ fixed tool-free companion-role bootstrap, then corroborates native identity
 using fresh cwd/time/bootstrap evidence. It reconciles initial ccusage counters
 against native cumulative counters for that fresh, nonforked session.
 The bootstrap permits no tools or real work and its tokens count in the budget.
+Submission acknowledges ordered writes, not completion. Qualified startup sends
+without Herdr's state-based `--wait`, then checks native completion and usage
+within the same finite deadline. A late request still needs every native gate;
+absent or conflicting evidence fails. Nonzero submission fails without resending
+and preserves a valid bounded upstream error code when available. This does not
+recover an earlier failed `STARTING`/`UNKNOWN` invocation.
 The receipt also contains the actual foreground PID/cwd and observed arguments,
 verified against this launch's arguments. Unexpected arguments block qualification
 without copying their potentially sensitive values into the receipt. Reuse this
