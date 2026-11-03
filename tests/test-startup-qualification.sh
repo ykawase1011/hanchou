@@ -74,11 +74,27 @@ case "$1 $2" in
        argv:(["codex"]+$args[0]+(if $mode=="process-args" then ["--unexpected","sensitive-value"] else [] end))}]}}}'
    ;;
  "agent prompt")
+   # Herdr 0.9.5 rejects wait-only options before submitting any input.
+   has_wait=false has_timeout=false
+   for arg in "${@:5}"; do
+     [[ $arg != --wait ]] || has_wait=true
+     [[ $arg != --timeout ]] || has_timeout=true
+   done
+   if [[ $has_timeout == true && $has_wait == false ]]; then
+     printf '%s\n' '--timeout requires --wait' >&2
+     exit 2
+   fi
    prompt=$4
    marker=$(printf '%s\n' "$prompt" | sed -n 's/.*token \(HANCHOU_STARTUP_[a-f0-9]*\).*/\1/p')
    [[ -n $marker ]]
+   if [[ $MOCK_MODE == no-request ]]; then
+     printf '{"result":{"type":"agent_prompted"}}\n'
+     exit 0
+   fi
    mkdir -p "$CODEX_HOME/sessions/fixture"
    log="$CODEX_HOME/sessions/fixture/rollout-11111111-1111-1111-1111-111111111111.jsonl"
+   log_output=$log
+   if [[ $MOCK_MODE == late-native* ]]; then log_output="$FIXTURE/pending-native-$$"; fi
    jq -nc --arg cwd "$(cat "$FIXTURE/cwd")" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
      --arg prompt "$prompt" --arg marker "$marker" --arg mode "$MOCK_MODE" --arg version "$MOCK_CODEX_VERSION" '
      {type:"session_meta",payload:{id:"11111111-1111-1111-1111-111111111111",cwd:$cwd,
@@ -93,7 +109,7 @@ case "$1 $2" in
        else {} end))},
      {type:"event_msg",payload:{type:"task_started",turn_id:"turn"}},
      {type:"response_item",payload:{type:"message",role:"user",content:[{type:"input_text",text:$prompt}]}},
-     (if $mode=="tool" then {type:"response_item",payload:{type:"custom_tool_call"}} else empty end),
+     (if $mode=="tool" or $mode=="late-native-tool" then {type:"response_item",payload:{type:"custom_tool_call"}} else empty end),
      (if $mode=="builtin-tool" then {type:"response_item",payload:{type:"web_search_call"}} else empty end),
      (if $mode=="startup-commentary" then {type:"response_item",payload:{type:"message",role:"assistant",phase:"commentary",
        content:[{type:"output_text",text:"Acknowledged."}]}} else empty end),
@@ -105,13 +121,44 @@ case "$1 $2" in
        content:[{type:"output_text",text:(if $mode=="echo" then "Not acknowledged."
          elif $mode=="startup-prose" then "Acknowledged `"+$marker+"`." else $marker end)}]}},
      (if $mode=="incomplete" or $mode=="delayed-log" then empty else {type:"event_msg",payload:{type:"task_complete",turn_id:"turn"}} end)
-     ' > "$log"
+     ' > "$log_output"
+   if [[ $MOCK_MODE == late-native* ]]; then
+     # Ordered writes can be acknowledged before native request records appear.
+     # Model the observed activity-gate false negative only for --wait callers.
+     (sleep 0.5
+       if [[ $MOCK_MODE == late-native-ambiguous ]]; then
+         pending_dir="$FIXTURE/pending-sessions-$$"
+         mkdir "$pending_dir"
+         cp "$log_output" "$pending_dir/${log##*/}"
+         cp "$log_output" "$pending_dir/copy.jsonl"
+         rmdir "${log%/*}"
+         mv "$pending_dir" "${log%/*}"
+         rm "$log_output"
+       else mv "$log_output" "$log"; fi
+     ) >/dev/null 2>&1 &
+     has_wait=false
+     for arg in "$@"; do [[ $arg != --wait ]] || has_wait=true; done
+     if [[ $has_wait == true ]]; then
+       printf '%s\n' '{"error":{"code":"agent_prompt_stalled","message":"No observed activity yet"}}' >&2
+       exit 1
+     fi
+   fi
    if [[ $MOCK_MODE == delayed-log ]]; then
      (sleep 0.4; printf '%s\n' '{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn"}}' >> "$log") >/dev/null 2>&1 &
    fi
    [[ $MOCK_MODE != ambiguous ]] || cp "$log" "${log%.jsonl}-copy.jsonl"
    [[ $MOCK_MODE != wrong-home ]] || mv "$CODEX_HOME/sessions" "$FIXTURE/wrapper-home"
    [[ $MOCK_MODE != bootstrap ]] || exit 7
+   case "$MOCK_MODE" in
+     prompt-stalled|prompt-blocked)
+       code=agent_prompt_stalled
+       [[ $MOCK_MODE != prompt-blocked ]] || code=agent_blocked
+       jq -nc --arg code "$code" '{error:{code:$code,message:"sensitive-prompt-error"}}' >&2
+       exit 1;;
+     prompt-malformed)
+       printf '%s\n' '{"error":{"code":"agent_prompt_stalled"}}' '{"error":{"code":"sensitive_extra"}}' >&2
+       exit 1;;
+   esac
    printf '{"result":{"type":"ok"}}\n'
    ;;
  *) exit 92;;
@@ -123,7 +170,7 @@ launch() {
     --project "$fixture/source" --mission startup --session fixture \
     --worktree-root "$fixture/worktrees" --qualify-startup --timeout-ms 3001 "$@"
 }
-for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
+for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts late-native late-native-tool late-native-ambiguous no-request prompt-stalled prompt-blocked prompt-malformed echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
   export MOCK_MODE=$mode
   jq --arg mode "$mode" '
     if $mode=="language-both" then .languages={human:"ja",agents:"en"}
@@ -142,7 +189,7 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
     launch > "$fixture/receipt" 2> "$fixture/error" || rc=$?
   fi
   jq -es 'length==1' "$fixture/receipt" >/dev/null
-  if [[ $mode == success || $mode == compact-shared || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == manual-success ]]; then
+  if [[ $mode == success || $mode == compact-shared || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == late-native || $mode == manual-success ]]; then
     [[ $rc == 0 ]]
     jq -e '.ok and .stage=="startup_qualified" and .usageReadiness.status=="ready" and
       .sokkin.observedModel=="gpt-6-astra" and .sokkin.observedEffort=="medium" and
@@ -188,6 +235,21 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
   fi
   if [[ $mode == startup-prose || $mode == startup-commentary ]]; then
     jq -e '.error.code=="bootstrap_evidence_mismatch" and (.resources|length)>0' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == late-native-tool ]]; then
+    jq -e '.error.code=="bootstrap_evidence_mismatch"' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == late-native-ambiguous || $mode == no-request ]]; then
+    jq -e '.error.code=="native_identity_pending"' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == prompt-* ]]; then
+    code=
+    [[ $mode != prompt-stalled ]] || code=agent_prompt_stalled
+    [[ $mode != prompt-blocked ]] || code=agent_blocked
+    jq -e --arg code "$code" '.error.code=="bootstrap_unconfirmed" and
+      .error.upstreamCode==(if $code=="" then null else $code end) and
+      (. | tostring | contains("sensitive-prompt-error") | not) and
+      (. | tostring | contains("sensitive_extra") | not)' "$fixture/receipt" >/dev/null
   fi
   if [[ $mode == timeout ]]; then
     ! kill -0 "$(cat "$fixture/usage-pid")" 2>/dev/null
