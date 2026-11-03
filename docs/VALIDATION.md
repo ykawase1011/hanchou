@@ -1264,3 +1264,15 @@ offline回帰では旧候補がprocess開始時刻なしでも認定したこと
 照合時だけquietとなる。quiet観測後にagentが現れれば受入側も再検査して拒否する。
 これは実Git/process/socketと模擬native/Herdrによる契約確認であり、新しい順序の
 実native完了・受入、起動成功率、効率比率の証明ではない。それらは別の新規試行を要する。
+
+### 依頼送信前の明示binding（2026-11-04）
+
+Cycle07 Cは両nativeの起動認定後、側近が相対receipt pathを解決できず、user-messageの
+時刻を開始下限に選んだ。実ログでは`task_started`が192ms先行し、厳格な計測が
+`current_request_mismatch`で停止した。worker未起動・成果なしの失敗を保持する。
+
+送信者が本文構築・送信前のUTC下限とmarkerをliteralで渡し、既知のnative bindingと
+絶対receipt pathを併記する手順を班長・側近・workerへ明示した。計測parserは変更しない。
+合成回帰は同じ192msの順序で、先行する小数秒下限の受理、後のuser-message下限の
+拒否と元ログ不変を検査する。これは既存の厳格な契約の確認であり、変更後の実agentが
+正しく依頼すること、委譲完遂、起動成功率やtoken削減の証明ではない。新規比較は別途必要。

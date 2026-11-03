@@ -23,6 +23,12 @@ new collector or decide the budget. See its `--help` for the narrow interface.
 Pass the actual log home, expected physical cwd/model/effort, a current-request start-time
 lower bound and a unique marker from the current request. Reuse known native ID
 and log path. Without identity hints it searches only that home for one match.
+For a new assignment, the sender captures the lower bound before serializing/
+submitting it and includes its literal UTC value and marker in the request with
+the verified native binding. Referenced receipts use absolute paths readable by
+the receiver. Reuse those values at acceptance; the native user-message row can
+be later than `task_started`, so its timestamp is not a valid replacement.
+Missing/conflicting binding stops dependent work; never widen a failed window.
 The start bound accepts explicit UTC timestamps ending in `Z` or `+00:00`,
 including fractional seconds. Both identify the same instant; the script keeps
 the fractional lower bound and rejects other/unknown offsets or invalid dates.

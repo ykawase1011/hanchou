@@ -103,11 +103,20 @@ if display is unavailable unless headless operation is explicitly authorized.
 Do not relaunch sokkin or duplicate an uncertain tab. Reuse its verified viewer
 for follow-ups and leave it available. Viewing is not technically read-only.
 
-Send one assignment with a unique marker: purpose/acceptance, authority and
+Before serializing/submitting each assignment, capture its UTC start lower bound
+and unique marker. Put both literal values in that request alongside the verified
+native ID/log home/path, cwd, model and effort; keep referenced receipt paths
+absolute and readable by the receiver. Use this same binding for measurement and
+final acceptance. A later native user-message timestamp can follow `task_started`
+and is not a substitute lower bound. Missing/conflicting binding blocks work;
+never widen a failed window. Capture and send in the existing call, without an
+extra model turn.
+
+Send one assignment: purpose/acceptance, authority and
 approval owner/human-only decisions, pinned sources, exact receipt binding and
 evidence path, working/final artifact destinations and preservation checkpoint,
 budgets/reserves and worker/retry limits.
-Include absolute launcher/measurement paths, native identity/start window, owned
+Include absolute launcher/measurement paths, owned
 instance key/record, languages and any required tool-shell environment. Pass the
 needed facts once and link their evidence; do not paste the supervisor workflow
 or a second copy of the companion. Bootstrap is already complete. Refresh usage
