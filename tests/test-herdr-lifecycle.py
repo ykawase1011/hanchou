@@ -25,12 +25,16 @@ assert args[0]=='--session',args
 name=args[1]; args=args[2:]; d=root/name
 if args==['server']:
  d.mkdir(); sock=socket.socket(socket.AF_UNIX); sock.bind(str(d/'s')); (d/'pid').write_text(str(os.getpid()))
- child=None
+ child=None; pane=None
  def stop(*a):
   if child is not None: child.terminate(); child.wait()
+  if pane is not None: pane.terminate(); pane.wait()
   sock.close(); (d/'s').unlink();sys.exit()
  signal.signal(signal.SIGTERM,stop)
  while True:
+  if (d/'want-pane').exists() and pane is None:
+   pane=subprocess.Popen(['/bin/bash'],stdin=subprocess.PIPE,cwd=(d/'cwd').read_text())
+   (d/'pane-pid').write_text(str(pane.pid))
   if (d/'background').exists() and child is None:
    child=subprocess.Popen(['sleep','600']); (d/'background-ready').touch()
   if not (d/'background').exists() and child is not None:
@@ -38,9 +42,16 @@ if args==['server']:
   time.sleep(.01)
 if args==['status','--json']:
  if not (d/'s').exists(): sys.exit(1)
- emit({'server':{'running':True,'compatible':True,'session':name,'socket':str(d/'s')}})
+ emit({'server':{'running':True,'compatible':True,'session':name+'-changed' if (d/'status-drift').exists() else name,'socket':str(d/'s')}})
 elif args[:2]==['workspace','create']:
  cwd=args[args.index('--cwd')+1]; (d/'cwd').write_text(cwd)
+ record=Path(next(a.split('=',1)[1] for a in args if a.startswith('HANCHOU_INSTANCE_RECORD=')))
+ (d/'record').write_text(str(record))
+ if os.environ.get('MOCK_INSPECT_PANES'):
+  (d/'want-pane').touch()
+  for _ in range(100):
+   if (d/'pane-pid').exists(): break
+   time.sleep(.01)
  collision=os.environ.get('MOCK_EVIDENCE_COLLISION')
  if collision:
   record=Path(next(a.split('=',1)[1] for a in args if a.startswith('HANCHOU_INSTANCE_RECORD=')))
@@ -55,8 +66,23 @@ elif args[:2]==['agent','start']:
  if os.environ.get('MOCK_START_FAIL'): sys.exit(1)
  emit({'result':{'agent':{'agent':'codex','agent_status':'idle','pane_id':'w2:p1','cwd':(d/'cwd').read_text(),'agent_session':{'kind':'id','value':'test-native'}}}})
 elif args==['api','snapshot']:
- panes=json.loads((d/'panes.json').read_text()) if (d/'panes.json').exists() else []
- emit({'result':{'snapshot':{'agents':[{'agent_status':'working'}] if (d/'busy').exists() else [],'panes':panes}}})
+ if os.environ.get('MOCK_INSPECT_MUTATE'):
+  record=Path((d/'record').read_text()); mode=os.environ['MOCK_INSPECT_MUTATE']
+  if mode=='record': record.write_text(record.read_text()+'\n')
+  elif mode=='lock': (record.parent/'lock').mkdir(exist_ok=True)
+  elif mode=='report': (record.parent/'report.txt').write_text('concurrent change\n')
+  elif mode=='launch':
+   f=record.parent/'launch/receipt.json'; f.write_text(f.read_text()+'\n')
+  elif mode=='server': (d/'status-drift').touch()
+ panes=json.loads((d/'panes.json').read_text()) if (d/'panes.json').exists() else ([{'pane_id':'w2:p1','workspace_id':'w2'}] if (d/'pane-pid').exists() else [])
+ agents=json.loads((d/'agents.json').read_text()) if (d/'agents.json').exists() else ([{'agent_status':'working','pane_id':'w2:p1','workspace_id':'w2','agent_session':{'kind':'id','value':'test-native'}}] if (d/'busy').exists() else [])
+ emit({'result':{'snapshot':{'agents':agents,'panes':panes}}})
+elif args[:2]==['pane','process-info']:
+ assert args[2:]==['--pane','w2:p1']
+ if (d/'process-info.json').exists(): emit(json.loads((d/'process-info.json').read_text()))
+ else:
+  pid=int((d/'pane-pid').read_text())
+  emit({'result':{'process_info':{'pane_id':'w2:p1','shell_pid':pid,'foreground_processes':[{'pid':pid,'name':'bash','argv':['/bin/bash'],'cwd':(d/'cwd').read_text()}]}}})
 elif args[:2]==['session','stop']:
  assert args[2]==name
  with (root/'stops').open('a') as f: f.write(name+'\n')
@@ -464,5 +490,149 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.op('reap',ok=False)['error']['code'],'stop_unconfirmed')
         self.assertEqual(json.loads(self.record.read_text())['status'],'FINISHED')
         (self.server/'stop-fail').unlink();self.assertEqual(self.op('reap')['status'],'CLOSED')
+
+    def inspect_launch(self):
+        self.launch(env=dict(self.env, MOCK_INSPECT_PANES='1'))
+
+    def read_only_inspect(self, ok=True, env=None):
+        before = {str(p):p.read_bytes() for p in self.record.parent.rglob('*') if p.is_file()}
+        native = self.tmp/'native-observation-sentinel.jsonl'
+        native.write_text('native log must remain untouched\n')
+        with tempfile.TemporaryDirectory(prefix='inspect-', dir=self.tmp) as tmp:
+            r = self.op('inspect', ok=ok, env=dict(env or self.env, TMPDIR=tmp))
+            self.assertEqual(list(Path(tmp).iterdir()), [], 'temporary observation leaked')
+        self.assertEqual(before, {str(p):p.read_bytes() for p in self.record.parent.rglob('*') if p.is_file()})
+        self.assertEqual(native.read_text(), 'native log must remain untouched\n')
+        self.assertEqual(self.snapshot(), self.baseline)
+        self.assertFalse((self.record.parent/'lock').exists())
+        self.assertEqual(r['operation'], 'inspect')
+        return r
+
+    def test_inspect_read_only_running_finished_accepted(self):
+        self.inspect_launch()
+        r = self.read_only_inspect()
+        self.assertTrue(r['observation']['quiet'])
+        self.assertEqual(r['observation']['nativeId'], 'test-native')
+        self.assertEqual(r['recordHash'], self.git('hash-object', str(self.record)).decode().strip())
+        self.assertIsNone(r['observation']['report'])
+        self.assertEqual(r['observation']['panes'][0]['foreground'][0]['cwd'], self.launch_receipt['worktree']['path'])
+        self.finish()
+        r = self.read_only_inspect()
+        self.assertEqual(r['observation']['report'], {'path':str(self.record.parent/'report.txt'),
+                         'hash':json.loads(self.record.read_text())['reportHash'], 'matches':True})
+        self.accept(); self.assertIsNotNone(self.read_only_inspect()['observation']['acceptedAt'])
+        self.age(); self.op('reap')
+
+    def test_inspect_busy_is_an_observation_not_acceptance(self):
+        import time
+        self.inspect_launch(); self.finish()
+        (self.server/'busy').touch()
+        r = self.read_only_inspect()
+        self.assertFalse(r['observation']['quiet'])
+        self.assertEqual(r['observation']['agents'], [{'paneId':'w2:p1','nativeId':'test-native','status':'working'}])
+        self.assertEqual(self.accept(ok=False)['error']['code'], 'instance_busy')
+        (self.server/'busy').unlink(); (self.server/'background').touch()
+        for _ in range(200):
+            if (self.server/'background-ready').exists(): break
+            time.sleep(.01)
+        r = self.read_only_inspect()
+        self.assertFalse(r['observation']['quiet'])
+        self.assertEqual(len(r['observation']['processes']), 2)
+        self.assertNotIn('argv', json.dumps(r))
+        self.assertNotIn('sleep', json.dumps(r))
+        (self.server/'background').unlink()
+        for _ in range(200):
+            if not (self.server/'background-ready').exists(): break
+            time.sleep(.01)
+        self.assertTrue(self.read_only_inspect()['observation']['quiet'])
+        # A past quiet observation cannot bypass the existing acceptance recheck.
+        (self.server/'busy').touch()
+        self.assertEqual(self.accept(ok=False)['error']['code'], 'instance_busy')
+        (self.server/'busy').unlink(); self.accept(); self.age(); self.op('reap')
+
+    def test_inspect_rejects_identity_clock_and_report_changes(self):
+        self.inspect_launch(); self.finish()
+        original = self.record.read_bytes()
+        changes = [{'nativeId':'other'}, {'nativeId':None}, {'missionId':'other'}, {'host':'foreign'},
+                   {'status':'UNKNOWN'}, {'status':'CLOSED'}, {'finishedAt':'2999-01-01T00:00:00Z'},
+                   {'finishedAt':'2026-02-30T12:00:00Z'}, {'worktree':{'path':'/other','branch':'other'}}]
+        for change in changes:
+            with self.subTest(change=change):
+                self.edit(**change); self.read_only_inspect(ok=False); self.record.write_bytes(original)
+        for field in ('birth','socketInode','pid','processGroup'):
+            s=json.loads(original); s['server'][field]='changed'; self.record.write_text(json.dumps(s))
+            self.read_only_inspect(ok=False); self.record.write_bytes(original)
+        report=self.record.parent/'report.txt'; saved=report.read_bytes(); report.write_text('changed')
+        self.assertEqual(self.read_only_inspect(ok=False)['error']['code'], 'changed_evidence')
+        report.write_bytes(saved)
+        saved_path=report.with_suffix('.saved'); report.rename(saved_path); report.symlink_to(saved_path)
+        self.assertEqual(self.read_only_inspect(ok=False)['error']['code'], 'missing_evidence')
+        report.unlink(); saved_path.rename(report)
+        self.accept(); self.age(); self.op('reap')
+
+    def test_inspect_existing_lock_and_concurrent_changes(self):
+        self.inspect_launch(); self.finish()
+        lock=self.record.parent/'lock'; lock.mkdir()
+        self.assertEqual(self.op('inspect',ok=False)['error']['code'], 'instance_busy')
+        self.assertTrue(lock.is_dir()); lock.rmdir()
+        files=[self.record,self.record.parent/'report.txt',self.record.parent/'launch/receipt.json']
+        saved={f:f.read_bytes() for f in files}
+        for mode,code in [('record','instance_changed'),('launch','instance_changed'),('lock','instance_changed'),
+                          ('report','changed_evidence'),('server','instance_mismatch')]:
+            with self.subTest(mode=mode):
+                with tempfile.TemporaryDirectory(prefix='inspect-race-',dir=self.tmp) as tmp:
+                    r=self.op('inspect',ok=False,env=dict(self.env,MOCK_INSPECT_MUTATE=mode,TMPDIR=tmp))
+                    self.assertEqual(r['error']['code'],code)
+                    self.assertIsNone(r['observation'])
+                    self.assertEqual(list(Path(tmp).iterdir()),[])
+                if mode=='lock': self.assertTrue(lock.is_dir()); lock.rmdir()
+                if mode=='server': (self.server/'status-drift').unlink()
+                for f,data in saved.items(): f.write_bytes(data)
+        self.assertEqual(self.snapshot(),self.baseline)
+        self.accept(); self.age(); self.op('reap')
+
+    def test_inspect_unknown_panes_agents_and_processes(self):
+        self.inspect_launch()
+        panes=self.server/'panes.json'; agents=self.server/'agents.json'
+        for values in [[],[{'pane_id':'foreign','workspace_id':'w2'}],
+                       [{'pane_id':'w2:p1','workspace_id':'w2'}]*2,
+                       [{'pane_id':'w2:p'+str(i),'workspace_id':'w2'} for i in range(1,34)],
+                       [{'pane_id':'\n','workspace_id':'w2'}]]:
+            panes.write_text(json.dumps(values)); self.read_only_inspect(ok=False)
+        panes.unlink()
+        for values in [[{'pane_id':'w2:p1','workspace_id':'w2','agent_status':'unknown'}],
+                       [{'pane_id':'foreign','workspace_id':'w2','agent_status':'working'}],
+                       [{'pane_id':'w2:p1','workspace_id':'w2','agent_status':'idle'}],
+                       [{'pane_id':'w2:p1','workspace_id':'w2','agent_status':'idle','agent_session':{'kind':'id','value':'other'}}],None]:
+            agents.write_text(json.dumps(values)); self.read_only_inspect(ok=False)
+        agents.unlink()
+        pid=int((self.server/'pane-pid').read_text()); info=self.server/'process-info.json'
+        base={'pane_id':'w2:p1','shell_pid':pid,'foreground_processes':[{'pid':pid,'name':'bash','argv':['/bin/bash'],'cwd':str(self.repo)}]}
+        for change in [{'pane_id':'other'},{'shell_pid':None},{'foreground_processes':[]},
+                       {'foreground_processes':[{'pid':pid,'name':'mystery','argv':['private-argument'],'cwd':str(self.repo)}]},
+                       {'foreground_processes':[{'pid':os.getpid(),'name':'python','argv':['private-argument'],'cwd':str(self.repo)}]}]:
+            info.write_text(json.dumps({'result':{'process_info':dict(base,**change)}}))
+            r=self.read_only_inspect(ok=False); self.assertNotIn('private-argument',json.dumps(r))
+        info.unlink()
+        blocked=Path(tempfile.mkdtemp(prefix='inspect-ps-',dir=self.tmp)); real_ps=shutil.which('ps')
+        (blocked/'ps').write_text('#!/bin/sh\n[ "$1" != "-axo" ] || exit 1\nexec "'+real_ps+'" "$@"\n')
+        (blocked/'ps').chmod(0o755)
+        self.assertEqual(self.read_only_inspect(ok=False,env=dict(self.env,PATH=str(blocked)+os.pathsep+self.env['PATH']))['error']['code'], 'observation_unavailable')
+        (blocked/'ps').write_text('#!/bin/sh\nif [ "$1" = "-axo" ]; then "'+real_ps+'" "$@"; printf "unknown process row\\n"; else exec "'+real_ps+'" "$@"; fi\n')
+        self.assertEqual(self.read_only_inspect(ok=False,env=dict(self.env,PATH=str(blocked)+os.pathsep+self.env['PATH']))['error']['code'], 'observation_unavailable')
+        self.finish(); self.accept(); self.age(); self.op('reap')
+
+    def test_inspect_requires_explicit_instance_and_separates_launch(self):
+        self.inspect_launch()
+        self.assertEqual(self.run_script('--lifecycle','inspect',ok=False)['error']['code'],'invalid_instance')
+        for args in [('--evidence','/unused'),('--mission','other'),('--compact-receipt',)]:
+            before=self.record.read_bytes()
+            self.assertEqual(self.op('inspect',*args,ok=False)['error']['code'],'invalid_operation')
+            self.assertEqual(self.record.read_bytes(),before)
+            self.assertFalse((self.record.parent/'lock').exists())
+        launch=self.record.parent/'launch/receipt.json'; saved=launch.read_bytes(); launch.unlink()
+        self.assertEqual(self.read_only_inspect(ok=False)['error']['code'],'missing_evidence')
+        launch.write_bytes(saved)
+        self.finish(); self.accept(); self.age(); self.op('reap')
 
 if __name__=='__main__': unittest.main()

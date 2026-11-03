@@ -180,9 +180,12 @@ work moving while dependent work waits for a human decision.
 ## Accept and release
 
 Independently check each criterion, artifact, test, limitation and source impact.
-For owned instances, now read [lifecycle](references/lifecycle.md): match FINISHED
-and its report, measure the final reply settled, preserve results outside
+For owned instances, now read [lifecycle](references/lifecycle.md): use the
+launcher's read-only `--lifecycle inspect --instance KEY` to match FINISHED and
+its actual report/hash, measure the final reply settled, preserve results outside
 disposable resources, exit owned CLIs and verify actual termination, then accept.
+Inspection returns the owned pane/process observations; it never settles usage
+or replaces independent acceptance and the acceptance command's current checks.
 Keep dependent mechanical checks in one bounded execution with assertions that
 stop on any failed read/parse/check. Submission or idle alone is not completion.
 If worktrees will be removed while the server is retained, move verified idle

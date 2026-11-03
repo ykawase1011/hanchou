@@ -44,6 +44,34 @@ cost, and use the [partial-failure procedure](launch.md#receipt-and-partial-fail
 for explicit cleanup and a separate new-attempt decision. Do not edit lifecycle
 state or report cleanup of a failed attempt as successful finish/accept/reap.
 
+## Read-only observation
+
+Use one explicit instance to replace handwritten record/report hash and owned
+pane/process checks:
+
+```sh
+"$LAUNCH_SCRIPT" --project "$PROJECT_ROOT" --lifecycle inspect --instance "$INSTANCE_KEY"
+```
+
+Save complete stdout, stderr and exit status in the caller's receipt directory.
+Require exit 0 and `ok:true`; `observation` contains the pinned launch/native
+identity, lifecycle timestamps, same server incarnation, actual `report.path`
+and matching Git blob hash for FINISHED, owned pane shell PID/birth/foreground
+cwd, agent states, owned process identities and `quiet`. Read the report at that
+returned path for independent quality judgment. `quiet:false` is a busy
+observation; `quiet:true` describes this observation only. Neither certifies
+completion, settled usage, preservation, acceptance or permission to stop work.
+
+The helper supports bound RUNNING/FINISHED records with a preserved successful
+launch receipt. It rejects missing/changed identity, unknown agent/process state,
+unsafe evidence, existing locks and record/evidence changes during observation.
+It reads one snapshot (up to 32 panes/agents and 256 owned descendants), never
+acquires an instance lock or writes lifecycle/config/native data, and removes
+private temporary observations on exit. Unrelated process arguments and raw
+terminal contents are not returned. Oversized/unsupported observations fail
+closed; this is not a live subscription or an atomic snapshot across processes.
+Acceptance and reaping always recheck their current gates independently.
+
 ## Completion and acceptance
 
 Sokkin preserves its artifacts and report, archives working receipts to the
@@ -67,10 +95,12 @@ Shared-session missions have no lifecycle record and use ordinary result reporti
 
 For FINISHED-to-accept, keep dependent mechanical checks in one bounded tool
 execution where supported, with assertions before each next operation:
-match the instance/report and `finishedAt`; obtain the final reply's settled
+inspect the instance/report and `finishedAt`; obtain the final reply's settled
 measurement using the current assignment marker and native binding; after
 independent acceptance and artifact preservation, exit the owned CLI and verify
 termination; then submit acceptance. Preserve each full receipt and exit status.
+After CLI exit, `inspect` can verify the current owned process inventory and
+idle shell cwd; retain a busy/unavailable result and inspect the same attempt.
 Batching does not replace the supervisor's judgment or the checks below. Missing
 evidence, active usage, a failed assertion or a pending approval stops dependent
 operations; inspect the same attempt instead of repeating completion or exit.

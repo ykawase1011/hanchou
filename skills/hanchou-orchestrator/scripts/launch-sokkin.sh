@@ -6,7 +6,7 @@ umask 077
 usage() {
   cat <<'HELP'
 Usage: launch-sokkin.sh --project PATH --mission SLUG [options]
-       launch-sokkin.sh --project PATH --lifecycle finish|accept|resume|reap
+       launch-sokkin.sh --project PATH --lifecycle inspect|finish|accept|resume|reap
          [--instance KEY] [--evidence PATH]
   --session NAME         Opt into an existing shared session (never auto-stopped)
   --config PATH          Default: selected project's .hanchou/config.json
@@ -29,6 +29,8 @@ Compact output needs that evidence; early failures and shared launches stay full
 With --session select an already-running shared server. HERDR_BIN names its CLI.
 finish saves a report; accept saves settled usage after agent exit; resume clears
 completion; reap closes accepted FINISHED instances >=24h old when called.
+inspect observes one explicit RUNNING/FINISHED instance without changing it;
+it requires preserved launch identity and does not certify usage or acceptance.
 No worktree, branch, session history or record is deleted by reap.
 Default success means agent readiness only. Opt-in startup qualification returns
 initial identity/usage evidence, never mission completion or final usage.
@@ -65,6 +67,13 @@ owned=false
 
 receipt() {
   local ok=$1 lifecycle_status= body
+  if [[ $lifecycle == inspect ]]; then
+    jq -nc --arg at "$started_at" --arg id "$instance" --arg record "$record" \
+      --arg code "$error_code" --arg message "$error_message" \
+      '{version:1,operation:"inspect",ok:false,observedAt:$at,instanceKey:$id,
+        record:$record,observation:null,error:{code:$code,message:$message}}'
+    emitted=true; return
+  fi
   if [[ $owned == true && -n $record && -f $record ]]; then
     state=$(jq -c --arg status "$(if [[ $ok == true ]]; then printf RUNNING; else printf UNKNOWN; fi)" \
       --arg workspace "$workspace" --arg pane "$pane" --arg path "$wt" --arg branch "$branch" \
@@ -193,9 +202,17 @@ load_instance() {
   [[ $instance =~ ^[a-f0-9]{32}$ ]] || fail invalid_instance 'Use the returned instance key.'
   instance_dir="$instances/$instance"; record="$instance_dir/instance.json"
   [[ -d $instance_dir && ! -L $instance_dir && -f $record && ! -L $record ]] || fail invalid_record 'Missing or unsafe instance record.'
-  mkdir "$instance_dir/lock" 2>/dev/null || fail instance_busy 'Instance is locked; inspect the original operation, never steal its lock.'
-  lifecycle_lock="$instance_dir/lock"
-  state=$(jq -ces 'if length==1 then .[0] else error("multiple records") end' "$record") || fail invalid_record 'Invalid instance JSON.'
+  local input=$record
+  if [[ $lifecycle == inspect ]]; then
+    [[ ! -e $instance_dir/lock && ! -L $instance_dir/lock ]] || fail instance_busy 'Instance is locked; retain it and inspect the original operation.'
+    [[ $(wc -c < "$record") -le 65536 ]] || fail invalid_record 'Instance record exceeds the observation limit.'
+    cp -- "$record" "$tmp/record.json"
+    input="$tmp/record.json"
+  else
+    mkdir "$instance_dir/lock" 2>/dev/null || fail instance_busy 'Instance is locked; inspect the original operation, never steal its lock.'
+    lifecycle_lock="$instance_dir/lock"
+  fi
+  state=$(jq -ces 'if length==1 then .[0] else error("multiple records") end' "$input") || fail invalid_record 'Invalid instance JSON.'
   jq -e --arg project "$project" --arg id "$instance" --arg host "$(hostname)" '
     .version==1 and .instanceKey==$id and .project==$project and .host==$host and
     .ownership=="dedicated" and .session==("hanchou-"+$id) and
@@ -207,12 +224,24 @@ server_matches() {
   local pid birth socket
   pid=$(jq -r '.server.pid // empty' <<<"$state"); birth=$(jq -r '.server.birth // empty' <<<"$state")
   [[ $pid =~ ^[0-9]+$ && -n $birth && $(process_birth "$pid") == "$birth" ]] || return 1
-  herdr status --json > "$tmp/server.json" 2> "$tmp/error" || return 1
+  if [[ $lifecycle == inspect ]]; then
+    inspect_read "$tmp/server.json" status --json || return 1
+  else
+    herdr status --json > "$tmp/server.json" 2> "$tmp/error" || return 1
+  fi
   socket=$(jq -r '.server.socket // empty' <<<"$state")
   jq -e --arg session "$session" --arg socket "$socket" '
     .server.running==true and .server.compatible==true and .server.session==$session and .server.socket==$socket
   ' "$tmp/server.json" >/dev/null || return 1
   [[ -S $socket && $(ls -di "$socket" | awk '{print $1}') == "$(jq -r .server.socketInode <<<"$state")" ]]
+}
+idle_pane_shell() {
+  jq -er '.result.process_info | select(.shell_pid|type=="number" and .>0 and floor==.) |
+    select((.foreground_processes|type=="array" and length==1) and .foreground_processes[0].pid==.shell_pid) |
+    select(.foreground_processes[0] |
+      (.name|IN("sh","bash","zsh","dash","ksh","fish")) and
+      (.argv|type=="array" and length>0 and all(.[1:][]; IN("-l","-i","-il","-li","--login","--noprofile","--norc")))) |
+    .shell_pid' "$1"
 }
 quiet_inventory() {
   # Agent absence alone is insufficient: include every pane and server descendant.
@@ -225,12 +254,7 @@ quiet_inventory() {
   local pane shell birth
   while IFS= read -r pane; do
     herdr pane process-info --pane "$pane" > "$tmp/process-info.json" 2> "$tmp/error" || return 1
-    shell=$(jq -er '.result.process_info | select(.shell_pid|type=="number" and .>0 and floor==.) |
-      select((.foreground_processes|type=="array" and length==1) and .foreground_processes[0].pid==.shell_pid) |
-      select(.foreground_processes[0] |
-        (.name|IN("sh","bash","zsh","dash","ksh","fish")) and
-        (.argv|type=="array" and length>0 and all(.[1:][]; IN("-l","-i","-il","-li","--login","--noprofile","--norc")))) |
-      .shell_pid' "$tmp/process-info.json") || return 1
+    shell=$(idle_pane_shell "$tmp/process-info.json") || return 1
     birth=$(process_birth "$shell"); [[ -n $birth ]] || return 1
     jq -nc --arg pane "$pane" --argjson pid "$shell" --arg birth "$birth" '{pane:$pane,pid:$pid,birth:$birth}' >> "$tmp/shells.jsonl"
   done < <(jq -r '.result.snapshot.panes[].pane_id' "$tmp/snapshot.json")
@@ -242,6 +266,137 @@ quiet_inventory() {
     [descendants($root)] | sort == ($shells|map(.pid)|sort)
   ' "$tmp/process-tree.json" >/dev/null || return 1
   inventory=$(jq -sc 'sort_by(.pane)' "$tmp/shells.jsonl")
+}
+inspect_read() {
+  # Only the fixed read-only Herdr calls below use this bounded temporary output.
+  local output=$1; shift
+  (ulimit -f 512 && herdr "$@") > "$output" 2> "$tmp/error" || return 1
+  [[ $(wc -c < "$output") -le 262144 ]]
+}
+inspect_evidence() {
+  local name=$1 expected=$2
+  [[ -f $instance_dir/$name && ! -L $instance_dir/$name ]] || fail missing_evidence 'Preserved lifecycle evidence is missing or unsafe.'
+  [[ $(git hash-object "$instance_dir/$name") == "$expected" ]] || fail changed_evidence 'Preserved lifecycle evidence changed.'
+}
+inspect_instance() {
+  local launch="$instance_dir/launch/receipt.json" launch_hash record_hash pane shell birth ids quiet=true
+  [[ -z $evidence ]] || fail invalid_operation 'inspect has no evidence input; save its stdout in a caller-owned receipt.'
+  jq -e --arg now "$started_at" '
+    def text: type=="string" and length>0 and length<=4096 and (test("[[:cntrl:]]")|not);
+    def epoch: . as $s | fromdateiso8601 as $t | if ($t|todateiso8601)==$s then $t else error("invalid UTC") end;
+    (.status=="RUNNING" or .status=="FINISHED") and
+    ([.missionId,.attemptId,.nativeId,.workspaceId,.paneId,.worktree.path,.worktree.branch,.server.birth,.server.socket,.server.socketInode]|all(.[];text)) and
+    (.worktree.path|startswith("/")) and (.server.socket|startswith("/")) and
+    (.server.pid|type=="number" and .>0 and floor==.) and .server.processGroup==.server.pid and
+    (.createdAt|epoch)<=($now|epoch) and .closedAt==null and
+    (if .status=="RUNNING" then .finishedAt==null and .acceptedAt==null
+     else (.finishedAt|epoch)>=(.createdAt|epoch) and (.finishedAt|epoch)<=($now|epoch) and
+       (.reportHash|text) and (if .acceptedAt==null then true else
+         (.acceptedAt|epoch)>=(.finishedAt|epoch) and (.acceptedAt|epoch)<=($now|epoch) and (.acceptanceHash|text) end) end)
+  ' <<<"$state" >/dev/null 2>&1 || fail invalid_record 'Observation requires a bound RUNNING/FINISHED instance and valid lifecycle timestamps.'
+  [[ -d $instance_dir/launch && ! -L $instance_dir/launch && -f $launch && ! -L $launch && $(wc -c < "$launch") -le 65537 ]] ||
+    fail missing_evidence 'Observation requires a preserved successful launch receipt for this instance.'
+  cp -- "$launch" "$tmp/launch.json"
+  launch_hash=$(git hash-object "$tmp/launch.json"); record_hash=$(git hash-object "$tmp/record.json")
+  jq -es --argjson r "$state" --arg record "$record" '
+    length==1 and (.[0] | .ok==true and .missionId==$r.missionId and .attemptId==$r.attemptId and
+    .lifecycle.owned==true and .lifecycle.instanceKey==$r.instanceKey and .lifecycle.record==$record and .lifecycle.status=="RUNNING" and
+    .worktree.repository==$r.project and .worktree.path==$r.worktree.path and .worktree.branch==$r.worktree.branch and
+    .herdr.host=="local" and .herdr.session==$r.session and .herdr.workspaceId==$r.workspaceId and .herdr.paneId==$r.paneId and
+    (.sokkin.nativeThreadId // .sokkin.nativeSessionId)==$r.nativeId)
+  ' "$tmp/launch.json" >/dev/null || fail instance_mismatch 'Instance and preserved launch identity disagree.'
+  if [[ $(jq -r .status <<<"$state") == FINISHED ]]; then
+    inspect_evidence report.txt "$(jq -r .reportHash <<<"$state")"
+  fi
+  if [[ $(jq -r .acceptedAt <<<"$state") != null ]]; then
+    inspect_evidence acceptance.json "$(jq -r .acceptanceHash <<<"$state")"
+  fi
+  server_matches || fail instance_mismatch 'Server incarnation changed or cannot be verified.'
+  [[ $(LC_ALL=C ps -p "$(jq -r .server.pid <<<"$state")" -o pgid= | tr -d '[:space:]') == "$(jq -r .server.processGroup <<<"$state")" ]] ||
+    fail instance_mismatch 'Server process group changed.'
+  inspect_read "$tmp/snapshot.json" api snapshot || fail observation_unavailable 'Cannot read a bounded owned server snapshot.'
+  jq -e --argjson r "$state" '
+    def id: type=="string" and length>0 and length<=256 and test("^[^[:space:][:cntrl:]]+$");
+    .result.snapshot as $s | $s |
+    (.panes|type=="array" and length>0 and length<=32 and
+      all(.[]; (.pane_id|id) and (.workspace_id|id)) and (map(.pane_id)|length==(unique|length)) and
+      any(.[]; .pane_id==$r.paneId and .workspace_id==$r.workspaceId)) and
+    (.agents|type=="array" and length<=32 and (map(.pane_id)|length==(unique|length)) and
+      (map(.agent_session.value)|length==(unique|length)) and
+      all(.[]; . as $a | (.agent_status|IN("idle","working","blocked","done")) and
+        .agent_session.kind=="id" and (.agent_session.value|id) and
+        (if .pane_id==$r.paneId then .agent_session.value==$r.nativeId else true end) and
+        any($s.panes[]; .pane_id==$a.pane_id and .workspace_id==$a.workspace_id)))
+  ' "$tmp/snapshot.json" >/dev/null || fail observation_unavailable 'Unknown agent state, pane identity or oversized inventory.'
+  : > "$tmp/panes.jsonl"
+  while IFS= read -r pane; do
+    inspect_read "$tmp/process-info.json" pane process-info --pane "$pane" || fail observation_unavailable 'Cannot inspect an owned pane.'
+    jq -e --arg pane "$pane" '
+      def pid: type=="number" and .>0 and floor==.;
+      .result.process_info | .pane_id==$pane and (.shell_pid|pid) and
+      (.foreground_processes|type=="array" and length>0 and length<=64 and
+        all(.[]; (.pid|pid) and (.name|type=="string" and length>0) and
+          (.argv|type=="array" and length>0 and all(.[];type=="string")) and
+          (.cwd|type=="string" and startswith("/") and length<=4096 and (test("[[:cntrl:]]")|not))) and
+        (map(.pid)|length==(unique|length)))
+    ' "$tmp/process-info.json" >/dev/null || fail observation_unavailable 'Owned pane process identity is incomplete.'
+    shell=$(jq -r .result.process_info.shell_pid "$tmp/process-info.json")
+    birth=$(process_birth "$shell"); [[ -n $birth ]] || fail observation_unavailable 'Owned pane shell disappeared.'
+    jq -e '.result.process_info | .shell_pid as $pid |
+      all(.foreground_processes[]; .pid!=$pid or (.name|IN("sh","bash","zsh","dash","ksh","fish")))' \
+      "$tmp/process-info.json" >/dev/null || fail observation_unavailable 'Unknown owned pane shell kind.'
+    if idle_pane_shell "$tmp/process-info.json" >/dev/null; then quiet=true; else quiet=false; fi
+    jq -nc --arg pane "$pane" --argjson pid "$shell" --arg birth "$birth" --argjson idle "$quiet" \
+      --slurpfile p "$tmp/process-info.json" '{pane:$pane,pid:$pid,birth:$birth,idleShell:$idle,
+        foreground:[$p[0].result.process_info.foreground_processes[]|{pid,cwd}]}' >> "$tmp/panes.jsonl"
+  done < <(jq -r '.result.snapshot.panes[].pane_id' "$tmp/snapshot.json")
+  ps -axo pid=,ppid= > "$tmp/process-tree" || fail observation_unavailable 'Process topology is unavailable.'
+  [[ $(wc -c < "$tmp/process-tree") -le 4194304 ]] || fail observation_unavailable 'Process topology exceeds the observation limit.'
+  jq -Rn --argjson root "$(jq -r .server.pid <<<"$state")" '
+    [inputs | if test("^ *[0-9]+ +[0-9]+ *$") then
+      capture("^ *(?<pid>[0-9]+) +(?<ppid>[0-9]+) *$") | {pid:(.pid|tonumber),ppid:(.ppid|tonumber)}
+      else error("invalid process row") end] as $all |
+    if ($all|map(.pid)|length!=(unique|length)) or (any($all[]; .pid==$root)|not) then error("invalid PID inventory") else
+      def descendants($p;$depth): if $depth>64 then error("process depth") else
+        $all[] | select(.ppid==$p) | ., descendants(.pid;$depth+1) end;
+      [descendants($root;0)] | if length>256 then error("process limit") else sort_by(.pid) end end
+  ' < "$tmp/process-tree" > "$tmp/owned.json" || fail observation_unavailable 'Owned process topology is invalid or oversized.'
+  ids=$(jq -r 'map(.pid|tostring)|join(",")' "$tmp/owned.json")
+  [[ -n $ids ]] || fail observation_unavailable 'Owned pane processes are missing.'
+  LC_ALL=C ps -p "$ids" -o pid=,lstart= > "$tmp/births" || fail observation_unavailable 'Owned process identities disappeared.'
+  jq -Rn '[inputs | capture("^ *(?<pid>[0-9]+) +(?<birth>[^ ].*[^ ]) *$") | {pid:(.pid|tonumber),birth:.birth}] | sort_by(.pid)' \
+    < "$tmp/births" > "$tmp/births.json" || fail observation_unavailable 'Owned process birth times are unavailable.'
+  jq -e --slurpfile panes "$tmp/panes.jsonl" --slurpfile births "$tmp/births.json" '
+    . as $owned | (map(.pid)==($births[0]|map(.pid))) and
+    ($panes|map(.pid)|length==(unique|length)) and
+    all($panes[]; . as $p | any($births[0][]; .pid==$p.pid and .birth==$p.birth) and
+      all(.foreground[]; .pid as $pid | any($owned[]; .pid==$pid)))
+  ' "$tmp/owned.json" >/dev/null || fail observation_unavailable 'Pane and owned process identities disagree.'
+  quiet=$(jq -n --slurpfile panes "$tmp/panes.jsonl" --slurpfile owned "$tmp/owned.json" --slurpfile snap "$tmp/snapshot.json" '
+    ($snap[0].result.snapshot.agents|length==0) and all($panes[]; .idleShell) and
+    (($panes|map(.pid)|sort)==($owned[0]|map(.pid)|sort))')
+  # Recheck evidence and incarnation. This observation is never an acceptance ticket.
+  server_matches || fail instance_mismatch 'Server incarnation changed during observation.'
+  [[ ! -e $instance_dir/lock && ! -L $instance_dir/lock && ! -L $project/.hanchou && ! -L $instances && ! -L $instance_dir && ! -L $record && ! -L $instance_dir/launch && ! -L $launch ]] ||
+    fail instance_changed 'Instance was locked or replaced during observation.'
+  cmp -s "$record" "$tmp/record.json" && cmp -s "$launch" "$tmp/launch.json" || fail instance_changed 'Instance or launch evidence changed during observation.'
+  if [[ $(jq -r .status <<<"$state") == FINISHED ]]; then inspect_evidence report.txt "$(jq -r .reportHash <<<"$state")"; fi
+  if [[ $(jq -r .acceptedAt <<<"$state") != null ]]; then inspect_evidence acceptance.json "$(jq -r .acceptanceHash <<<"$state")"; fi
+  jq -nc --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg since "$started_at" --arg record "$record" \
+    --arg recordHash "$record_hash" --arg launch "$launch" --arg launchHash "$launch_hash" --argjson r "$state" \
+    --argjson quiet "$quiet" --arg report "$instance_dir/report.txt" --slurpfile panes "$tmp/panes.jsonl" \
+    --slurpfile births "$tmp/births.json" --slurpfile snap "$tmp/snapshot.json" '
+    {version:1,operation:"inspect",ok:true,startedAt:$since,observedAt:$at,instanceKey:$r.instanceKey,
+     record:$record,recordHash:$recordHash,hashKind:"git-blob",launch:{path:$launch,hash:$launchHash},
+     observation:{missionId:$r.missionId,attemptId:$r.attemptId,nativeId:$r.nativeId,project:$r.project,host:$r.host,
+       status:$r.status,createdAt:$r.createdAt,finishedAt:$r.finishedAt,acceptedAt:$r.acceptedAt,
+       worktree:($r.worktree|{path,branch}),session:$r.session,workspaceId:$r.workspaceId,paneId:$r.paneId,
+       server:($r.server|{pid,birth,processGroup,socket,socketInode}),
+       report:(if $r.status=="FINISHED" then {path:$report,hash:$r.reportHash,matches:true} else null end),
+       quiet:$quiet,panes:$panes,agents:[$snap[0].result.snapshot.agents[]|
+         {paneId:.pane_id,nativeId:.agent_session.value,status:.agent_status}],
+       processes:$births[0]},error:null}'
+  emitted=true; exit 0
 }
 lifecycle_operation() {
   state_root
@@ -258,6 +413,7 @@ lifecycle_operation() {
   fi
   load_instance
   stage="lifecycle_$lifecycle"
+  if [[ $lifecycle == inspect ]]; then inspect_instance; fi
   case $lifecycle in
     finish)
       [[ $(jq -r .status <<<"$state") == RUNNING ]] || fail invalid_transition 'Only RUNNING can become FINISHED.'
