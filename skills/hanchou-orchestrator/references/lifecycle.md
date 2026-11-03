@@ -46,8 +46,11 @@ state or report cleanup of a failed attempt as successful finish/accept/reap.
 
 ## Completion and acceptance
 
-Sokkin preserves its artifacts and report, stops owned workers and verifies their
-exit, then records completion before its final reply:
+Sokkin preserves its artifacts and report, archives working receipts to the
+assignment's fixed durable destination and verifies their completeness/hashes,
+stops owned workers and verifies their exit, then records completion before its
+final reply. The completion receipt itself must also survive working-directory
+removal; the supervisor can preserve that final tail during acceptance:
 
 ```sh
 "$LAUNCH_SCRIPT" --project "$PROJECT_ROOT" --lifecycle finish \
