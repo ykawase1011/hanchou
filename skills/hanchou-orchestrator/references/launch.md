@@ -271,8 +271,10 @@ within the same finite deadline. A late request still needs every native gate;
 absent or conflicting evidence fails. Nonzero submission fails without resending
 and preserves a valid bounded upstream error code when available. This does not
 recover an earlier failed `STARTING`/`UNKNOWN` invocation.
-The receipt also contains the actual foreground PID/cwd and observed arguments,
-verified against this launch's arguments. Unexpected arguments block qualification
+The receipt also contains the actual foreground PID/birth/cwd and observed
+arguments, rechecked through bootstrap completion against this launch. Process
+birth is corroborating evidence, not a substitute for the qualified native log.
+Missing birth, replacement or unexpected arguments block qualification
 without copying their potentially sensitive values into the receipt. Reuse this
 evidence for assignment; do not run a separate process-discovery round unless a
 specific discrepancy remains. Process liveness must be checked again at cleanup.

@@ -132,7 +132,7 @@ receipt() {
        config,worktree,herdr,lifecycle,
        sokkin:(.sokkin | {agent,name,requestedModel,observedModel,requestedEffort,observedEffort,
          requestedSkipUpdateCheck,requestedManualApprovals,observedPermissions,nativeThreadId,nativeSessionId,
-         process:(if .process==null then null else (.process|{pid,cwd,argumentsMatchLaunch,observedAt}) end)}),
+         process:(if .process==null then null else (.process|{pid,birth,cwd,argumentsMatchLaunch,observedAt}) end)}),
        usageReadiness:(.usageReadiness | {status,reason,boundary,observedAt,nativeId,nativeLog,logHome,
          cliVersion,toolVersion,includedChildren,scope,
          tool:(if .tool==null then null else (.tool|{inputTokens,cacheReadTokens,cacheCreationTokens,
@@ -770,7 +770,10 @@ if [[ $qualify_startup == true ]]; then
       argumentsMatchLaunch:true,observedAt:$at}
     ' "$tmp/process.json") ||
     fail process_identity_mismatch 'Foreground process/cwd or arguments differ from this launch; inspect the same pane. Unexpected arguments are not copied into the receipt.'
-  observed_process=$process_candidate
+  process_pid=$(jq -r .pid <<<"$process_candidate")
+  process_started=$(process_birth "$process_pid") && [[ -n $process_started ]] ||
+    fail process_identity_pending 'The launched process birth time is unavailable; retain this attempt.'
+  observed_process=$(jq -c --arg birth "$process_started" '. + {birth:$birth}' <<<"$process_candidate")
   marker="HANCHOU_STARTUP_$attempt"
   language_defaults=$(jq -c '.languages // {} | {human:.human,agents:.agents}' <<<"$effective")
   # No arbitrary prompt/mission interface: this single turn may acknowledge only.
@@ -901,6 +904,20 @@ $(cat "$companion")"
   ((SECONDS < deadline)) || fail usage_mismatch 'Initial ccusage/native counters or session scope do not reconcile.'
   sleep 0.2
   done
+  # A PID alone does not establish the same process through qualification. This
+  # corroborates process continuity; native identity still comes from the log.
+  [[ $(process_birth "$process_pid") == "$process_started" ]] ||
+    fail process_identity_mismatch 'The launched process changed during bootstrap qualification.'
+  herdr pane process-info --pane "$pane" > "$tmp/process-final.json" 2> "$tmp/error" ||
+    fail process_identity_pending 'Cannot recheck the launched process after bootstrap qualification.'
+  jq -e --argjson p "$observed_process" '
+    [.result.process_info.foreground_processes[]? |
+      select(.cwd==$p.cwd and (.argv[0]|split("/")[-1])=="codex")] |
+    length==1 and (.[0] | .pid==$p.pid and .argv==([$p.executable]+$p.observedArguments))
+    ' "$tmp/process-final.json" >/dev/null ||
+    fail process_identity_mismatch 'The qualified process is no longer in the original pane with its launch arguments.'
+  [[ $(process_birth "$process_pid") == "$process_started" ]] ||
+    fail process_identity_mismatch 'The launched process changed during its final observation.'
   usage_readiness=$(jq -nc --slurpfile n "$tmp/native.json" --slurpfile u "$tmp/usage.json" \
     --arg home "$log_home" --arg log "$native_log" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg jqPath "$(command -v jq)" --arg jqVersion "$(jq --version)" \

@@ -570,6 +570,45 @@ class Lifecycle(unittest.TestCase):
         report.unlink(); saved_path.rename(report)
         self.accept(); self.age(); self.op('reap')
 
+    def test_inspect_optional_native_metadata_requires_post_exit_observation(self):
+        self.inspect_launch(); self.finish()
+        # Shape of the observed Herdr 0.9.5 idle Codex agent, with fixture-owned
+        # identifiers/cwd. The public schema permits missing/null agent_session.
+        # This fixture does not model a real native CLI or qualify its exit.
+        agent = {'agent':'codex', 'agent_status':'idle', 'completion_seq':11,
+                 'cwd':self.launch_receipt['worktree']['path'], 'focused':True,
+                 'foreground_cwd':self.launch_receipt['worktree']['path'],
+                 'interactive_ready':True, 'name':'fixture-sokkin',
+                 'pane_id':'w2:p1', 'revision':346, 'state_change_seq':11,
+                 'tab_id':'w2:t1', 'terminal_id':'fixture-terminal', 'workspace_id':'w2'}
+        agents = self.server/'agents.json'
+        variants = [[agent], [dict(agent, agent_session=None)],
+                    [dict(agent, agent_session={'kind':'id','value':'other'})],
+                    [dict(agent, agent_status='unknown')], [agent, agent]]
+        original = self.record.read_bytes()
+        for value in variants:
+            with self.subTest(agents=value):
+                agents.write_text(json.dumps(value))
+                observed = self.read_only_inspect(ok=False)
+                self.assertEqual(observed['error']['code'], 'observation_unavailable')
+                self.assertIsNone(observed['observation'])
+                self.assertEqual(self.accept(ok=False)['error']['code'], 'instance_busy')
+                self.assertEqual(self.record.read_bytes(), original)
+        # Only the agent-free snapshot plus the independently checked real owned
+        # idle shell/process tree permits quiet observation. No metadata injected.
+        agents.write_text('[]')
+        observed = self.read_only_inspect()['observation']
+        self.assertTrue(observed['quiet'])
+        self.assertEqual(observed['agents'], [])
+        self.assertEqual(observed['nativeId'], 'test-native')
+        self.assertIsNone(observed['acceptedAt'])
+        self.assertTrue(observed['report']['matches'])
+        # A later live agent still blocks acceptance; inspection grants no ticket.
+        agents.write_text(json.dumps([agent]))
+        self.assertEqual(self.accept(ok=False)['error']['code'], 'instance_busy')
+        agents.write_text('[]')
+        self.accept(); self.age(); self.op('reap')
+
     def test_inspect_existing_lock_and_concurrent_changes(self):
         self.inspect_launch(); self.finish()
         lock=self.record.parent/'lock'; lock.mkdir()

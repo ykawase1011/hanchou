@@ -8,10 +8,27 @@ mkdir -p "$fixture/bin" "$fixture/source/.hanchou" "$fixture/native"
 export FIXTURE="$fixture" CODEX_HOME="$fixture/native" MOCK_MODE=success
 export HANCHOU_TEST_CODEX_VERSION=${HANCHOU_TEST_CODEX_VERSION:-0.162.1}
 export MOCK_CODEX_VERSION=$HANCHOU_TEST_CODEX_VERSION
+export MOCK_REAL_PS
+MOCK_REAL_PS=$(command -v ps)
 export PATH="$fixture/bin:$PATH" HERDR_BIN="$fixture/bin/herdr"
 git -C "$fixture/source" init -q
 git -C "$fixture/source" -c user.name=Fixture -c user.email=test@example.invalid commit --allow-empty -qm base
 cp "$root/skills/hanchou-init/assets/config-template.json" "$fixture/source/.hanchou/config.json"
+cat > "$fixture/bin/ps" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $* == '-p 999999 -o lstart=' ]]; then
+  [[ $MOCK_MODE != process-birth-missing ]] || exit 1
+  if [[ $MOCK_MODE == process-birth-change && -f $FIXTURE/birth-read ]]; then
+    printf '%s\n' 'Tue Nov  3 02:00:00 2026'
+  else
+    printf '%s\n' 'Tue Nov  3 01:00:00 2026'
+  fi
+  touch "$FIXTURE/birth-read"
+  exit
+fi
+exec "$MOCK_REAL_PS" "$@"
+MOCK
 cat > "$fixture/bin/codex" <<'MOCK'
 #!/usr/bin/env bash
 [[ $* == --version ]] || exit 90
@@ -69,9 +86,18 @@ case "$1 $2" in
     '{result:{agent:{agent:"codex",agent_status:"idle",pane_id:"w1:p1",cwd:$cwd,agent_session:{kind:"id",value:$id}}}}'
    ;;
  "pane process-info")
-   jq -nc --arg cwd "$(cat "$FIXTURE/cwd")" --slurpfile args "$FIXTURE/agent-args" --arg mode "$MOCK_MODE" '
+   process_mode=$MOCK_MODE
+   final=false
+   [[ ! -f $FIXTURE/process-read ]] || final=true
+   if [[ $MOCK_MODE == process-final-args && $final == true ]]; then process_mode=process-args; fi
+   touch "$FIXTURE/process-read"
+   jq -nc --arg cwd "$(cat "$FIXTURE/cwd")" --slurpfile args "$FIXTURE/agent-args" --arg mode "$process_mode" --argjson final "$final" '
      {result:{process_info:{foreground_processes:[{pid:999999,cwd:$cwd,
-       argv:(["codex"]+$args[0]+(if $mode=="process-args" then ["--unexpected","sensitive-value"] else [] end))}]}}}'
+       argv:(["codex"]+$args[0]+(if $mode=="process-args" then ["--unexpected","sensitive-value"] else [] end))}]}}} |
+     if $final and $mode=="process-final-pid" then .result.process_info.foreground_processes[0].pid=999998
+     elif $final and $mode=="process-final-ambiguous" then
+       .result.process_info.foreground_processes += [(.result.process_info.foreground_processes[0] | .pid=999998)]
+     else . end'
    ;;
  "agent prompt")
    # Herdr 0.9.5 rejects wait-only options before submitting any input.
@@ -170,7 +196,7 @@ launch() {
     --project "$fixture/source" --mission startup --session fixture \
     --worktree-root "$fixture/worktrees" --qualify-startup --timeout-ms 3001 "$@"
 }
-for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts late-native late-native-tool late-native-ambiguous no-request prompt-stalled prompt-blocked prompt-malformed echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
+for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts late-native late-native-tool late-native-ambiguous no-request prompt-stalled prompt-blocked prompt-malformed echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args process-birth-missing process-birth-change process-final-args process-final-pid process-final-ambiguous}; do
   export MOCK_MODE=$mode
   jq --arg mode "$mode" '
     if $mode=="language-both" then .languages={human:"ja",agents:"en"}
@@ -179,6 +205,7 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
     elif $mode=="language-null" then .languages=null
     else . end' "$root/skills/hanchou-init/assets/config-template.json" > "$fixture/source/.hanchou/config.json"
   rm -rf "$CODEX_HOME/sessions" "$fixture/wrapper-home"
+  rm -f "$fixture/birth-read" "$fixture/process-read"
   : > "$fixture/calls"
   rc=0
   if [[ $mode == manual-* ]]; then
@@ -194,6 +221,7 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
     jq -e '.ok and .stage=="startup_qualified" and .usageReadiness.status=="ready" and
       .sokkin.observedModel=="gpt-6-astra" and .sokkin.observedEffort=="medium" and
       .sokkin.process.argumentsMatchLaunch and .sokkin.process.pid==999999 and
+      .sokkin.process.birth=="Tue Nov  3 01:00:00 2026" and
       .usageReadiness.tool.totalTokens==103 and .usageReadiness.includedChildren==[]' "$fixture/receipt" >/dev/null
     # Inspect the actual prompt sent to the mock transport, not a separately
     # constructed prompt. Both audiences reach bootstrap without borrowing a
@@ -228,9 +256,15 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
     jq -e '.sokkin.requestedManualApprovals==false and .sokkin.observedPermissions==null' "$fixture/receipt" >/dev/null
   fi
   prompt_count=1
-  [[ $mode != process-args && $mode != pane-version ]] || prompt_count=0
+  [[ $mode != process-args && $mode != process-birth-missing && $mode != pane-version ]] || prompt_count=0
   jq -se --argjson count "$prompt_count" '[.[]|select(.[2]=="agent" and .[3]=="prompt")]|length==$count' "$fixture/calls" >/dev/null
   if [[ $mode == process-args ]]; then
+    jq -e '.error.code=="process_identity_mismatch" and (. | tostring | contains("sensitive-value") | not)' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == process-birth-missing ]]; then
+    jq -e '.error.code=="process_identity_pending" and .sokkin.process==null' "$fixture/receipt" >/dev/null
+  fi
+  if [[ $mode == process-birth-change || $mode == process-final-* ]]; then
     jq -e '.error.code=="process_identity_mismatch" and (. | tostring | contains("sensitive-value") | not)' "$fixture/receipt" >/dev/null
   fi
   if [[ $mode == startup-prose || $mode == startup-commentary ]]; then

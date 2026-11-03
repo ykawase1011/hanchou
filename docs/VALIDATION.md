@@ -1245,3 +1245,22 @@ cache readは通常144,256、Hanchou計3,036,288で、bootstrap・失敗・最�
 通常側の1.3倍に相当する約230,640をすでに超え、効率目標は未達である。
 追加workerが0件のため、この差を子agentの費用には帰属できない。側近の直接実行と
 子への委譲は、起動・監督・独立検証・終了処理を含む別の同条件試行で検討する。
+
+### 任意native metadataと完了検査の順序（2026-11-04）
+
+前節の実snapshotとHerdr 0.9.5同梱schemaを照合すると、`agent_session`は任意で
+nullも許容される。live `inspect`の欠測拒否は維持し、通常の手順を「起動に結び付いた
+FINISHED記録・report hash・確定native使用量と成果の確認→所有CLI正常終了→
+`inspect`によるquiet inventoryの再確認→受入」に明確化した。
+凍結したCycle06の失敗を救済する変更ではない。
+
+認定起動のprocess証跡には開始時刻を加え、bootstrap後にもPID・開始時刻・cwd・
+引数・元paneを再照合する。native IDは従来どおりfresh logと厳格な計測から確定し、
+PIDやcwdだけで推定しない。旧receiptへ開始時刻を後付けせず、欠測時は診断を要する。
+
+offline回帰では旧候補がprocess開始時刻なしでも認定したことを再現し、追加検査で
+欠測・途中置換・引数変更を拒否した。実snapshotの構造を使ったfixtureでは、metadata
+欠測・null・別ID・重複・unknownを引き続き拒否し、agent退出後の形と所有idle shellの
+照合時だけquietとなる。quiet観測後にagentが現れれば受入側も再検査して拒否する。
+これは実Git/process/socketと模擬native/Herdrによる契約確認であり、新しい順序の
+実native完了・受入、起動成功率、効率比率の証明ではない。それらは別の新規試行を要する。

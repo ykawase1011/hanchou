@@ -180,10 +180,13 @@ work moving while dependent work waits for a human decision.
 ## Accept and release
 
 Independently check each criterion, artifact, test, limitation and source impact.
-For owned instances, now read [lifecycle](references/lifecycle.md): use the
-launcher's read-only `--lifecycle inspect --instance KEY` to match FINISHED and
-its actual report/hash, measure the final reply settled, preserve results outside
-disposable resources, exit owned CLIs and verify actual termination, then accept.
+For owned instances, now read [lifecycle](references/lifecycle.md): verify the
+bound FINISHED record/report and settled final native usage, preserve results
+outside disposable resources, then normally exit the verified owned CLIs.
+After actual termination, use `--lifecycle inspect --instance KEY` to recheck
+FINISHED, report/hash and quiet inventory before acceptance. Live inspection
+requires Herdr native metadata that some integrations omit; it is not a required
+precondition for this completion order. Missing metadata never proves a match.
 Inspection returns the owned pane/process observations; it never settles usage
 or replaces independent acceptance and the acceptance command's current checks.
 Keep dependent mechanical checks in one bounded execution with assertions that

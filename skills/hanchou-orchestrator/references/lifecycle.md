@@ -72,6 +72,13 @@ terminal contents are not returned. Oversized/unsupported observations fail
 closed; this is not a live subscription or an atomic snapshot across processes.
 Acceptance and reaping always recheck their current gates independently.
 
+Live inspection requires each agent's native metadata. Herdr 0.9.5 may omit
+`agent_session` or return null; that observation remains unavailable, not a
+matching identity or a quiet pane. Do not inject metadata or retry unchanged
+live inspection expecting it to prove completion. Use the completion order
+below when its independent evidence is available; a frozen experiment requiring
+live inspection keeps its failure and needs a separately declared new attempt.
+
 ## Completion and acceptance
 
 Sokkin preserves its artifacts and report, archives working receipts to the
@@ -93,14 +100,28 @@ the supervisor accepted the result, or that the CLI has exited. Do not mark a
 paused, blocked, failed or still-running assignment FINISHED merely to reclaim it.
 Shared-session missions have no lifecycle record and use ordinary result reporting.
 
-For FINISHED-to-accept, keep dependent mechanical checks in one bounded tool
-execution where supported, with assertions before each next operation:
-inspect the instance/report and `finishedAt`; obtain the final reply's settled
-measurement using the current assignment marker and native binding; after
-independent acceptance and artifact preservation, exit the owned CLI and verify
-termination; then submit acceptance. Preserve each full receipt and exit status.
-After CLI exit, `inspect` can verify the current owned process inventory and
-idle shell cwd; retain a busy/unavailable result and inspect the same attempt.
+For FINISHED-to-accept, read the record at the launch receipt's exact path and
+the preserved report beside it. Match mission/attempt, native ID, server/pane and
+worktree to that successful launch; require FINISHED, valid `finishedAt`, no
+lock, and the report's matching Git blob hash. Obtain the final reply's settled
+measurement using the current assignment marker and native binding. An active
+request or missing/changed evidence stops finalization; idle is insufficient.
+
+After independent quality judgment and artifact preservation, normally exit
+the owned CLI through its supported controls. For qualified Codex launches,
+match the current pane process PID, birth, cwd and arguments to the saved launch
+process binding, and check any reported Herdr native ID agrees. Missing Herdr
+metadata stays unknown; the independently qualified native log/marker and final
+usage remain required. Process attributes alone are not native identity proof.
+A missing process binding, mismatch, ambiguous owner or pending request requires
+diagnosis before exit, not an inferred match. Verify the observed process has
+actually terminated; do not signal a reused PID or treat connection loss as exit.
+
+Only after CLI exit, use `inspect` to recheck FINISHED/report and the current
+owned process inventory and idle shell cwd, then submit acceptance. Keep
+dependent mechanical checks in one bounded tool execution where supported, with
+assertions before each operation and each full receipt/exit status preserved.
+Retain a busy/unavailable result and inspect the same attempt.
 Batching does not replace the supervisor's judgment or the checks below. Missing
 evidence, active usage, a failed assertion or a pending approval stops dependent
 operations; inspect the same attempt instead of repeating completion or exit.
