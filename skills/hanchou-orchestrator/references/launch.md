@@ -84,7 +84,9 @@ read that tab ID's label before renaming or claiming a title-update race.
 
 Use the resolved Herdr executable and the returned `herdr.session` on the
 receipt's host. Herdr 0.9.5 provides `session attach NAME`; confirm the installed
-contract when missing from readiness. Do not use an unnamed/default session or
+contract when missing from readiness. This command takes the name positionally,
+without the global `--session` used by ordinary agent/pane operations.
+Do not use an unnamed/default session or
 create another server, workspace or agent to obtain a display. For a shared
 session, use supported controls that preserve the user's focus to select the
 returned workspace and verify
@@ -299,6 +301,36 @@ Capture stdout and exit status separately. Stdout contains one JSON receipt:
 | `sokkin` | Provider/name, requested model/effort/update-skip, observed model/native IDs and qualified process evidence |
 | `usageReadiness` | Default pending; opt-in qualified startup returns initial native/tool evidence and its boundary |
 | `error`, `resources` | Failure category and resources retained for reconciliation |
+| `receiptFormat`, `evidence` | Full or compact stdout, and the preserved full launch body when an owned instance exists |
+
+When returning from an owned launch that reached an instance record, the launcher
+saves its full final launch body once in `<instance>/launch/receipt.json`, on
+success or handled failure. An unhandled kill can leave STARTING without a final
+receipt. The private directory is created exclusively; existing directories or
+symlinks are never adopted or overwritten. The body is bounded to 65536 bytes
+before its trailing newline. It contains the defined receipt fields, not copied
+temporary files, auth replies, environment dumps, native message text or raw
+command transcripts. Its structured error is diagnostic evidence, not a complete
+transport log. Keep stdout/stderr/exit for the invocation as well.
+
+Default stdout remains the full receipt with additive `receiptFormat:"full"`
+and `evidence:{receipt,hashKind:"git-blob",hash}`. The saved body excludes these
+output-envelope additions. `hash` is the `git hash-object` blob ID for that file;
+it is not SHA-256. Verify it before using omitted evidence.
+`--compact-receipt` selects a smaller stdout projection when preservation
+succeeded. It retains identity, config, lifecycle, permission, readiness,
+counter, scope and resource decision fields. `sourceSnapshot`, full process
+arguments, duplicate native counters and tool detail remain in the referenced
+body. Read selected fields there when needed; a compact receipt does not waive
+any gate. Do not use it as the final settled measurement.
+
+Early failures before an owned record and explicit shared launches have
+`receiptFormat:"full",evidence:null`, even with the compact option. They create
+no extra evidence root. Lifecycle operations reject `--compact-receipt`; their
+existing output/storage contract is unchanged. Preservation failure returns
+nonzero, a full `launch_evidence_failed` receipt, unavailable usage, and an UNKNOWN
+owned startup state. Retain the same resources and inspect the failure; never
+assign real work or relaunch to hide it. No receipt is replaced on retry.
 
 `ok:true` means the selected startup mode succeeded, not that the mission finished.
 Default `agent_ready` does not qualify usage. Opt-in `startup_qualified` includes

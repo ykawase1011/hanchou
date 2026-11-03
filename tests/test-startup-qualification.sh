@@ -123,7 +123,7 @@ launch() {
     --project "$fixture/source" --mission startup --session fixture \
     --worktree-root "$fixture/worktrees" --qualify-startup --timeout-ms 3001 "$@"
 }
-for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
+for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both language-human language-agents language-null startup-prose startup-commentary no-herdr-id delayed-log delayed-counts echo incomplete tool builtin-tool fork model id counters missing-count negative-count ambiguous wrong-home bootstrap timeout process-args}; do
   export MOCK_MODE=$mode
   jq --arg mode "$mode" '
     if $mode=="language-both" then .languages={human:"ja",agents:"en"}
@@ -136,11 +136,13 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human l
   rc=0
   if [[ $mode == manual-* ]]; then
     launch --manual-approvals --skip-update-check > "$fixture/receipt" 2> "$fixture/error" || rc=$?
+  elif [[ $mode == compact-shared ]]; then
+    launch --compact-receipt > "$fixture/receipt" 2> "$fixture/error" || rc=$?
   else
     launch > "$fixture/receipt" 2> "$fixture/error" || rc=$?
   fi
   jq -es 'length==1' "$fixture/receipt" >/dev/null
-  if [[ $mode == success || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == manual-success ]]; then
+  if [[ $mode == success || $mode == compact-shared || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == manual-success ]]; then
     [[ $rc == 0 ]]
     jq -e '.ok and .stage=="startup_qualified" and .usageReadiness.status=="ready" and
       .sokkin.observedModel=="gpt-6-astra" and .sokkin.observedEffort=="medium" and
@@ -152,12 +154,14 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success language-both language-human l
     jq -se --slurpfile config "$fixture/source/.hanchou/config.json" '
       [.[]|select(.[2]=="agent" and .[3]=="prompt")|.[5]] as $prompts |
       ($prompts|length)==1 and
+      ($prompts[0]|contains("Companion source: ")) and
       ([$prompts[0]|split("\n")[]|
         select(startswith("Communication language defaults (JSON data): "))|
         ltrimstr("Communication language defaults (JSON data): ")|fromjson] ==
        [($config[0].languages // {} | {human:.human,agents:.agents})])' "$fixture/calls" >/dev/null
     jq -e --slurpfile config "$fixture/source/.hanchou/config.json" \
       '.config.effective==$config[0]' "$fixture/receipt" >/dev/null
+    jq -e '.receiptFormat=="full" and .evidence==null and (.sourceSnapshot|type=="object")' "$fixture/receipt" >/dev/null
   else
     [[ $rc != 0 ]]
     jq -e '.ok==false and .usageReadiness.status!="ready" and .herdr.paneId=="w1:p1"' "$fixture/receipt" >/dev/null

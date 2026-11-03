@@ -19,10 +19,13 @@ Usage: launch-sokkin.sh --project PATH --mission SLUG [options]
   --skip-update-check    Codex only; explicit per-launch update-check opt-out
   --manual-approvals     Codex 0.163.0 only; qualified workspace-write/on-request/user
   --qualify-startup      Codex 0.162.1/0.163.0 + ccusage 20.0.37: tool-free bootstrap
+  --compact-receipt      Owned launch: brief JSON with preserved full receipt reference
   --help                 Show this help without contacting Herdr
 
 Requires Bash 3.2+, Git, jq, Herdr (tested: 0.9.5) and the official agent CLI.
 By default create an owned named server and a private .hanchou/instances record.
+Owned launches also preserve their full launch receipt in that instance directory.
+Compact output needs that evidence; early failures and shared launches stay full.
 With --session select an already-running shared server. HERDR_BIN names its CLI.
 finish saves a report; accept saves settled usage after agent exit; resume clears
 completion; reap closes accepted FINISHED instances >=24h old when called.
@@ -37,7 +40,7 @@ HELP
 }
 if [[ ${1:-} == --help && $# == 1 ]]; then usage; exit 0; fi
 if ! command -v jq >/dev/null 2>&1; then
-  printf '%s\n' '{"version":2,"ok":false,"stage":"preflight","error":{"code":"missing_jq"},"resources":[]}'
+  printf '%s\n' '{"version":2,"ok":false,"stage":"preflight","error":{"code":"missing_jq"},"resources":[],"receiptFormat":"full","evidence":null}'
   exit 1
 fi
 
@@ -48,6 +51,7 @@ stage=preflight error_code=unexpected_failure error_message='Launch did not fini
 upstream_code=
 effective='{}' agent_info='{}' resources='[]' emitted=false
 source_snapshot=null skip_update_check=false
+compact_receipt=false launch_evidence=null
 manual_approvals=false observed_permissions=null
 qualify_startup=false usage_readiness='{"status":"pending","reason":"Verify native identity, settled usage and scope before real work."}'
 observed_model= observed_effort= companion= log_home=
@@ -60,7 +64,7 @@ server_pid= server_birth= server_socket= server_inode= state= inventory=
 owned=false
 
 receipt() {
-  local ok=$1 lifecycle_status=
+  local ok=$1 lifecycle_status= body
   if [[ $owned == true && -n $record && -f $record ]]; then
     state=$(jq -c --arg status "$(if [[ $ok == true ]]; then printf RUNNING; else printf UNKNOWN; fi)" \
       --arg workspace "$workspace" --arg pane "$pane" --arg path "$wt" --arg branch "$branch" \
@@ -69,7 +73,7 @@ receipt() {
     state_write "$state" || return 1
     lifecycle_status=$(jq -r .status <<<"$state")
   fi
-  jq -n --argjson ok "$ok" --arg stage "$stage" --arg mission "$mission" \
+  body=$(jq -n --argjson ok "$ok" --arg stage "$stage" --arg mission "$mission" \
     --arg attempt "$attempt" --arg config "$config_path" --argjson effective "$effective" \
     --arg project "$project" --arg path "$wt" --arg branch "$branch" --arg base "$base_commit" --arg head "$actual_head" \
     --arg session "$session" --arg workspace "$workspace" --arg tab "$tab" --arg pane "$pane" \
@@ -97,8 +101,51 @@ receipt() {
        nativeThreadId:(if $agent=="codex" then ($native|optional) else null end),
        nativeSessionId:(if $agent=="claude" then ($native|optional) else null end)},
      usageReadiness:$usage,
-     error:(if $ok then null else {code:$code,upstreamCode:($upstream|optional),message:$message} end),resources:$resources}'
+     error:(if $ok then null else {code:$code,upstreamCode:($upstream|optional),message:$message} end),resources:$resources}') || return 1
+  if [[ $owned == true ]]; then
+    if ! preserve_launch_receipt "$body"; then
+      # Evidence is part of the launch contract. Never emit a qualified success
+      # or replace an existing file when preservation fails. Keep this attempt.
+      state=$(jq -c '.status="UNKNOWN"' <<<"$state")
+      state_write "$state" || true
+      jq --arg path "$instance_dir/launch/receipt.json" '
+        .ok=false | .lifecycle.status="UNKNOWN" |
+        .usageReadiness.status="unavailable" |
+        .error={code:"launch_evidence_failed",message:"Full launch evidence could not be preserved; retain this attempt and withhold real work.",
+          path:$path,launchError:.error} | .receiptFormat="full" | .evidence=null' <<<"$body"
+      emitted=true
+      return 1
+    fi
+  fi
+  if [[ $compact_receipt == true && $launch_evidence != null ]]; then
+    jq -c --argjson evidence "$launch_evidence" '
+      {version,receiptFormat:"compact",ok,stage,startedAt,missionId,attemptId,
+       config,worktree,herdr,lifecycle,
+       sokkin:(.sokkin | {agent,name,requestedModel,observedModel,requestedEffort,observedEffort,
+         requestedSkipUpdateCheck,requestedManualApprovals,observedPermissions,nativeThreadId,nativeSessionId,
+         process:(if .process==null then null else (.process|{pid,cwd,argumentsMatchLaunch,observedAt}) end)}),
+       usageReadiness:(.usageReadiness | {status,reason,boundary,observedAt,nativeId,nativeLog,logHome,
+         cliVersion,toolVersion,includedChildren,scope,
+         tool:(if .tool==null then null else (.tool|{inputTokens,cacheReadTokens,cacheCreationTokens,
+           outputTokens,reasoningOutputTokens,totalTokens}) end)}),
+       error,resources,evidence:$evidence}' <<<"$body"
+  else
+    jq --argjson evidence "$launch_evidence" '. + {receiptFormat:"full",evidence:$evidence}' <<<"$body"
+  fi
   emitted=true
+}
+preserve_launch_receipt() {
+  # This is one immutable launch result, not a log collector or usage ledger.
+  # Do not copy tmp wholesale: auth replies, environment and native text stay out.
+  local body=$1 digest
+  [[ -d $instance_dir && ! -L $instance_dir && -f $record && ! -L $record ]] || return 1
+  (LC_ALL=C; [[ ${#body} -le 65536 ]]) || return 1
+  mkdir -- "$instance_dir/launch" || return 1
+  (set -C; printf '%s\n' "$body" > "$instance_dir/launch/.receipt-next") || return 1
+  mv -- "$instance_dir/launch/.receipt-next" "$instance_dir/launch/receipt.json" || return 1
+  digest=$(git hash-object "$instance_dir/launch/receipt.json") || return 1
+  launch_evidence=$(jq -nc --arg path "$instance_dir/launch/receipt.json" --arg hash "$digest" \
+    '{receipt:$path,hashKind:"git-blob",hash:$hash}') || return 1
 }
 finish() {
   local rc=$?
@@ -312,6 +359,7 @@ while [[ $# -gt 0 ]]; do
   if [[ $1 == --skip-update-check ]]; then skip_update_check=true; shift; continue; fi
   if [[ $1 == --manual-approvals ]]; then manual_approvals=true; shift; continue; fi
   if [[ $1 == --qualify-startup ]]; then qualify_startup=true; shift; continue; fi
+  if [[ $1 == --compact-receipt ]]; then compact_receipt=true; shift; continue; fi
   need_value "$@"
   case $1 in
     --lifecycle) lifecycle=$2;; --instance) instance=$2;; --evidence) evidence=$2;;
@@ -328,7 +376,7 @@ done
 project=$(cd "$project" && pwd -P)
 herdr() { command "$herdr_bin" --session "$session" "$@"; }
 if [[ -n $lifecycle ]]; then
-  [[ -z $mission && -z $session && -z $config_path && -z $agent_override && -z $model_override && -z $effort_override && -z $worktree_root && $base == HEAD && $qualify_startup == false && $skip_update_check == false && $manual_approvals == false ]] || fail invalid_operation 'Do not combine lifecycle and launch options.'
+  [[ -z $mission && -z $session && -z $config_path && -z $agent_override && -z $model_override && -z $effort_override && -z $worktree_root && $base == HEAD && $qualify_startup == false && $skip_update_check == false && $manual_approvals == false && $compact_receipt == false ]] || fail invalid_operation 'Do not combine lifecycle and launch options.'
   [[ $(git -C "$project" rev-parse --show-toplevel 2>/dev/null) == "$project" ]] || fail invalid_project 'Select the pinned Git checkout root.'
   require_process_inspection
   lifecycle_operation
@@ -581,6 +629,8 @@ ordinary execution workflow in the following instructions.
 Communication language defaults (JSON data): $language_defaults
 Apply the companion's language rules below. Explicit language overrides arrive
 with the mission assignment; this startup reply is only the protocol token.
+Companion source: $companion
+Resolve its relative references against that directory, not the execution cwd.
 
 $(cat "$companion")"
   deadline=$((SECONDS + (10#$timeout_ms + 999) / 1000))

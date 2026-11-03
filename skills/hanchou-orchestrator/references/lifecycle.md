@@ -1,7 +1,8 @@
 # Owned Herdr lifecycle
 
-Read this when launching or accepting an owned instance, resuming it, or handling
-an instance retained by cleanup. Use `launch-sokkin.sh` directly; do not generate
+Read this when accepting or resuming an owned instance, or handling a lifecycle
+discrepancy. Normal startup and young retained instances use the entrypoint's
+receipt contract. Use `launch-sokkin.sh` directly; do not generate
 a daemon or poller. The supervisor owns the server lifetime; sokkin owns the work
 and completion report. These commands do not send messages to other agents.
 
