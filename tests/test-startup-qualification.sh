@@ -74,6 +74,16 @@ case "$1 $2" in
        argv:(["codex"]+$args[0]+(if $mode=="process-args" then ["--unexpected","sensitive-value"] else [] end))}]}}}'
    ;;
  "agent prompt")
+   # Herdr 0.9.5 rejects wait-only options before submitting any input.
+   has_wait=false has_timeout=false
+   for arg in "${@:5}"; do
+     [[ $arg != --wait ]] || has_wait=true
+     [[ $arg != --timeout ]] || has_timeout=true
+   done
+   if [[ $has_timeout == true && $has_wait == false ]]; then
+     printf '%s\n' '--timeout requires --wait' >&2
+     exit 2
+   fi
    prompt=$4
    marker=$(printf '%s\n' "$prompt" | sed -n 's/.*token \(HANCHOU_STARTUP_[a-f0-9]*\).*/\1/p')
    [[ -n $marker ]]
