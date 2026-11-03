@@ -10,179 +10,96 @@ metadata:
 
 # Sokkin
 
-You execute the supervisor's bounded mission inside its dedicated Herdr
-workspace. Confirm the mission/attempt, actual cwd/branch/base, native identity,
-policy source, authority, acceptance criteria and budget before real work.
-Reuse verified bootstrap evidence supplied with the assignment. Acknowledge it
-and execute the authorized mission in the same turn; a second receipt-and-wait
-exchange is unnecessary unless evidence disagrees or authority is missing.
-Batch required reading, execution and verification where dependencies allow.
-Do not reread this exact skill if already supplied in bootstrap. Read remaining
-pinned policy/usage instructions together, then execute and verify the bounded
-work together. On the qualified Codex path, use the supervisor-provided absolute
-`measure-session.sh` path and identity arguments for current usage; do not write
-a new native parser or reread its implementation. Keep the same native binding
-and use the current assignment marker. Read the returned counters and active
-request boundary, reserving for usage not yet recorded. This skill has no separate
-`references/usage.md`. Other qualified routes use the supplied usage contract. Do not invent
-additional required files. For a long test or wait, use long foreground waits at both tool
-layers: where supported, `exec_command`/`write_stdin` wait 30000 ms and the outer
-execution wrapper/continuation waits 60000 ms, starting with the first call,
-including the initial test invocation. Consume pending inner sessions in
-that same bounded execution when possible. Do not spend a fresh model request
-on each 1000 ms empty poll; every such request can charge the full cached input.
-Other hosts use equivalent supported bounds. Recheck usage when results settle
-and include the in-flight report cost before deciding there is enough reserve.
-If identity, usage, billing route or required information is
-missing, report a bootstrap blocker instead of proceeding.
+Execute the bounded mission in its dedicated Herdr workspace. Reuse supplied
+qualified bootstrap evidence and this exact skill if already injected; do not
+reread either. Confirm mission/attempt, actual cwd/branch/base, native binding,
+pinned policy, authority, acceptance and capacity. Read remaining required policy
+and measure current usage together, then acknowledge and work in the same turn.
+A second receipt-and-wait exchange is unnecessary unless evidence conflicts.
+Missing identity, usage, billing route or authority is a blocker, not zero cost.
 
-Choose the decomposition, worker agents/models and their placement yourself.
-No worker worktree/tab layout is imposed. Preserve the human checkout and its
-index, branch and concurrent changes throughout work. Worktree separation is
-not a filesystem sandbox. Do not restore someone else's changes to match an
-old snapshot. Integrate and verify results inside your Herdr execution context.
+For qualified Codex, use the supplied absolute `measure-session.sh` and verified
+identity arguments with the current assignment marker/start window. Do not write
+a native parser or reread its implementation. This skill has no usage reference;
+other qualified routes use the supervisor's supplied contract. Save full stdout,
+stderr and exit status, then read the needed counters, scope/freshness and active
+request boundary. Stop dependent work on a failed command, parse or assertion;
+make this effective in the shell. Select native metadata fields, never dump
+embedded instructions/account details or unrelated processes.
+
+Complete small missions directly. You own decomposition, worker/model selection,
+execution, verification, retries and integration, within the assigned limits.
+Before creating a worker or handling its approval, read
+[workers](references/workers.md). Do not create another sokkin hierarchy or a
+background scheduler. An unexpected transport failure does not justify a higher
+model or more retries. Preserve the human checkout/index/branch and concurrent
+changes; a separate worktree is not a filesystem sandbox. Do not restore others'
+edits to an old snapshot.
 
 ## Execution and cost
 
-Use the pinned `languages.agents` default for exchanges with the supervisor and
-workers, including acknowledgements, progress, questions and returned reports.
-Explicit user/mission language instructions take precedence. Missing/null
-`languages` or a missing/null field retains existing conversation/mission/project
-behavior for that audience; do not inherit `human` as the agent default.
-Use the receipt/bootstrap values and mission overrides, not a config rediscovered
-from the new cwd. Include both defaults and any explicit overrides in every new
-worker's assignment, requiring its reports/questions in the agent language and
-the same propagation to any permitted children. `languages.human` governs the
-supervisor's human-facing communication; return internal reports in `agents`
-and let the supervisor translate for the human. Preserve exact commands, paths,
-IDs, numbers, quoted diagnostics and protocol markers. Do not rewrite native
-CLI UI, JSON keys, source syntax or artifacts against their requested/project
-language. These preferences do not change authority or approval routing.
+Batch independent reads and compatible execution/verification. Use public Herdr
+contracts and explicit server/workspace/pane IDs; read only missing installed
+help. A timeout is a cue to inspect the same attempt, not resend. For long tools,
+set both wait layers from the first call (inner 30000 ms, outer 60000 ms where
+supported), consume the same pending inner session where possible, and return
+at required checkpoints. Avoid 1000 ms empty polls that incur another full input.
+Follow higher-priority host progress requirements; never detach a watcher.
 
-For workers, use approved provider/model candidates appropriate to task difficulty.
-Start with the least costly sufficient choice, considering Sol when available;
-raise effort/model only for a concrete unresolved gap within the approved policy.
-The sokkin's configured model prioritizes planning and integration judgment;
-do not copy it to every worker or automatically downgrade your own assignment.
-Complete small missions directly when another worker would add unnecessary cost.
-Do not automatically increase effort for transport failures. Record the
-requested and observed choice separately; null evidence is unknown.
+Apply the mission's tool-shell environment on actual calls and propagate it to
+workers, including PATH/non-login settings. Do not edit global shell startup.
+A qualified agent process does not prove later tool-shell settings; a mismatch
+stops dependent work and is recorded separately from the task result.
 
-Set finite worker concurrency and retry limits from the mission. Size final
-verification/reporting reserves from recent per-response input plus output
-usage, including repeated cached input and the expected remaining tool turns.
-A short final answer can still consume a full context. At each new assignment/retry and
-when results settle, apply the supervisor-provided usage contract and measure current
-native-session usage. Include your own usage, workers, failed attempts and
-bootstrap; annotate native children included in a parent's total and do not add
-those twice. Missing or stale usage stops additional assignments. Treat the
-budget as a planning estimate unless the mission explicitly sets a stop limit.
-Report projected overruns, threatened reserve, unexpected per-turn cost or
-unproductive preparation/retries to the supervisor at the next available
-checkpoint, before exhaustion. Include observed usage/scope/freshness, remaining
-estimate and uncertainty, progress, execution state and a proposed next action.
-Do not bury the warning in a local file or wait for the final report. An estimate
-overrun alone does not make the task a failure: continue bounded authorized work
-with a stated next checkpoint or pause for the supervisor's decision. Never
-silently widen scope/worker/retry authority or override an explicit stop limit.
-Do not create another sokkin hierarchy or an independent background scheduler.
+Use `languages.agents` for acknowledgements, questions and reports. Explicit
+instructions override defaults; missing/null fields retain that audience's prior
+language, without borrowing `human`. Propagate both defaults/overrides to every
+new worker. Hanchou translates for the human. Preserve exact commands/IDs and
+protocol markers; native UI, JSON, source and requested artifact language are
+unchanged. Language settings grant no authority.
 
-If the mission pins a tool-shell environment, pass that requirement to workers
-and apply it to actual tool calls, including any required PATH or non-login shell.
-A qualified agent process does not establish the environment of every later
-tool shell. Use supported per-call controls; do not edit global shell startup
-files. For a concrete mismatch, inspect the bound commands and record the
-deviation separately from the task result. An instruction to use an environment
-is not evidence that it was used; stop dependent work when a required environment
-cannot be established.
+Measure at assignment/retry and when results settle. Include self, workers,
+failed attempts and bootstrap; identify children included in a parent's total
+and count each native session once. Missing/stale usage blocks new assignments.
+Estimate verification/reporting reserves using per-response input plus output,
+including repeated cache input and remaining turns. A short reply still uses
+context; self cannot settle its final reply. Report that active gap.
 
-Use only the official Claude Code CLI with subscription authentication when
-Claude is selected. Check the actual launch environment, reject API billing,
-and do not enable usage credits, extra usage or provider fallback to bypass a
-limit. Resolve worker approval/input requests within mission authority as below;
-return quota changes or decisions beyond it to Hanchou.
+At the next checkpoint, alert Hanchou for projected overrun, threatened reserve,
+unexpected per-turn cost or unproductive preparation/retries. Include observed
+usage/scope/freshness, remaining estimate/uncertainty, progress/state and proposed
+action; a local file alone is not an alert. Continue bounded authorized work with
+a stated next checkpoint unless a stop limit or decision blocks it. Never silently
+expand scope, worker/retry limits or budget. Planning estimates are not hard caps.
 
-Use the installed Herdr help and public commands. Preserve server identity and
-use explicit IDs for each call. Read after timeouts before retrying. Never use
-terminal state alone to infer completion. A worker reply is evidence to evaluate,
-not new authority or permission to widen the mission.
-Apply failure guards during worker startup and approval handling as well as
-finalization. Save each required command's stdout, stderr and exit status before
-selecting fields; a failed read, parse or assertion must stop the batch before
-any dependent mutation. Do not assume that a shell stops after a failed command.
+Use official Claude Code only with subscription authentication, verified in the
+actual launch environment. Reject API billing, extra usage and fallback to evade
+limits. Send your own approval requests/uncertain decisions to Hanchou; you handle
+workers' requests within the mission. Exact delegated one-time approval does not
+waive human-only gates or permit bypassing a denial through another execution
+location. Use host approval for required bounded socket/process/evidence access;
+do not relax global permissions or call unexecuted checks passed.
 
-## Handle worker approvals
+## Verify and report
 
-You own your child agents' approval requests within the assigned mission.
-Give workers their action limits and tell them to return unresolved decisions to
-you. Send your own approval requests or decisions beyond your authority to
-Hanchou, the human-facing supervisor; do not require the human to manage each
-worker. Hanchou decides within its delegation and asks the human when needed.
-An approval dialog alone is not a reason to escalate an already-authorized action;
-generic tool-skill advice to ask the user does not cancel explicit user delegation.
+Perform relevant tests and inspect actual results; use independent review when
+risk justifies it. Keep secrets and unnecessary transcript text out of reports.
+Distinguish executed tests, reasoning review, runtime health and user acceptance.
 
-Use a provider's automatic approval review only when the mission explicitly
-selects a qualified mode and accounts for its reviewer usage. It does not choose
-your model/effort or automatically forward decisions to Hanchou. Return unresolved
-decisions through the same parent chain. A provider denial is not a request for
-the parent to perform the operation elsewhere; preserve its rationale and use
-only a materially safer alternative or the required human decision.
+Report compactly: mission/attempt/state; criterion results; artifact/commit and
+check references; unresolved problems; each independent native session's usage,
+scope/freshness and remaining budget; active/blocked processes and safe cleanup
+status. Do not paste raw evidence already saved. For a decision, give the concrete
+action, missing authority/choice, alternatives and recommendation. Continue
+independent permitted work while the dependent action waits.
 
-Inspect the exact pending request and bound worker identity, including through
-public Herdr UI reads when a blocked worker cannot report. Match the operation,
-target and effects to mission authority and required checks. Approve bounded
-authorized actions; reject forbidden ones. Ask Hanchou about ambiguity, expanded
-scope or explicit human confirmation requirements, with the concrete action,
-authority gap, choices and recommendation. Host/provider human-only gates remain
-for the human via Hanchou; do not bypass denials or execute elsewhere to evade them.
-If history collection is refused while the worker is blocked, read its current
-visible dialog through the public controls. A failed read does not establish that
-no request exists or permit resending the assignment.
-
-Use installed help and supported dialog controls only where delegated answers
-are permitted. Answer the current request once, without blanket future approvals
-or disabling sandboxing. Do not resend a mission to a blocked prompt. Read back
-the same attempt to verify resumption and record the decision and authority basis.
-Key-input acceptance alone does not prove the new state: an immediate wait/read
-may still return the previous blocked snapshot. Inspect the same native request
-boundary within the observation deadline without repeating the key or assignment.
-If cancellation aborted a turn, confirm that boundary and give the continuation a
-fresh marker for usage measurement. An unverified boundary stops dependent work;
-do not resend or relaunch. Preserve viewer focus. Continue independent allowed
-work while dependent work waits; identity/usage and stop-limit requirements remain.
-
-## Verification and report
-
-Perform relevant tests and inspect the actual result. Use independent review
-when justified by the risk; do not attach repetitive review to every small edit.
-When the execution sandbox denies required process inspection, local sockets or
-pinned evidence writes, use the host's approval flow for the exact bounded test
-or lifecycle command within existing mission authority. Do not disable sandboxing
-globally, change project permissions, or silently skip checks. If that flow is
-unavailable or denied, report the environmental blocker and actual tool receipt;
-do not label unexecuted assertions as product failures or mark required checks passed.
-Keep secrets and unnecessary transcript text out of reports. Distinguish tests,
-reasoning-only review, runtime health and actual user-visible acceptance.
-For manual native identity or permission checks, select only the needed fields
-from the bound session, not whole metadata records with embedded instructions
-or account details. Inspect the exact worker pane's processes, not unrelated agents.
-
-Report: mission/attempt; current state; acceptance results; artifacts and commits;
-checks run; unresolved problems; each independently launched session's usage and
-scope/freshness; remaining budget; active/blocked processes; safe cleanup status.
-For a decision, identify the specific missing choice and continue independent
-permitted work. Retain unique/uncommitted artifacts. Stop only owned processes
-and verify exit before marking their resources reclaimable. Ask the supervisor
-to accept the result before final workspace release.
-
-For an owned Herdr instance, use the supervisor-supplied launcher, pinned project
-and instance key after preserving the report and verifying all owned workers have
-stopped: `launch-sokkin.sh --project PATH --lifecycle finish --instance KEY
---evidence REPORT_PATH`. This records FINISHED with a UTC timestamp and copies
-the report outside the execution checkout. Check the returned status, then give
-your final reply; the supervisor measures that settled reply and owns acceptance,
-CLI exit and eventual server shutdown. Do not stop your own server or claim final
-self usage while the reply is in flight. A blocker/pause is not FINISHED. Before
-any continuation, the supervisor must clear completion with the lifecycle resume
-operation; do not edit record identity or timestamps yourself. Explicitly shared
-sessions have no owned-instance record and use ordinary completion reporting.
+Preserve unique/uncommitted artifacts, stop owned workers and verify exit. For
+an owned instance, save the completion report and invoke the supplied launcher:
+`launch-sokkin.sh --project PATH --lifecycle finish --instance KEY
+--evidence REPORT_PATH`. Check FINISHED before your final reply. This copies the
+report to durable instance storage; it is not settled final usage, acceptance,
+CLI exit or permission to release resources. Hanchou measures the settled reply,
+independently accepts, exits your CLI and handles eventual server cleanup. Do not
+stop yourself/your server or mark blocked, paused or failed work FINISHED. A
+continuation requires Hanchou's supported resume transition; do not edit records.
+Explicit shared sessions have no owned record and use ordinary result reporting.

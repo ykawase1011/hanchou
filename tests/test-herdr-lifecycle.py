@@ -41,6 +41,15 @@ if args==['status','--json']:
  emit({'server':{'running':True,'compatible':True,'session':name,'socket':str(d/'s')}})
 elif args[:2]==['workspace','create']:
  cwd=args[args.index('--cwd')+1]; (d/'cwd').write_text(cwd)
+ collision=os.environ.get('MOCK_EVIDENCE_COLLISION')
+ if collision:
+  record=Path(next(a.split('=',1)[1] for a in args if a.startswith('HANCHOU_INSTANCE_RECORD=')))
+  target=record.parent/'launch'
+  if collision=='symlink':
+   outside=root/'unrelated-evidence'; outside.mkdir(exist_ok=True)
+   (outside/'receipt.json').write_text('unrelated evidence\n'); target.symlink_to(outside)
+  else:
+   target.mkdir(); (target/'receipt.json').write_text('prior evidence\n')
  emit({'result':{'workspace':{'workspace_id':'w2'},'tab':{'tab_id':'w2:t1'},'root_pane':{'pane_id':'w2:p1','cwd':cwd}}})
 elif args[:2]==['agent','start']:
  if os.environ.get('MOCK_START_FAIL'): sys.exit(1)
@@ -129,8 +138,8 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(p.returncode==0, ok, (p.stdout,p.stderr))
         return json.loads(p.stdout) if p.stdout.strip() else None
 
-    def launch(self, **kw):
-        r = self.run_script('--mission','fixture', **kw)
+    def launch(self, *args, **kw):
+        r = self.run_script('--mission','fixture', *args, **kw)
         self.assertTrue(r['lifecycle']['owned'])
         self.record = Path(r['lifecycle']['record'])
         self.assertEqual(r['lifecycle']['status'], json.loads(self.record.read_text())['status'])
@@ -139,6 +148,78 @@ class Lifecycle(unittest.TestCase):
         self.server = self.servers / r['herdr']['session']
         self.launch_receipt = r
         return r
+
+    def preserved_receipt(self, receipt):
+        evidence = receipt['evidence']
+        self.assertEqual(evidence['hashKind'], 'git-blob')
+        path = Path(evidence['receipt'])
+        self.assertEqual(path, self.record.parent/'launch/receipt.json')
+        self.assertEqual(evidence['hash'], self.git('hash-object', str(path)).decode().strip())
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+        self.assertLessEqual(path.stat().st_size, 65537)
+        self.assertEqual([p.name for p in path.parent.iterdir()], ['receipt.json'])
+        return json.loads(path.read_text())
+
+    def test_full_launch_evidence(self):
+        r = self.launch()
+        self.assertEqual(r['receiptFormat'], 'full')
+        full = self.preserved_receipt(r)
+        self.assertEqual(full, {k:v for k,v in r.items() if k not in ('evidence','receiptFormat')})
+        before = Path(r['evidence']['receipt']).read_bytes()
+        self.finish(); self.accept(); self.age(); self.op('reap')
+        self.assertEqual(Path(r['evidence']['receipt']).read_bytes(), before)
+        self.assertEqual(self.snapshot(), self.baseline)
+
+    def test_compact_launch_evidence(self):
+        r = self.launch('--compact-receipt')
+        self.assertEqual(r['receiptFormat'], 'compact')
+        full = self.preserved_receipt(r)
+        for key in ('ok','stage','startedAt','missionId','attemptId','config','worktree','herdr',
+                    'lifecycle','error','resources'):
+            self.assertEqual(r[key], full[key])
+        self.assertEqual(r['usageReadiness']['status'], 'pending')
+        self.assertIsNone(r['usageReadiness']['tool'])
+        self.assertIsNone(r['sokkin']['process'])
+        self.assertIn('sourceSnapshot', full)
+        self.assertNotIn('sourceSnapshot', r)
+        self.finish(); self.accept(); self.age(); self.op('reap')
+        self.assertEqual(self.snapshot(), self.baseline)
+
+    def test_failed_compact_launch_preserves_error(self):
+        r = self.launch('--compact-receipt', ok=False, env=dict(self.env, MOCK_START_FAIL='1'))
+        full = self.preserved_receipt(r)
+        self.assertEqual(r['receiptFormat'], 'compact')
+        self.assertEqual(r['error'], full['error'])
+        self.assertEqual(r['error']['code'], 'agent_start_unconfirmed')
+        self.assertEqual(full['lifecycle']['status'], 'UNKNOWN')
+        self.assertNotEqual(r['usageReadiness']['status'], 'ready')
+        self.assertTrue(Path(r['worktree']['path']).is_dir())
+        self.assertTrue((self.server/'s').exists())
+        self.assertEqual(self.snapshot(), self.baseline)
+
+    def test_launch_evidence_collision_fails_closed(self):
+        for collision in ('directory', 'symlink'):
+            with self.subTest(collision=collision):
+                r = self.launch('--compact-receipt', ok=False,
+                                env=dict(self.env, MOCK_EVIDENCE_COLLISION=collision))
+                self.assertEqual(r['receiptFormat'], 'full')
+                self.assertIsNone(r['evidence'])
+                self.assertEqual(r['error']['code'], 'launch_evidence_failed')
+                self.assertEqual(r['usageReadiness']['status'], 'unavailable')
+                self.assertEqual((self.record.parent/'launch/receipt.json').read_text(),
+                                 'unrelated evidence\n' if collision=='symlink' else 'prior evidence\n')
+                self.assertTrue(Path(r['worktree']['path']).is_dir())
+                self.assertTrue((self.server/'s').exists())
+        self.assertEqual(self.snapshot(), self.baseline)
+
+    def test_compact_option_boundaries(self):
+        r = self.run_script('--mission','INVALID','--compact-receipt', ok=False)
+        self.assertEqual(r['receiptFormat'], 'full')
+        self.assertIsNone(r['evidence'])
+        self.assertEqual(r['resources'], [])
+        r = self.run_script('--lifecycle','reap','--compact-receipt', ok=False)
+        self.assertEqual(r['error']['code'], 'invalid_operation')
 
     def op(self, name, *args, **kw):
         return self.run_script('--lifecycle',name,'--instance',self.key,*args,**kw)

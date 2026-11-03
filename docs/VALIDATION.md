@@ -1105,3 +1105,38 @@ Codex 0.162.1/0.163.0のfixtureで両表記のrequest boundary・使用量一致
 実Codex 0.163.0 / ccusage 20.0.37のfresh CLI 2件のtool-free bootstrapと、
 うち1件の調査任務の最終settled計測も`+00:00`で照合できた。
 これは引数互換性の確認であり、Hanchou全体のtoken削減率や他providerの認定ではない。
+
+### 完全起動証跡・compact receiptと役割別文脈（2026-11-03）
+
+owned起動の完全receiptをinstance内へ一度保存し、Git blob ID付きの参照と
+`--compact-receipt`を追加した。既定stdoutは従来の項目を含むfull形式を保つ。
+保存先衝突・symlink・保存失敗では既存証拠と資源を保持し、成功認定を返さない。
+早期失敗とshared起動はfull形式へ戻る。core skillは通常経路を残し、詳細な
+監督・worker手順を必要時に読むreferenceへ移した。
+
+macOSで`make check`全体が約1,022秒で成功した。両対応版の起動・計測回帰、
+完全／短縮receiptの対応、保存失敗、shared fallback、lifecycle 21件を含む。
+同じ候補のLinux/macOS CIも成功した。実Codex 0.163.0 / Herdr 0.9.5 /
+ccusage 20.0.37のowned起動1件で、保存した完全証拠と短縮出力のidentity・
+権限・6使用量counter・Git blob ID・file modeが一致した。
+
+候補`5ecb7f5`、固定policy/config、Astra/medium、手動承認、fresh source `cli`で、
+同一の10問調査を通常agent 1件と班長＋側近各1件で比較した。両側10/10で、
+根拠行と製品無変更を独立確認した。最終応答までの認定済み累積は通常141,691、
+班長1,978,265、側近380,164、Hanchou計2,358,429 tokens（通常の16.645倍）。
+cache readは通常116,608、Hanchou計2,238,848。bootstrap・失敗・復旧を含め、
+各nativeを一度だけ計上した。外側の開発・承認・採点費用は別の未認定scopeである。
+
+班長の起動前batchに失敗停止guardがなく、終了確認では無関係なprocessの引数まで
+保存する予定だったため、外側が実行前に各1回取り消し、同じnativeで新markerを
+使って継続した。側近のfinishはsandbox拒否後に親が同じ操作を単発承認した。
+側近は初回読取りで環境変数の明示exportを省いたことも申告したが、要求した
+non-login Bashは指定されており、これだけで継承環境の不一致とは断定しない。
+FINISHED・settled使用量・独立受入・CLI退出・idle shellの永続cwd・acceptを確認し、
+新serverは通常の24時間保持とした。既存の保持instanceと人間checkoutは変更していない。
+
+通常の5応答に対し班長35・側近10応答だった。班長は短い初回wait、追加help、
+大きな表示結果の読込みを繰り返し、最終request入力は約80k tokensになった。
+文書・出力の短縮だけで往復数や総量を減らせたとはいえず、目標比率は未達である。
+これは複合変更のn=1・復旧込み観測で、前回比や各変更の因果的な削減率、
+他provider・workerありの効果は主張しない。未認定scopeを0として合算しない。

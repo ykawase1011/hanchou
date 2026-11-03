@@ -153,6 +153,14 @@ stdoutにバージョン付きJSONを1件返し、診断ログはstderrへ分け
 | `usageReadiness` | 計測準備の`ready`／`pending`／`unavailable`と理由。token値自体の正本にはしない |
 | `error`, `resources` | 失敗理由、今回作った資源と残存・削除済み・状態不明の区別。成功時も作成対象を特定できる情報を返す |
 
+専用instanceを作成した起動は、完全な起動receiptをinstance内へ一度だけ保存する。
+任意の`--compact-receipt`は通常stdoutの重複情報を減らし、完全receiptの絶対pathと
+Git blob IDを返す。identity・permission・usage・scope・資源状態の判断項目は残し、
+source snapshotや詳細process/native/tool証拠は保存先で確認する。保存先の衝突・symlinkや
+保存失敗は成功へ昇格せず、既存証拠と今回の資源を保持して停止する。
+一時auth/env/native本文やraw command transcriptは保存対象にしない。保存前の早期失敗と
+明示共有serverでは従来の完全stdoutを返す。計測shellやlifecycle遷移の責務は増やさない。
+
 班長はこの戻り値の接続先に対して依頼・状態取得・結果回収を行う。側近起動後、スクリプトは常駐しない。起動完了・計測準備完了の両方が確認できるまでは実作業を送らない。
 
 事前検証で失敗した場合は資源を作らない。部分失敗では作成済み資源を残して識別情報を返す。起動時は自動削除せず、班長が所有・実稼働・成果を照合して回収する。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
