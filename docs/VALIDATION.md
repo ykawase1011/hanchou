@@ -1169,3 +1169,33 @@ Hanchou総量と応答数は増えている。保存手順の成立は確認し�
 支持されず、1.2–1.3倍の目標は未達である。n=1で通常側の量も変わっており、
 承認数の差や比率だけを因果的な削減効果としない。次は反復するlifecycle照合の
 限定的な機械化を検討し、同じ説明追記だけで再試験しない。
+
+### 1件限定の読取り専用lifecycle観測（2026-11-03、PR #99）
+
+候補`e16e5b2`は既存launch shellに`--lifecycle inspect --instance KEY`を追加した。
+保存済み成功起動とのidentity、実report path/hash、server実体と所有pane/processを
+読取り専用で照合する。lock・途中変更・不明な状態を拒否し、使用量・品質・CLI終了・
+受入の代替にはしない。`make check`はソース不変で成功（約1132秒、lifecycle 27件）、
+同一headのLinux/macOS CIとスキル構造検証も通過した。保持中の実Herdr 0.9.5 serverを
+1回観測し、1975 bytesの結果と保護対象のhash不変を確認した。
+
+同じ候補・10問・Codex 0.163.0/Astra medium・workspace-write/on-request/userで、
+通常実行の後に班長＋側近を各1回実行した。workerと新規再試行は0件。通常側は
+10/10・根拠行妥当・製品無変更で172,169 tokensだった。Hanchou側は起動時の
+`bootstrap_unconfirmed`でUNKNOWNとなり、課題を送信せず停止した。確定総量は
+班長851,485＋側近21,531＝873,016 tokens（cache read 819,584）で、失敗・最終応答を
+含む各nativeの累積を一度だけ計上した。通常側のcache readは148,736。
+外側の開発・承認・採点・後処理は別の未認定scopeである。
+
+server logではbootstrap送信が約5.35秒でエラーを返し、その約4.02秒後にnative依頼が
+開始して約5.70秒でtool-free応答を完了した。現行receiptは上流エラー詳細を保存して
+おらず、正確なエラーコードは断定できない。遅れて応答が見えてもUNKNOWNを昇格せず、
+再送・再起動・FINISHED・受入は行わなかった。側近の元bootstrapは認定済み計測で
+精算できたが、失敗記録の修復や任務成功とは扱わない。
+
+班長は20応答・約124 KBのtool出力、最終request入力53,922 tokensで、起動失敗後の
+調査・保全にも費用が発生した。sandboxのprocess/socket/archive拒否は同じ対象への
+個別承認3件で処理した。全45 receiptの保全・hash照合、全CLI退出、所有serverと
+pane processの停止、専用worktree削除を確認し、UNKNOWN記録・履歴・既存4 serverを
+保持した。inspectに到達していないため、この対から往復削減・同品質比率・効率改善を
+主張しない。起動時の限定した診断保存と、再送しない同一呼出し内の確認待ちを次に検討する。
