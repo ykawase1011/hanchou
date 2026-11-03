@@ -66,7 +66,22 @@ It is one launch observation, not final usage or a backup. Early failures and
 shared launches return full stdout. Missing required fields, nonzero exit or
 `launch_evidence_failed` stops dependent work; never fill nulls with defaults.
 Read selected fields from the full receipt for a concrete decision, rather than
-printing it all. Save later command results likewise before extracting fields.
+printing it all.
+
+Choose an owned working receipt directory in the verified execution worktree
+and pin the final durable destination before saving later command results.
+An explicit immediate artifact destination remains authoritative; staging is
+allowed only when compatible with that requirement. Save complete bounded
+stdout, stderr and exit status before selecting fields. Return only the next
+decision's identity, state, counters, errors and evidence paths; select the owned
+rows from terminal/layout results and use PID/parent topology with owned process
+details, not unrelated arguments. Use ordinary sandbox execution where permitted;
+request exact host approval when required. Receipt staging neither grants access
+nor permits moving an operation to evade a denial. Before acceptance or ending
+the session, archive accumulated receipts to the pinned destination and verify
+file completeness/hashes. Preserve later final receipts before deleting their
+working directory. Failed reads, parses, checks or archive operations must stop
+dependent mutations through effective shell guards; retain evidence on failure.
 
 Preserve the human checkout/index and concurrent changes. Use
 `GIT_OPTIONAL_LOCKS=0` for source inspection, including approved tool calls;
@@ -90,7 +105,8 @@ for follow-ups and leave it available. Viewing is not technically read-only.
 
 Send one assignment with a unique marker: purpose/acceptance, authority and
 approval owner/human-only decisions, pinned sources, exact receipt binding and
-evidence path, artifacts destination, budgets/reserves and worker/retry limits.
+evidence path, working/final artifact destinations and preservation checkpoint,
+budgets/reserves and worker/retry limits.
 Include absolute launcher/measurement paths, native identity/start window, owned
 instance key/record, languages and any required tool-shell environment. Pass the
 needed facts once and link their evidence; do not paste the supervisor workflow

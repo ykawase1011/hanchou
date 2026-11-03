@@ -22,10 +22,16 @@ For qualified Codex, use the supplied absolute `measure-session.sh` and verified
 identity arguments with the current assignment marker/start window. Do not write
 a native parser or reread its implementation. This skill has no usage reference;
 other qualified routes use the supervisor's supplied contract. Save full stdout,
-stderr and exit status, then read the needed counters, scope/freshness and active
-request boundary. Stop dependent work on a failed command, parse or assertion;
-make this effective in the shell. Select native metadata fields, never dump
-embedded instructions/account details or unrelated processes.
+stderr and exit status in an owned working receipt directory in this verified
+worktree, then return only needed identity, counters, scope/freshness, request
+boundary, errors and evidence paths. Pin the final durable destination and
+preservation checkpoint from the assignment; an explicit immediate destination
+still wins. Before completion/finish or session exit, archive accumulated receipts
+and artifacts there and verify completeness/hashes. Preserve later final receipts
+before working-directory deletion. A failed command, parse, assertion or archive
+stops dependent work through effective shell guards; retain evidence on failure.
+Select native metadata and owned process details, never dump embedded
+instructions/account details or unrelated process arguments.
 
 Complete small missions directly. You own decomposition, worker/model selection,
 execution, verification, retries and integration, within the assigned limits.
@@ -77,8 +83,9 @@ actual launch environment. Reject API billing, extra usage and fallback to evade
 limits. Send your own approval requests/uncertain decisions to Hanchou; you handle
 workers' requests within the mission. Exact delegated one-time approval does not
 waive human-only gates or permit bypassing a denial through another execution
-location. Use host approval for required bounded socket/process/evidence access;
-do not relax global permissions or call unexecuted checks passed.
+location. Use ordinary sandbox execution where permitted and exact host approval
+when required for bounded socket/process/evidence access. Working receipts grant
+no extra access. Do not relax global permissions or call unexecuted checks passed.
 
 ## Verify and report
 
