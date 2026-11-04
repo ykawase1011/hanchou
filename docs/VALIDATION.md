@@ -81,6 +81,31 @@ stale/restarted/process 不一致・scroll・UNKNOWN・重複 binding・証拠�
 本修正では live actor/比較を再実行しておらず、実機成功や従来の **25.817x** の改善は主張しない。
 元の失敗証拠と lifecycle は書き換えていない。
 
+### Codex 0.164.0 の公開観測と bind 入力契約（2026-11-05）
+
+候補 `69f59f9aa5246705b3f581c68e965d31e0d0398b` の後続1試行では、元 process と
+自然な **94×39** geometry を照合し、bare `/permissions` の **Ask for approval (current)**、
+bare `/keymap` の picker 内 `clear_terminal` 検索による **Global / Clear Terminal = ctrl-l**、
+bare `/debug-config` の有効な固定 config layer を確認した。最初の bare `/status` は
+完全で整列した Directory 継続行、native ID・版・model/effort と **Workspace (Ask for approval)**
+を表示し、extra access の表示はなく scroll offset は0だった。
+[固定 source に基づく観測契約](../skills/hanchou-orchestrator/references/launch.md#codex-01640-public-observation)
+では current marker が OnRequest/User を示し、status・元 process・固定 config と合わせて
+実効 workspace/manual mode を裏付ける。完全な policy serialization や TOML の復元ではない。
+
+ただし親が作った `observedAt` は小数秒と `+00:00` を含み、唯一の bind は jq の
+`%Y-%m-%dT%H:%M:%SZ` 検査で `invalid_evidence` / exit 1 となり、status parser へ到達しなかった。
+現行 wire format は UTC 整数秒・literal `Z`。
+[訂正条件](../skills/hanchou-orchestrator/references/lifecycle.md#bind-delayed-native-identity) は
+既存コードの検証後保存順序と、拒否時の無変更・成功後の重複拒否を確認する fixture に基づく。
+この実機では訂正・再 bind を行わず、割当・課題実行・finish・accept は未実施のまま終了・清掃した。
+live binding 成功や wrapping parser の回帰を示す結果ではなく、失敗は失敗として保全する。
+
+clear 入力は0件。同一 session の clear→新しい `/status` は
+[source が支える候補](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/app/input.rs#L742)
+にとどまり、表示回復としては未検証である。今回の追記は文書だけで、追加実機試行・token 比較は
+行わず、従来の **25.817x** と全失敗証拠を変更しない。
+
 ### 公開承認経路の全文確認と到達境界（2026-11-05）
 
 PR #103 の候補 `9e635afdf8df8e47225a261df14e6135e5abee8c` に対する停止後調査と、

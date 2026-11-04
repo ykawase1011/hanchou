@@ -102,6 +102,26 @@ manual mode to evade a provider denial. Claude peer startup selects manual mode
 and reports the exact-process evidence boundary; effective native gates still
 need corroboration before assignment.
 
+### Codex 0.164.0 public observation
+
+For this bounded route, official `rust-v0.164.0` source is pinned to
+`6aaac694803004a63c6f393d153c96d22521a6b9`. Bare `/permissions` showing
+**Ask for approval (current)** proves current `OnRequest`/`User` through the
+[current-item predicate](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/chatwidget/permissions_menu.rs#L258-L300).
+Combine it with complete current `/status` **Workspace (Ask for approval)**
+[effective summary](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/status/card.rs#L606-L707),
+including network/extra-root access, and the original process/pinned configuration.
+This establishes effective workspace/manual mode, not full policy serialization
+or reconstruction of a literal `sandbox_mode` assignment.
+
+To observe the actual clear binding, open bare `/keymap`, then search
+`clear_terminal` **inside the picker** and read Global / Clear Terminal; Esc closes
+without editing. The [picker resolves current bindings](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/chatwidget/keymap_picker.rs#L23-L42);
+the Ctrl+L default alone is not evidence. Bare `/debug-config` supplies
+[configuration-layer evidence](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/debug_config.rs#L122-L157),
+not effective field values. It supports no inline arguments or field-name query
+([argument contract](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/slash_command.rs#L171-L200)).
+
 ### Native automatic approval review
 
 Explicit automatic review is separate from model/effort. Use only a qualified

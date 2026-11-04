@@ -53,7 +53,8 @@ path. If that original process anchor is missing, retain the attempt; a later
 self-report or new process cannot supply it retroactively.
 
 For a resultContract 2 owned RUNNING instance, use `--lifecycle bind --instance KEY
---evidence IDENTITY_JSON` once, before real work. Provide:
+--evidence IDENTITY_JSON` before real work. One-shot means one successful immutable
+binding. Provide:
 
 ```json
 {
@@ -70,8 +71,22 @@ For a resultContract 2 owned RUNNING instance, use `--lifecycle bind --instance 
 
 The shell itself reads current public pane/process evidence, matches the original
 server, process incarnation/arguments/cwd, worktree branch and launch commit, and
-requires the public native ID to agree. `observedAt` must be within five minutes
-and no earlier than launch. A caller's ID alone is never sufficient.
+requires the public native ID to agree. `observedAt` is the real public observation
+time in UTC whole seconds with literal `Z`: `YYYY-MM-DDTHH:MM:SSZ`. Capture it at
+that observation, for example with `date -u '+%Y-%m-%dT%H:%M:%SZ'`. Fractional
+seconds and numeric offsets are not supported by this contract. It must be within
+five minutes, no earlier than launch and not in the future. Never give a stale
+observation a newly generated timestamp; refresh the public observation instead.
+Optional local syntax check: `jq -e '.observedAt | . == (fromdateiso8601 | todateiso8601)' IDENTITY_JSON`.
+This checks format only; a caller's timestamp or ID alone is never sufficient.
+
+A caller-owned syntactic evidence-validation failure may be corrected on the same
+still-RUNNING, unbound original instance only after verifying no binding or state
+change, no partial `identity/` evidence, and the unchanged launch/original process.
+Retain the rejected input and complete receipt, refresh the public observation,
+and use a new corrected evidence file. An error code alone does not prove this
+condition. This permits no repeated approval/prompt input or replay after uncertain
+effect; all original identity, authority and lifecycle gates remain in force.
 
 If metadata remains absent, `source: native-status` reads the **current unscrolled
 official `/status` UI** in that same pane. Open it through public controls first;
