@@ -1,6 +1,6 @@
 # v2 検証状況
 
-検証日: 2026-10-20–2026-11-04。旧版の検査結果はv2の合格根拠に流用しない。
+検証日: 2026-10-20–2026-11-05。旧版の検査結果はv2の合格根拠に流用しない。
 本書は実施済みの根拠と残件を分ける。設計上の出荷条件は[設計書](HANCHOU_V2_DESIGN.md)のR01–R16。
 
 ## 2026-11-04: 通常運用と外部 debug の分離
@@ -54,6 +54,63 @@ skill/artifact/report Read、artifact/report Write、launcher inspection/finish 
 finish/accept 全工程、任意 host、すべての再起動条件は実機認定していない。後述の旧 peer 試験は
 result notification の証拠としてのみ保持する。追試で token/usage 計測や単独比較は行っておらず、
 一般的な効率比を主張しない。global install・設定変更・新 runtime は行っていない。
+
+### 公開承認経路の全文確認と到達境界（2026-11-05）
+
+PR #103 の候補 `9e635afdf8df8e47225a261df14e6135e5abee8c` に対する停止後調査と、
+隔離した1件の probe を根拠に、[承認監督手順](../skills/hanchou-orchestrator/references/supervision.md#handle-sokkin-approvals)
+だけを補足した。公式 release tag と installed help に対応する固定 source は
+Codex `rust-v0.163.0` = `83086188ae0614bd882818ff1aa23f3194962012`、
+Herdr `v0.9.5` = `2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01`。これは source/版の照合であり、
+binary の再現 build 証明や、後述する過去の入力後未遷移の原因特定ではない。
+
+- Herdr の [key handler](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/app/api/agents.rs#L383)
+  は対象 pane・foreground agent・key を確認して queue へ渡す。
+  `ok` は [queue admission](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/pty/actor/unix.rs#L114)
+  までであり、後続の PTY write 完了や native 承認の acknowledgment ではない。
+- Codex の [全文表示 shortcut](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/tui/src/bottom_pane/approval_overlay.rs#L541)
+  は元の request を渡し、[exec pager](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/tui/src/app/event_dispatch.rs#L3183)
+  が完全な command を表示する。表示 Ctrl+A、[既定の Ctrl+D/Ctrl+U と q](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/tui/src/keymap.rs#L1879)
+  を使う公開経路がある。ただし pager 自体は reason・全 permission fields・内部 request ID の表示を保証しない。
+- [Herdr の key parser](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/config/keybinds.rs#L1281)
+  の表記は `ctrl+a`、`ctrl+d`、`ctrl+u`。`ctrl-a` や `pagedown`、Home、End は未対応。
+  [visible read](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/app/api_helpers.rs#L119)
+  の行数や history を増やしても provider 自身の省略は展開しない。
+  blocked alternate-screen での `recent-unwrapped` は `agent_not_idle` となり、迂回経路ではない。
+
+過去の比較 pair 2 では正しい `ctrl+a`、Enter、`y`、Escape、Ctrl+C が `ok` でも、
+同じ server/pane/native/process に結び付く7回の公開 read は同一の pending dialog のままだった。
+保存 native 境界にも該当操作の結果・完了・abort はなく、単なる直後の古い snapshot とは扱えない。
+最初の `ctrl-a` は送信前に拒否されていたが、後の正しく解析された入力が未遷移だった原因は未解決。
+encoded bytes、実 PTY write、Codex 側の入力消費は記録されておらず、viewer、queue、provider 等の
+特定箇所を原因と断定しない。親は Enter 後の遷移未確認で `y` を追加し、既存の再回答禁止に違反した。
+公開表示の省略後に raw native records を参照し、後の読取りには usage counters も含まれた。
+これは参加者 context の手順逸脱であり、通常の承認確認に native log を必須化する根拠にはしない。
+
+隔離 probe は Herdr 0.9.5 / Codex 0.163.0 / Astra medium / no-daemon /
+workspace-write・on-request・user の1件。公開 `/status` と元 process/cwd を照合し、
+65行の無害な comment で省略される固定 marker 書込みを、12分の期限内に直接の親が監督した。
+Ctrl+A による実 pager 出現、3回の Ctrl+D と4つの重なる visible frame による全文再構成、
+`q` による同一 dialog への復帰を確認した。元の reason/permission と native/process/pane binding を
+保持し、選択済みの単発 Yes へ Enter を1回送った後、公開 working・実行結果と marker の内容を確認した。
+内部 request ID や native log を公開判断の必須条件にはせず、正確な現 dialog/操作と bound identity を使った。
+後の offline native 照合も結果・完了と一致したが、actor context に native log は入れていない。
+初めに `pagedown` を誤って指定した2回は `invalid_key` で送信前に拒否されており、失敗記録を保持する。
+その後に source を確認して Ctrl+D を使ったため、初手から無逸脱の試験とは数えない。
+Ctrl+U は source 確認であり、この probe の実ページ移動は Ctrl+D だった。
+
+先の Claude Code 2.1.317 子の追試は7件の単発回答と後続 Read/Write/Bash 成功を照合した限定根拠で、
+Codex 子や任意 reconnect、approval wake の認定ではない。今回の同版 Codex 成功も、過去の失敗を消さず、
+普遍的・安定的な配信や版更新による修復を証明しない。既定 installed 0.164.0 の probe は実施していない。
+startup/manual configuration の照合と、承認入力の到達・実行の信頼性は別の検証範囲である。
+production shell、identity/usage parser、permission defaults の機能修正を裏付ける証拠はなく変更しない。
+
+比較の外部記録では pair 1 は成果品質を満たしたが原期限・回復期限を超過し、全体 3,518,355 対
+単独 218,710 tokens（16.087倍）。pair 2 は失敗・context 汚染を含み、未完子を含む全体は
+少なくとも 6,195,050 対単独 231,856（26.7194倍）で、成功した完了費用ではない。
+これらは今回の再計測ではなく、失敗・cache・承認待ちを差し引かず保存した外部集計である。
+新手順の end-to-end 成功費用や1.2–1.3倍の目標達成を示す結果はない。
+raw native/process/config と詳細 receipt は非公開の検証資料に保持し、公開資料には含めない。
 
 ### 候補の限定実機確認（2026-11-04）
 

@@ -73,18 +73,37 @@ If history collection is refused while the agent is blocked, read its current
 visible dialog through the public controls. A failed read does not establish that
 no request exists or permit resending the mission.
 
+If the dialog clips the operation, use the provider's supported full-command view
+and inspect the complete command, targets and effects within the fixed deadline.
+More visible lines or history cannot expand provider-clipped text;
+`recent-unwrapped` does not bypass a refused alternate-screen history read.
+
+For Codex 0.163.0 with Herdr 0.9.5, the displayed Ctrl+A opens the command pager;
+Herdr spells it `ctrl+a`. Confirm the pager actually appears, then inspect
+successive visible pages using `ctrl+d`/`ctrl+u` and return with `q`.
+Verify each view change and the return to the same pending dialog, retaining its
+reason, permission context and native/process/pane binding before one answer.
+The command pager alone need not expose that context or an internal request ID.
+These are version-scoped bindings, not a delivery guarantee; consult installed
+help and official provider bindings for other versions. Herdr 0.9.5 does not map
+`pagedown`, Home or End.
+
 Where the public host/Herdr controls permit a delegated answer, use the installed
 help to answer only that request. Prefer one-time approval; do not select blanket
 future permissions or disable sandboxing. A blocked agent prompt is not an answer
 channel: inspect and use the supported dialog controls instead of resending the
-mission. Read back the same attempt after answering; verify it resumed and record
-the decision and authority basis. Key-input acceptance alone does not prove the
-new state: an immediate wait/read may still return the previous blocked snapshot.
-Keep the same attempt and inspect its current native request boundary within the
-observation deadline; do not repeat the key or assignment on that stale state.
+mission. Read back the same attempt after answering; verify the operation's
+independent observable effect and record the decision and authority basis.
+Herdr 0.9.5 key-send `ok` confirms queue admission, not a completed PTY write or
+native approval. An immediate wait/read may still return the previous blocked
+snapshot. Keep the same attempt and inspect its current public request boundary
+within the observation deadline; do not repeat an answer, including with another
+key, or the assignment on that stale state.
 If cancellation aborted the turn, confirm that boundary before sending a fresh
-continuation marker for the continuation. An unverified boundary stops
-dependent work; it is not permission to resend or relaunch.
+continuation marker for the continuation. Unverified complete inspection or
+post-answer effect stops dependent work without another answer, resend or relaunch.
+Raw native records belong to separate diagnostics, not a required runtime approval
+inspection path.
 
 For the qualified Herdr 0.9.5 contract, one observation can use `agent wait` with
 `--until blocked --until idle --until done --until unknown --timeout 30000` on the
