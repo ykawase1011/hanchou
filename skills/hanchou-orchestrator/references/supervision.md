@@ -5,6 +5,14 @@ long-running/uncertain observation. The normal launch path stays in SKILL.md.
 
 ## Bounded observations
 
+Result notification and approval supervision are separate capabilities. Claude's
+qualified idle/exit subscription does not notify a pending native approval.
+Before assigning work that may require manual permission (including preserving
+results and running finish), verify that the direct parent can observe and answer
+the exact pending request through supported public controls. Otherwise hold the
+assignment with the concrete host limitation. No approval wake/handler is currently
+qualified, so do not end the parent's turn solely awaiting an idle notice.
+
 Use the host's authorized connection route consistently. Readiness may identify
 an individual approval route for Herdr/shared Git; it is not permission to bypass
 controls. For launch/wait/cleanup, explicitly set both wait layers
@@ -77,6 +85,18 @@ observation deadline; do not repeat the key or assignment on that stale state.
 If cancellation aborted the turn, confirm that boundary before sending a fresh
 continuation marker for the continuation. An unverified boundary stops
 dependent work; it is not permission to resend or relaunch.
+
+For the qualified Herdr 0.9.5 contract, one observation can use `agent wait` with
+`--until blocked --until idle --until done --until unknown --timeout 30000` on the
+bound pane. Read current public pane/process evidence and the result after it
+returns. An initial or old idle state may return immediately; absent a report
+for the current request, one bounded wait for working/blocked/done/unknown can establish
+new activity before the next checkpoint. Keep one fixed wall deadline; do not
+spin on old idle. A blocked state requires inspection, not success or a progress
+prompt. Await each submitted wait/key command's real receipt, then read back the
+same request. Preserve native tool/request ID when public evidence exposes it;
+otherwise retain the exact current dialog, operation and process/pane binding
+without inventing an ID. If the exact request cannot be established, do not answer.
 
 For a human decision, state the concrete action, why existing authority cannot
 settle it, the choices and your recommendation. For a human-only UI gate, include

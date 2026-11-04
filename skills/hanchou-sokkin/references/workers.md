@@ -20,7 +20,9 @@ result destinations once. No self-measurement, budget bookkeeping or usage repor
 are required. Use qualified native receive only when both endpoints support it;
 otherwise preserve the supported public launch/wait path without claiming wake.
 Wait for your own submitted command's receipt; avoid periodic child-status checks
-when a qualified notification is available. No new sokkin hierarchy or scheduler.
+when a qualified result notification is available. Pending native approvals still
+need the direct parent's bounded public observation/control path; idle notices
+do not provide approval wake. No new sokkin hierarchy or scheduler.
 
 If the mission pins a tool-shell environment, pass that requirement to workers
 and apply it to actual tool calls, including any required PATH or non-login shell.

@@ -50,7 +50,9 @@ For a selected Claude peer route, retain the supplied parent/current child peer
 refs and request binding. Reply to the actual sender and include the same marker.
 A question/hold/refusal/exit is not completion. The parent's idle subscription
 provides completion notification; do not add a redundant completion message or
-status loop. Read [native receive](../hanchou-orchestrator/references/native-receive.md)
+status loop. It does not notify a pending native approval: the direct parent
+must use its bounded public observation/control path even if you are blocked
+and cannot send a message. Read [native receive](../hanchou-orchestrator/references/native-receive.md)
 only when needed for that route's setup or a discrepancy.
 
 Run relevant checks and inspect their outputs. Report criterion outcomes,

@@ -35,7 +35,9 @@ Herdr workspace; no new runtime or Orca product dependency is involved.
 For qualified Codex 0.162.1/0.163.0 use `--qualify-startup --compact-receipt`.
 Explicit manual approvals on 0.163.0 add `--manual-approvals`. Other combinations
 use the existing launch path and independently establish native identity and
-effective settings. Do not replace `--no-daemon` with an unqualified queue route.
+effective settings. For an owned RUNNING receipt with pending identity, use the
+one-shot [identity binding](references/lifecycle.md#bind-delayed-native-identity)
+before assignment. Do not replace `--no-daemon` with an unqualified queue route.
 For explicitly selected Claude-to-Claude native receive, read
 [native receive](references/native-receive.md); it has additional parent and
 SessionStart prerequisites and does not apply to arbitrary Codex/Orca parents.
@@ -81,13 +83,17 @@ native UI or artifacts unless requested.
 
 Always consume the receipt of your own submitted tool command, including an
 asynchronous shell/tool continuation, before claiming it succeeded. This differs
-from repeatedly asking whether a child is finished. With qualified Claude
-receive, submit once using `SendMessage` + `notify_when_idle`, read its receipt
-and end the turn; the native notice resumes the parent. Do not poll ListAgents
-or send status questions. Without a qualified wake route, use bounded public
-Herdr waits/readback and report the host's actual limitation. A timeout does not
-permit resend. [Supervision](references/supervision.md) covers uncertain waits
-and the first pending approval.
+from repeatedly asking whether a child is finished. Qualified Claude
+`SendMessage` + `notify_when_idle` delivers result/exit notices, **not pending
+native approval requests**. Before assignment, require the responsible parent's
+supported public Herdr observation/control route for any possible manual approval,
+including finish. After the send receipt, keep bounded public waits/readback until
+those requests are resolved and the child finishes; do not end the parent turn
+relying solely on idle notification. No approval wake/handler is currently qualified.
+Do not poll ListAgents or send status questions. Other hosts use the same bounded
+Herdr path and expose their actual limits before assignment. A timeout does not
+permit resend. [Supervision](references/supervision.md) defines the deadline,
+blocked-state detection and exact-request decisions.
 
 Decide already-delegated concrete child operations through supported public
 controls, bound to the exact native request/identity. A peer answer is not native

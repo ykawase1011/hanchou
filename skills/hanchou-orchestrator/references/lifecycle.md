@@ -43,6 +43,53 @@ unaccepted `FINISHED` record. Withhold real work, preserve the failure, and use 
 for explicit cleanup and a separate new-attempt decision. Do not edit lifecycle
 state or report cleanup of a failed attempt as successful finish/accept/reap.
 
+## Bind delayed native identity
+
+An ordinary successful launch may be RUNNING while optional Herdr
+`agent_session` is null. This is distinct from UNKNOWN: withhold assignment until
+the same original CLI's identity and effective settings are publicly established.
+The launcher captures exact PID/birth/cwd/argv when available even on the ordinary
+path. If that original process anchor is missing, retain the attempt; a later
+self-report or new process cannot supply it retroactively.
+
+For a resultContract 2 owned RUNNING instance, use `--lifecycle bind --instance KEY
+--evidence IDENTITY_JSON` once, before real work. Provide:
+
+```json
+{
+  "version": 1,
+  "missionId": "the-launch-mission",
+  "attemptId": "the-launch-attempt",
+  "requestId": "HANCHOU_REQUEST_the-launch-token",
+  "nativeId": "the-publicly-observed-native-id",
+  "source": "herdr",
+  "launchHash": "Git blob hash from the saved full launch receipt",
+  "observedAt": "2026-11-04T12:00:00Z"
+}
+```
+
+The shell itself reads current public pane/process evidence, matches the original
+server, process incarnation/arguments/cwd, worktree branch and launch commit, and
+requires the public native ID to agree. `observedAt` must be within five minutes
+and no earlier than launch. A caller's ID alone is never sufficient.
+
+If metadata remains absent, `source: native-status` reads the **current unscrolled
+official `/status` UI** in that same pane. Open it through public controls first;
+the bounded parser supports Claude 2.1.317 interactive Session ID/cwd and Codex
+0.164.0 Session/Directory/Permissions. Other formats, missing/duplicate fields,
+another cwd, mismatched public metadata or changed process fail closed. This
+does not certify model/effort/permission settings: corroborate them separately.
+Close the status UI before sending the task. No history scraping, usage tool,
+LLM acknowledgement, hook installation or record editing is needed.
+
+The immutable original launch receipt remains unchanged. A separate `identity/`
+directory preserves the binding and public observations with Git blob hashes;
+the record stores `nativeId` and `identityBinding`. Finish rechecks the original
+live process, and inspect/finish/accept/reap verify the preserved binding evidence.
+Do not switch threads in the process or reuse a restarted CLI. Binding cannot
+replace a known ID, overwrite earlier evidence, promote UNKNOWN/STARTING or repair
+legacy records without a captured launch anchor. Codex keeps `--no-daemon`.
+
 ## Read-only observation
 
 Use one explicit instance to replace handwritten record/report hash and owned

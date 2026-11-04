@@ -56,6 +56,14 @@ capability/inbound assertions remain caller observations: the shell cannot invok
 model-only ListAgents or prove effective settings from a file's mere existence.
 The record is local evidence, not authentication against hostile local writers.
 
+Qualify result delivery separately from approval supervision. This baseline has
+no qualified pending-approval wake or native approval handler. Before assignment
+the direct parent must be able to remain in bounded public Herdr observation,
+inspect the exact pending request and answer through its authorized public controls.
+If its host cannot do so, hold the assignment and state that limitation. An idle
+subscription does not supply this capability; do not depend on an external tester
+or silently route routine delegated approvals to the human.
+
 The child gets a fresh UUID/name and manual mode. The launcher checks its exact
 process arguments and unchanged official SessionStart `source: herdr:claude`,
 native ID and cwd before any conversation ACK. The result's
@@ -77,10 +85,13 @@ both current peer refs in one assignment. Before sending, save the current peer
 mapping alongside the launch receipt. Use official SendMessage with the exact
 child address and `notify_when_idle: true`. Read its actual receipt and preserve
 its message ID. A submitted asynchronous tool command must be awaited to receipt;
-“no polling” applies to checking whether the child is done, not that command.
-End the parent turn after the receipt; do not poll ListAgents or send progress
-questions. The native notice can start the next parent turn without periodic
-parent-model checking. Sending and handling a notice still uses model turns.
+“no polling” does not prohibit that required receipt or bounded approval
+supervision. Follow [supervision](supervision.md): wait for blocked/idle/done/unknown,
+then read the current pane and bound result. While a manual request can occur,
+including the final finish command, do not end the parent turn relying solely
+on idle notification. Do not poll ListAgents or send progress questions. Native
+idle/exit notices can start a parent turn, but cannot wake it at a pending Write.
+Sending, observing approvals and handling notices still use model turns.
 
 An inbox receipt is not proof of consumption or task completion. A pure idle
 subscription may immediately report an **old** result. A held/refused delivery,
@@ -116,10 +127,13 @@ no blanket future approvals or permission laundering through a peer.
 
 ## Scope and costs
 
-Offline schema/process tests cannot prove native wake. The bounded native probe
-qualified local 2.1.317 roots, including old idle, hold/refuse, exit and one scoped
-Write approval. It did not qualify arbitrary hosts, all restart/reconnect cases,
-TTL expiry or automatic native-approval forwarding. External debug measures only
+Offline schema/process tests cannot prove native wake. The bounded peer probe
+qualified result notices between local 2.1.317 roots, including old idle,
+hold/refuse and exit. Its Write was approved by an external controller, so that
+probe did not qualify parent approval supervision. Use the bounded Herdr path
+above for delegated approvals; automatic approval wake/forwarding, arbitrary
+hosts, all restart/reconnect cases and TTL expiry remain unqualified.
+External debug measures only
 attributable native requests; no participant is asked to self-account. Include
 preparation, full context, failures and acceptance when comparing equivalent tasks.
 Fewer responses alone do not establish a 1.2–1.3x efficiency ratio.

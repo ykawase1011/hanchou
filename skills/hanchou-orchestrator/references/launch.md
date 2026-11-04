@@ -61,7 +61,7 @@ selects an executable, not shell code. See `--help` for the small option surface
 
 Codex retains `--no-daemon`. An explicitly authorized `--skip-update-check` only
 adds a process-local Codex flag. No queue fallback/shared daemon is created.
-The [separate Codex design](../../../docs/CODEX_NATIVE_RECEIVE_DESIGN.md) records
+The [separate Codex design](https://github.com/ykawase1011/hanchou/blob/3e0ecf79bceef6e57436cef5440bd328e765c81e/docs/CODEX_NATIVE_RECEIVE_DESIGN.md) records
 why the owned app-server experiment cannot silently replace this mode.
 Claude requires first-party subscription auth in caller and actual pane; no
 API/extra-usage fallback or credential export. Auth alone does not prove every
@@ -87,9 +87,11 @@ public identity route; a failed qualification cannot be bypassed by manual ACK.
 
 Claude's explicitly selected [native receive](native-receive.md) uses official
 SessionStart identity without an LLM ACK. `--claude-peer PATH` supplies the current
-local Claude parent evidence; optional `--claude-settings PATH` is an authorized
-process-local settings file, never silently installed/trusted. This flag does not
-claim that a Codex/Orca parent supports Claude tools or native wake.
+local Claude parent evidence. For any Claude launch, optional `--claude-settings
+PATH` is an explicitly authorized process-local settings file, never silently
+installed/trusted; it can select manual permissions on the ordinary Herdr path.
+Read back actual native settings. This option does not claim that a Codex/Orca
+parent supports Claude peer tools or native wake.
 
 ### Explicit manual approvals
 
@@ -124,11 +126,18 @@ closed and retains resources. STARTING/UNKNOWN has no promotion path. Inspect
 the same attempt and preserve unique work; do not relaunch blindly or claim a
 later ACK recovered the lifecycle. A separate retry needs a justified decision.
 
+A successful ordinary owned launch with pending optional native metadata instead
+uses [one-shot bind](lifecycle.md#bind-delayed-native-identity) against its captured
+original process and fresh public identity, before real assignment. Keep the
+original receipt; do not infer identity from the result or hand-edit the record.
+
 After identity/settings and viewer checks, send one bound mission with the fixed
 companion/policy references, criteria, authority, languages, resource limits and
 durable result destination. Receipt waiting and child-completion observation are
-separate. The native route uses a notice; other supported hosts use bounded
-public waits/readback. Idle or a timeout is never success or permission to resend.
+separate. The native route supplies result/exit notices; all manual-approval paths
+still require the parent's bounded public waits/readback because pending approval
+wake is unqualified. Establish that capability before assignment. Idle or a
+timeout is never success or permission to resend.
 Finalization follows [lifecycle](lifecycle.md), without usage gates.
 
 ## Human-visible Herdr

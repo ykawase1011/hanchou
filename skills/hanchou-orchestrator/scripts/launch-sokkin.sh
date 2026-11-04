@@ -6,7 +6,7 @@ umask 077
 usage() {
   cat <<'HELP'
 Usage: launch-sokkin.sh --project PATH --mission SLUG [options]
-       launch-sokkin.sh --project PATH --lifecycle inspect|finish|accept|resume|reap
+       launch-sokkin.sh --project PATH --lifecycle bind|inspect|finish|accept|resume|reap
          [--instance KEY] [--evidence PATH]
   --session NAME         Opt into an existing shared session (never auto-stopped)
   --config PATH          Default: selected project's .hanchou/config.json
@@ -29,6 +29,7 @@ By default create an owned named server and a private .hanchou/instances record.
 Owned launches also preserve their full launch receipt in that instance directory.
 Compact output needs that evidence; early failures and shared launches stay full.
 With --session select an already-running shared server. HERDR_BIN names its CLI.
+bind confirms late native identity against the original process and public evidence before work.
 finish saves a bound result; accept saves independent verification after agent exit; resume clears
 completion; reap closes accepted FINISHED instances >=24h old when called.
 inspect observes one explicit RUNNING/FINISHED instance without changing it;
@@ -292,6 +293,102 @@ inspect_evidence() {
   [[ -f $instance_dir/$name && ! -L $instance_dir/$name ]] || fail missing_evidence 'Preserved lifecycle evidence is missing or unsafe.'
   [[ $(git hash-object "$instance_dir/$name") == "$expected" ]] || fail changed_evidence 'Preserved lifecycle evidence changed.'
 }
+verify_identity_binding() {
+  [[ $(jq -r '.identityBinding // null' <<<"$state") != null ]] || return 0
+  [[ -d $instance_dir/identity && ! -L $instance_dir/identity ]] || fail missing_evidence 'Identity binding directory is missing or unsafe.'
+  [[ -d $instance_dir/launch && ! -L $instance_dir/launch && -f $instance_dir/launch/receipt.json && ! -L $instance_dir/launch/receipt.json ]] || fail missing_evidence 'Original launch evidence is missing or unsafe.'
+  inspect_evidence identity/binding.json "$(jq -r .identityBinding.hash <<<"$state")"
+  inspect_evidence identity/public-pane.json "$(jq -r .proof.paneHash "$instance_dir/identity/binding.json")"
+  inspect_evidence identity/public-process.json "$(jq -r .proof.processHash "$instance_dir/identity/binding.json")"
+  if [[ $(jq -r .identityBinding.source <<<"$state") == native-status ]]; then
+    inspect_evidence identity/public-status.txt "$(jq -r .proof.statusHash "$instance_dir/identity/binding.json")"
+  fi
+  jq -e --argjson r "$state" --arg hash "$(git hash-object "$instance_dir/launch/receipt.json")" '
+    .missionId==$r.missionId and .attemptId==$r.attemptId and .nativeId==$r.nativeId and
+    .process==$r.process and .launchHash==$hash and .source==$r.identityBinding.source
+  ' "$instance_dir/identity/binding.json" >/dev/null || fail instance_mismatch 'Preserved binding and launch/record disagree.'
+}
+check_instance_process() {
+  local expected=$1 pid birth
+  pid=$(jq -r .process.pid <<<"$state"); birth=$(jq -r .process.birth <<<"$state")
+  [[ $pid =~ ^[0-9]+$ && -n $birth && $birth != null && $(process_birth "$pid") == "$birth" ]] || fail instance_mismatch 'Original agent exited or restarted; do not bind or finish a replacement.'
+  inspect_read "$tmp/bind-process.json" pane process-info --pane "$(jq -r .paneId <<<"$state")" || fail observation_unavailable 'Current agent process is unavailable.'
+  jq -e --argjson r "$state" '
+    [.result.process_info.foreground_processes[]? | select(.pid==$r.process.pid and
+      .cwd==$r.worktree.path and .argv==([$r.process.executable]+$r.process.observedArguments))] | length==1
+  ' "$tmp/bind-process.json" >/dev/null || fail instance_mismatch 'Current process/pane/arguments differ from the original launch.'
+  inspect_read "$tmp/bind-pane.json" pane get "$(jq -r .paneId <<<"$state")" || fail observation_unavailable 'Current native pane is unavailable.'
+  jq -e --argjson r "$state" --arg id "$expected" --arg provider "$(jq -r .sokkin.agent "$instance_dir/launch/receipt.json")" '
+    .result.pane | .pane_id==$r.paneId and .workspace_id==$r.workspaceId and .agent==$provider and
+    (.foreground_cwd // .cwd)==$r.worktree.path and
+    (if .agent_session==null then true else .agent_session.kind=="id" and .agent_session.value==$id end)
+  ' "$tmp/bind-pane.json" >/dev/null || fail instance_mismatch 'Current pane/provider/native identity differs from the requested binding.'
+}
+bind_identity() {
+  local launch="$instance_dir/launch/receipt.json" hash candidate source provider status_id binding status_hash=""
+  jq -e '.status=="RUNNING" and .resultContract==2 and .identityBinding==null and .process!=null' <<<"$state" >/dev/null ||
+    fail invalid_transition 'Bind one RUNNING attempt with its captured launch process, before assignment; never promote UNKNOWN or replace a binding.'
+  [[ -d $instance_dir/launch && ! -L $instance_dir/launch && -f $launch && ! -L $launch && $(wc -c < "$launch") -le 65537 ]] || fail missing_evidence 'Binding needs the preserved original successful launch.'
+  hash=$(git hash-object "$launch")
+  jq -es --argjson r "$state" --arg record "$record" '
+    length==1 and (.[0] | .ok==true and .lifecycle.owned==true and .lifecycle.status=="RUNNING" and
+      .lifecycle.instanceKey==$r.instanceKey and .lifecycle.record==$record and
+      .missionId==$r.missionId and .attemptId==$r.attemptId and .requestId==$r.requestId and
+      .worktree.repository==$r.project and .worktree.path==$r.worktree.path and .worktree.branch==$r.worktree.branch and
+      .herdr.session==$r.session and .herdr.workspaceId==$r.workspaceId and .herdr.paneId==$r.paneId and
+      .sokkin.process==$r.process and (.sokkin.nativeThreadId // .sokkin.nativeSessionId)==$r.nativeId)
+  ' "$launch" >/dev/null || fail instance_mismatch 'Launch evidence differs from the instance.'
+  [[ -f $evidence && ! -L $evidence && $(wc -c < "$evidence") -le 32768 ]] || fail missing_evidence 'Provide one bounded identity observation JSON.'
+  jq -es --argjson r "$state" --arg hash "$hash" --arg now "$started_at" '
+    length==1 and (.[0] | .version==1 and .missionId==$r.missionId and .attemptId==$r.attemptId and
+      .requestId==$r.requestId and .launchHash==$hash and
+      (.nativeId|type=="string" and length>0 and length<=256 and test("^[^[:space:][:cntrl:]]+$")) and
+      ($r.nativeId==null or .nativeId==$r.nativeId) and (.source=="herdr" or .source=="native-status") and
+      (.observedAt|fromdateiso8601)>=($r.createdAt|fromdateiso8601) and
+      (.observedAt|fromdateiso8601)>=($now|fromdateiso8601)-300 and
+      (.observedAt|fromdateiso8601)<=($now|fromdateiso8601))
+  ' "$evidence" >/dev/null || fail invalid_evidence 'Identity observation must be fresh and match this launch/request; a report self-assertion is not binding.'
+  candidate=$(jq -r .nativeId "$evidence"); source=$(jq -r .source "$evidence"); provider=$(jq -r .sokkin.agent "$launch")
+  [[ $(git --no-optional-locks -C "$(jq -r .worktree.path <<<"$state")" branch --show-current) == "$(jq -r .worktree.branch <<<"$state")" &&
+     $(git --no-optional-locks -C "$(jq -r .worktree.path <<<"$state")" rev-parse HEAD) == "$(jq -r .worktree.head "$launch")" ]] || fail instance_mismatch 'Bind before assignment on the original branch and launch commit.'
+  server_matches || fail instance_mismatch 'Original server is unavailable or changed.'
+  check_instance_process "$candidate"
+  if [[ $source == herdr ]]; then
+    jq -e --arg id "$candidate" '.result.pane.agent_session | .kind=="id" and .value==$id' "$tmp/bind-pane.json" >/dev/null || fail native_identity_pending 'Public Herdr native metadata is still missing.'
+  else
+    # The caller opens the official /status UI before this one-shot read. Never
+    # parse arbitrary transcript history, a task report, or a private peer socket.
+    jq -e '.result.pane.scroll.offset_from_bottom==0' "$tmp/bind-pane.json" >/dev/null || fail native_identity_pending 'Use the current unscrolled official status UI, not historical output.'
+    inspect_read "$tmp/bind-status.txt" pane read "$(jq -r .paneId <<<"$state")" --source visible --format text || fail observation_unavailable 'Cannot read current native status UI.'
+    status_id=$(jq -Rser --arg provider "$provider" --arg cwd "$(jq -r .worktree.path <<<"$state")" --arg home "$HOME" '
+      def field($key): [split("\n")[] | select(test("^ *"+$key+":")) | sub("^ *"+$key+": *";"") | sub(" *$";"")] | select(length==1) | .[0];
+      . as $ui | if $provider=="claude" then
+        select(field("Version")=="2.1.317" and field("Session kind")=="interactive" and field("cwd")==$cwd) | field("Session ID")
+      elif $provider=="codex" then
+        select(test("OpenAI Codex \\(v0\\.164\\.0\\)")) |
+        select(field("Directory")==$cwd or field("Directory")==("~"+($cwd|ltrimstr($home)))) |
+        select((field("Permissions")|length)>0) | field("Session")
+      else empty end | select(test("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"))
+    ' "$tmp/bind-status.txt") || fail native_identity_pending 'Native status identity/cwd/qualified format is incomplete or ambiguous.'
+    [[ $status_id == "$candidate" ]] || fail instance_mismatch 'Requested native ID differs from the live official status UI.'
+  fi
+  server_matches || fail instance_mismatch 'Server changed during identity observation.'
+  check_instance_process "$candidate"
+  [[ ! -e $instance_dir/identity && ! -L $instance_dir/identity ]] || fail changed_evidence 'Retain the previous identity attempt; never overwrite its evidence.'
+  mkdir "$instance_dir/identity"
+  cp -- "$tmp/bind-pane.json" "$instance_dir/identity/public-pane.json"
+  cp -- "$tmp/bind-process.json" "$instance_dir/identity/public-process.json"
+  [[ $source != native-status ]] || cp -- "$tmp/bind-status.txt" "$instance_dir/identity/public-status.txt"
+  [[ $source != native-status ]] || status_hash=$(git hash-object "$instance_dir/identity/public-status.txt")
+  binding=$(jq -nc --argjson r "$state" --arg id "$candidate" --arg source "$source" --arg hash "$hash" --arg at "$started_at" \
+    --arg paneHash "$(git hash-object "$instance_dir/identity/public-pane.json")" --arg processHash "$(git hash-object "$instance_dir/identity/public-process.json")" --arg statusHash "$status_hash" '
+    {version:1,missionId:$r.missionId,attemptId:$r.attemptId,requestId:$r.requestId,nativeId:$id,
+     process:$r.process,source:$source,observedAt:$at,launchHash:$hash,
+     proof:{paneHash:$paneHash,processHash:$processHash,statusHash:(if $statusHash=="" then null else $statusHash end)}}')
+  printf '%s\n' "$binding" > "$instance_dir/identity/binding.json"
+  state=$(jq -c --arg id "$candidate" --arg source "$source" --arg hash "$(git hash-object "$instance_dir/identity/binding.json")" --arg at "$started_at" '
+    .nativeId=$id | .identityBinding={source:$source,hash:$hash,observedAt:$at}' <<<"$state")
+}
 inspect_instance() {
   local launch="$instance_dir/launch/receipt.json" launch_hash record_hash pane shell birth ids quiet=true
   [[ -z $evidence ]] || fail invalid_operation 'inspect has no evidence input; save its stdout in a caller-owned receipt.'
@@ -317,8 +414,10 @@ inspect_instance() {
     .lifecycle.owned==true and .lifecycle.instanceKey==$r.instanceKey and .lifecycle.record==$record and .lifecycle.status=="RUNNING" and
     .worktree.repository==$r.project and .worktree.path==$r.worktree.path and .worktree.branch==$r.worktree.branch and
     .herdr.host=="local" and .herdr.session==$r.session and .herdr.workspaceId==$r.workspaceId and .herdr.paneId==$r.paneId and
-    (.sokkin.nativeThreadId // .sokkin.nativeSessionId)==$r.nativeId)
+    ((.sokkin.nativeThreadId // .sokkin.nativeSessionId)==$r.nativeId or
+      ((.sokkin.nativeThreadId // .sokkin.nativeSessionId)==null and $r.identityBinding!=null)))
   ' "$tmp/launch.json" >/dev/null || fail instance_mismatch 'Instance and preserved launch identity disagree.'
+  verify_identity_binding
   if [[ $(jq -r .status <<<"$state") == FINISHED ]]; then
     inspect_evidence report.txt "$(jq -r .reportHash <<<"$state")"
   fi
@@ -429,6 +528,7 @@ lifecycle_operation() {
   stage="lifecycle_$lifecycle"
   if [[ $lifecycle == inspect ]]; then inspect_instance; fi
   case $lifecycle in
+    bind) bind_identity;;
     finish)
       [[ $(jq -r .status <<<"$state") == RUNNING ]] || fail invalid_transition 'Only RUNNING can become FINISHED.'
       [[ -f $evidence && -s $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the preserved completion report.'
@@ -438,6 +538,8 @@ lifecycle_operation() {
          ( -z ${HANCHOU_ATTEMPT_ID:-} || $HANCHOU_ATTEMPT_ID == "$(jq -r .attemptId <<<"$state")" ) ]] ||
         fail instance_mismatch 'Completion instance or mission differs from the calling pane.'
       server_matches || fail instance_mismatch 'Server incarnation changed or cannot be verified.'
+      verify_identity_binding
+      if [[ $(jq -r '.identityBinding // null' <<<"$state") != null ]]; then check_instance_process "$(jq -r .nativeId <<<"$state")"; fi
       if [[ $(jq -r '.resultContract // 1' <<<"$state") == 2 ]]; then
         jq -es --argjson r "$state" '
           def text: type=="string" and length>0 and length<=4096 and (test("[[:cntrl:]]")|not);
@@ -479,6 +581,7 @@ lifecycle_operation() {
     accept)
       jq -e '.status=="FINISHED" and .acceptedAt==null' <<<"$state" >/dev/null || fail invalid_transition 'Accept an unaccepted FINISHED instance only.'
       [[ -f $evidence && ! -L $evidence ]] || fail missing_evidence 'Provide the independent result acceptance receipt.'
+      verify_identity_binding
       jq -es --argjson record "$state" '
         def text: type=="string" and length>0 and length<=4096 and (test("[[:cntrl:]]")|not);
         def refs: type=="array" and length>0 and all(.[];text);
@@ -517,6 +620,7 @@ lifecycle_operation() {
         jq -nc --arg id "$instance" '{ok:true,instanceKey:$id,action:"retained",reason:"not_due_or_not_accepted"}'
         emitted=true; exit 0
       fi
+      verify_identity_binding
       [[ -f $instance_dir/report.txt && ! -L $instance_dir/report.txt && -f $instance_dir/acceptance.json && ! -L $instance_dir/acceptance.json ]] || fail missing_evidence 'Retain instance: preserved evidence is missing.'
       [[ $(git hash-object "$instance_dir/report.txt") == "$(jq -r .reportHash <<<"$state")" && $(git hash-object "$instance_dir/acceptance.json") == "$(jq -r .acceptanceHash <<<"$state")" ]] || fail changed_evidence 'Retain instance: evidence changed.'
       server_matches && quiet_inventory || fail instance_busy 'Retain instance: changed server, live work or unknown process state.'
@@ -537,10 +641,10 @@ lifecycle_operation() {
       done < <(jq -c '.acceptedInventory[]' <<<"$state")
       state=$(jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '.status="CLOSED" | .closedAt=$at' <<<"$state")
       ;;
-    *) fail invalid_operation 'Lifecycle operation must be finish, accept, resume or reap.';;
+    *) fail invalid_operation 'Lifecycle operation must be bind, inspect, finish, accept, resume or reap.';;
   esac
   state_write "$state"
-  jq -nc --arg id "$instance" --arg record "$record" --arg status "$(jq -r .status <<<"$state")" --arg request "$(jq -r ' .requestId // empty' <<<"$state")" '{ok:true,instanceKey:$id,record:$record,status:$status,requestId:$request}'
+  jq -nc --arg id "$instance" --arg record "$record" --arg status "$(jq -r .status <<<"$state")" --arg request "$(jq -r ' .requestId // empty' <<<"$state")" --argjson state "$state" '{ok:true,instanceKey:$id,record:$record,status:$status,requestId:$request,nativeId:$state.nativeId,identityBinding:$state.identityBinding}'
   emitted=true; exit 0
 }
 
@@ -626,9 +730,9 @@ fi
 herdr() { command "$herdr_bin" --session "$session" "$@"; }
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/hanchou-launch.XXXXXX")
 if [[ -n $claude_settings ]]; then
-  [[ -n $peer_file && $claude_settings == /* && -f $claude_settings && ! -L $claude_settings ]] ||
-    fail unsupported_option 'Explicit settings are supported only with --claude-peer; use a readable absolute file.'
-  jq -es 'length==1 and (.[0]|type=="object" and (.crossSessionInbound==null or .crossSessionInbound=="accept"))' "$claude_settings" >/dev/null || fail invalid_config 'Explicit Claude settings must permit inbound messages; no hold/refuse or malformed settings.'
+  [[ $kind == claude && $claude_settings == /* && -f $claude_settings && ! -L $claude_settings ]] ||
+    fail unsupported_option 'Explicit settings require Claude and a readable absolute file.'
+  jq -es --arg peer "$peer_file" 'length==1 and (.[0]|type=="object" and ($peer=="" or .crossSessionInbound==null or .crossSessionInbound=="accept"))' "$claude_settings" >/dev/null || fail invalid_config 'Explicit Claude settings must be valid and permit inbound messages when peer receive is selected.'
 fi
 if [[ -n $peer_file ]]; then
   [[ $kind == claude && $qualify_startup == false ]] || fail unsupported_option 'Claude peer receive requires a Claude child; it is not a Codex/Orca wake route.'
@@ -808,8 +912,8 @@ agent_args=()
 if [[ $kind == codex ]]; then agent_args+=(--no-daemon); fi
 if [[ -n $peer_file ]]; then
   agent_args+=(--session-id "$expected_native" --name "$agent_name" --permission-mode manual)
-  [[ -z $claude_settings ]] || agent_args+=(--settings "$claude_settings")
 fi
+[[ -z $claude_settings ]] || agent_args+=(--settings "$claude_settings")
 if [[ $manual_approvals == true ]]; then
   agent_args+=(--sandbox workspace-write --ask-for-approval on-request -c 'approvals_reviewer="user"')
 fi
@@ -828,6 +932,24 @@ actual_cwd=$(jq -er '.foreground_cwd // .cwd' <<<"$agent_info")
 [[ -d $actual_cwd && $(cd "$actual_cwd" && pwd -P) == "$wt" ]] || fail cwd_mismatch 'Running agent cwd differs from the new worktree.'
 native_id=$(jq -r '.agent_session | select(.kind=="id") | .value // empty' <<<"$agent_info")
 stage=agent_ready
+if [[ -z $peer_file && $qualify_startup == false ]]; then
+  # Optional start metadata may precede native identity. Preserve the actual
+  # original process now; a later bind must never adopt a replacement process.
+  expected_args=$(jq -nc --args '$ARGS.positional' -- ${agent_args[@]+"${agent_args[@]}"})
+  if herdr pane process-info --pane "$pane" > "$tmp/process.json" 2> "$tmp/error"; then
+    process_candidate=$(jq -ec --arg cwd "$wt" --arg kind "$kind" --argjson args "$expected_args" '
+      [.result.process_info.foreground_processes[]? | select(.cwd==$cwd and
+        (((.argv[0] // "")|split("/")[-1])==$kind or .name==$kind))] | select(length==1) | .[0] |
+      select(.argv[1:]==$args and (.pid|type=="number" and .>0 and floor==.)) |
+      {pid,cwd,executable:.argv[0],observedArguments:$args,argumentsMatchLaunch:true}' "$tmp/process.json") || process_candidate=
+    if [[ -n $process_candidate ]]; then
+      process_started=$(process_birth "$(jq -r .pid <<<"$process_candidate")")
+      if [[ -n $process_started ]]; then
+        observed_process=$(jq -c --arg birth "$process_started" --arg at "$started_at" '. + {birth:$birth,observedAt:$at}' <<<"$process_candidate")
+      fi
+    fi
+  fi
+fi
 if [[ -n $peer_file ]]; then
   stage=startup_qualification
   # The unchanged official SessionStart integration supplies this metadata.

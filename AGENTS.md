@@ -9,7 +9,7 @@ The only production executables allowed are two narrowly scoped, one-shot shells
 `skills/hanchou-orchestrator/scripts/launch-sokkin.sh` wraps existing Git,
 Herdr, and official agent CLIs, always creates and verifies a fresh branch and
 worktree before starting a new sokkin, and exits after returning launch identity.
-It also owns per-attempt named Herdr server startup and one-shot finish/accept/resume/reap transitions. Local
+It also owns per-attempt named Herdr server startup and one-shot bind/finish/accept/resume/reap transitions. Local
 `.hanchou/instances` records are the explicitly approved lifecycle evidence;
 reaping is opportunistic at supervisor checks, never a background timer.
 `skills/hanchou-orchestrator/scripts/measure-session.sh` only reads and reconciles

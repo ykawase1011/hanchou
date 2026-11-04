@@ -56,8 +56,10 @@ in an available shell pane without disturbing agents; otherwise report the
 in-session checks as pending. Do not create/start a server, service or agent just
 to pass initialization. Tool installation alone does not establish mission readiness. For explicitly
 selected Claude native receive, record official SessionStart availability and
-both root peers' native tool/inbound capabilities factually; never install hooks
-or widen trust silently. Unavailable evidence remains pending.
+both root peers' native tool/inbound capabilities factually. Record the direct
+parent's public Herdr observation/control route separately: idle notification
+does not wake pending approvals, so manual work needs bounded parent supervision.
+Never install hooks or widen trust silently. Unavailable evidence remains pending.
 
 ## Project configuration
 

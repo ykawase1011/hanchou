@@ -21,9 +21,39 @@ Claude startup fixture は unchanged SessionStart readback と exact process を
 Codex/古い親・hook欠落・wrapper/ID不一致・inbound hold などを拒否する。
 fixture は native wake の実証ではない。限定実機結果は本節の追記を参照する。
 
-最終修正後の `make check` は成功した（Claude capability 13ケース、lifecycle 31ケースを含む）。
+初版修正後の `make check` は成功した（Claude capability 13ケース、lifecycle 31ケースを含む）。
 4 skill の `quick_validate.py` と構造・リンク検査も成功。計測専用 shell の回帰は
 Codex 0.162.1 / 0.163.0 の双方を維持し、shell 本体は基点と同一である。
+
+### 独立レビュー P1/P2 の修正・追試（2026-11-04）
+
+idle/exit 通知を pending approval wake と区別し、manual 操作があり得る間は親が
+公開 Herdr の有限 wait/read を続ける契約へ修正した。承認 wake/handler は未認定で、
+親の観測・回答 capability がない場合は割当前に保留する。通常 owned launch の
+optional native metadata が null のときは、元 process と現在の公開証拠を照合する
+one-shot `bind` を追加した。元 launch receipt は変更せず、binding と公開証拠を hash で保持する。
+
+変更した production code/test で `make check` は成功（lifecycle 36件、Claude 14ケース）。
+遅延 Herdr ID と限定版 `/status` からの binding → finish → 独立 accept、wrong/stale
+ID/request/launch/process、commit drift、証拠改変の拒否を実 Git/process/socket fixture で検査した。
+四 skill だけを配置した配布 fixture の全相対リンクも解決した。最初の targeted 試験で
+見つかった status parser の raw-output 不足と mock の inspect 順序不整合は修正・再検証した。
+
+実機は既存の Codex 親が候補 orchestrator skill を適用し、fresh owned Claude
+2.1.317 / Haiku 5.5 low / manual / subscription の側近1件を監督した。Claude peer ではなく
+既存 Herdr 経路を明示選択。起動の native ID は実際に null で、会話前の official `/status`
+を新しい bind が元 PID/birth/argv/cwd と照合して確定した。子は候補 sokkin skill を実際に Read。
+親の有限 wait が blocked を返し、親自身が exact native tool ID・process・対象・権限を照合し、
+skill/artifact/report Read、artifact/report Write、launcher inspection/finish Bash の計7件を
+各1回の Yes で処理した。外部 tester の通常承認、包括許可、親からの状態質問、子 worker は0件。
+子の実 Read、保存した finish stdout/stderr/exit、FINISHED を確認し、親が値と report を独立検証。
+実 CLI 退出後の inspect は quiet、owned accept も成功した。12分の割当期限は延長していない。
+
+これは direct parent の bounded Herdr approval supervision と通常 owned lifecycle の接続を
+示す1件の smoke である。Claude peer parent の自動 approval wake、peer route 固有の owned
+finish/accept 全工程、任意 host、すべての再起動条件は実機認定していない。後述の旧 peer 試験は
+result notification の証拠としてのみ保持する。追試で token/usage 計測や単独比較は行っておらず、
+一般的な効率比を主張しない。global install・設定変更・新 runtime は行っていない。
 
 ### 候補の限定実機確認（2026-11-04）
 
@@ -39,7 +69,9 @@ tool は SendMessage と Read だけで、定期的な親モデルによる完�
 子の Write と親の別 worktree に対する Read は native permission UI で停止した。
 外部の試験担当が exact tool_use_id / native / process / 対象ファイルを照合して
 各1回の Yes を選び、receipt と再開を確認した。peer message は許可を代替しなかった。
-これは単発承認の確認であり、親への native approval 自動転送の実証ではない。
+これは外部 controller による単発承認の確認であり、親自身の approval supervision や
+native approval 自動転送の実証ではない。idle 通知は pending Write を起こさなかった。
+この結果を根拠に、manual 承認があり得る親へ turn 終了を指示してはならない。
 shared session で起動・通知・成果検証を通した試験で、native owned-instance の
 finish/accept や4 skill 全体のモデルによる遂行試験ではない。lifecycle は別の回帰と
 real Herdr server / agent fixture の試験で確認した。

@@ -47,7 +47,7 @@ elif args[:2]==['workspace','create']:
  cwd=args[args.index('--cwd')+1]; (d/'cwd').write_text(cwd)
  record=Path(next(a.split('=',1)[1] for a in args if a.startswith('HANCHOU_INSTANCE_RECORD=')))
  (d/'record').write_text(str(record))
- if os.environ.get('MOCK_INSPECT_PANES'):
+ if os.environ.get('MOCK_INSPECT_PANES') or os.environ.get('MOCK_LATE_ID'):
   (d/'want-pane').touch()
   for _ in range(100):
    if (d/'pane-pid').exists(): break
@@ -64,7 +64,15 @@ elif args[:2]==['workspace','create']:
  emit({'result':{'workspace':{'workspace_id':'w2'},'tab':{'tab_id':'w2:t1'},'root_pane':{'pane_id':'w2:p1','cwd':cwd}}})
 elif args[:2]==['agent','start']:
  if os.environ.get('MOCK_START_FAIL'): sys.exit(1)
- emit({'result':{'agent':{'agent':'codex','agent_status':'idle','pane_id':'w2:p1','cwd':(d/'cwd').read_text(),'agent_session':{'kind':'id','value':'test-native'}}}})
+ late=bool(os.environ.get('MOCK_LATE_ID'))
+ if late:
+  (d/'late-process').write_text(json.dumps(['codex']+args[args.index('--')+1:]))
+ emit({'result':{'agent':{'agent':'codex','agent_status':'idle','pane_id':'w2:p1','cwd':(d/'cwd').read_text(),'agent_session':None if late else {'kind':'id','value':'test-native'}}}})
+elif args==['pane','get','w2:p1']:
+ native={'kind':'id','value':(d/'public-native').read_text()} if (d/'public-native').exists() else None
+ emit({'result':{'pane':{'pane_id':'w2:p1','workspace_id':'w2','agent':'codex','agent_status':'idle','cwd':(d/'cwd').read_text(),'agent_session':native,'scroll':{'offset_from_bottom':0}}}})
+elif args==['pane','read','w2:p1','--source','visible','--format','text']:
+ print((d/'native-status').read_text())
 elif args==['api','snapshot']:
  if os.environ.get('MOCK_INSPECT_MUTATE'):
   record=Path((d/'record').read_text()); mode=os.environ['MOCK_INSPECT_MUTATE']
@@ -76,10 +84,15 @@ elif args==['api','snapshot']:
   elif mode=='server': (d/'status-drift').touch()
  panes=json.loads((d/'panes.json').read_text()) if (d/'panes.json').exists() else ([{'pane_id':'w2:p1','workspace_id':'w2'}] if (d/'pane-pid').exists() else [])
  agents=json.loads((d/'agents.json').read_text()) if (d/'agents.json').exists() else ([{'agent_status':'working','pane_id':'w2:p1','workspace_id':'w2','agent_session':{'kind':'id','value':'test-native'}}] if (d/'busy').exists() else [])
+ if (d/'late-process').exists():
+  agents=[{'agent_status':'idle','pane_id':'w2:p1','workspace_id':'w2','agent_session':{'kind':'id','value':(d/'public-native').read_text()} if (d/'public-native').exists() else None}]
  emit({'result':{'snapshot':{'agents':agents,'panes':panes}}})
 elif args[:2]==['pane','process-info']:
  assert args[2:]==['--pane','w2:p1']
  if (d/'process-info.json').exists(): emit(json.loads((d/'process-info.json').read_text()))
+ elif (d/'late-process').exists():
+  pid=int((d/'pane-pid').read_text()); argv=json.loads((d/'late-process').read_text())
+  emit({'result':{'process_info':{'pane_id':'w2:p1','shell_pid':pid,'foreground_processes':[{'pid':pid,'name':'codex','argv':argv,'cwd':(d/'cwd').read_text()}]}}})
  else:
   pid=int((d/'pane-pid').read_text())
   emit({'result':{'process_info':{'pane_id':'w2:p1','shell_pid':pid,'foreground_processes':[{'pid':pid,'name':'bash','argv':['/bin/bash'],'cwd':(d/'cwd').read_text()}]}}})
@@ -275,6 +288,98 @@ class Lifecycle(unittest.TestCase):
     def accept(self, **kw):
         evidence = self.tmp/'accept.json'; evidence.write_text(json.dumps(self.acceptance()))
         return self.op('accept','--evidence',str(evidence),**kw)
+
+    def late_launch(self):
+        r = self.launch(env=dict(self.env, MOCK_LATE_ID='1'))
+        self.assertIsNone(r['sokkin']['nativeThreadId'])
+        self.assertIsNotNone(r['sokkin']['process'])
+        self.assertEqual(r['sokkin']['process']['observedArguments'], ['--no-daemon'])
+        return r
+
+    def binding_input(self, source='herdr'):
+        r = self.launch_receipt
+        return {'version':1,'missionId':r['missionId'],'attemptId':r['attemptId'],
+                'requestId':r['requestId'],'nativeId':'11111111-1111-4111-8111-111111111111',
+                'source':source,'launchHash':r['evidence']['hash'],
+                'observedAt':datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
+
+    def bind(self, data, **kw):
+        evidence = self.tmp/'identity.json'; evidence.write_text(json.dumps(data))
+        return self.op('bind','--evidence',str(evidence),**kw)
+
+    def test_late_native_binding_finish_accept_and_inspect(self):
+        r = self.late_launch(); original = Path(r['evidence']['receipt']).read_bytes()
+        claim = self.result(); claim['nativeId'] = self.binding_input()['nativeId']
+        report = self.tmp/'unbound-report'; report.write_text(json.dumps(claim))
+        self.assertEqual(self.op('finish','--evidence',str(report),ok=False)['error']['code'],'invalid_evidence')
+        data = self.binding_input()
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'native_identity_pending')
+        (self.server/'public-native').write_text(data['nativeId'])
+        result = self.bind(data)
+        self.assertEqual(result['nativeId'],data['nativeId'])
+        self.assertEqual(result['identityBinding']['source'],'herdr')
+        self.assertEqual(Path(r['evidence']['receipt']).read_bytes(),original)
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'invalid_transition')
+        self.finish()
+        (self.server/'late-process').unlink()  # fixture CLI exits, its real shell remains
+        self.accept(); observation = self.op('inspect')['observation']
+        self.assertTrue(observation['quiet']); self.assertEqual(observation['nativeId'],data['nativeId'])
+        self.age(); self.op('reap')
+        self.assertEqual(self.snapshot(),self.baseline)
+
+    def test_late_binding_wrong_stale_and_restarted_evidence(self):
+        self.late_launch(); data = self.binding_input(); original = self.record.read_bytes()
+        (self.server/'public-native').write_text(data['nativeId'])
+        for update in ({'nativeId':'foreign'}, {'requestId':'old-request'},
+                       {'observedAt':'2000-01-01T00:00:00Z'}, {'launchHash':'wrong'}):
+            with self.subTest(update=update):
+                self.bind(data|update,ok=False); self.assertEqual(self.record.read_bytes(),original)
+        process = self.launch_receipt['sokkin']['process']
+        (self.server/'process-info.json').write_text(json.dumps({'result':{'process_info':{
+            'foreground_processes':[{'pid':process['pid']+1,'name':'codex','cwd':process['cwd'],
+                                     'argv':['codex','--no-daemon']}]}}}))
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'instance_mismatch')
+        (self.server/'process-info.json').unlink()
+        subprocess.run(['git','-C',self.launch_receipt['worktree']['path'],
+                        '-c','user.name=Fixture','-c','user.email=fixture@example.invalid',
+                        'commit','--allow-empty','-qm','unexpected pre-assignment commit'],check=True)
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'instance_mismatch')
+        subprocess.run(['git','-C',self.launch_receipt['worktree']['path'],'reset','--hard',
+                        self.launch_receipt['worktree']['head']],check=True,stdout=subprocess.DEVNULL)
+        self.bind(data)
+        (self.server/'public-native').write_text('restarted-native')
+        report = self.tmp/'bound-report'; report.write_text(json.dumps(self.result()))
+        self.assertEqual(self.op('finish','--evidence',str(report),ok=False)['error']['code'],'instance_mismatch')
+        self.assertEqual(self.snapshot(),self.baseline)
+
+    def test_native_status_binding_without_herdr_metadata(self):
+        r = self.late_launch(); data = self.binding_input('native-status')
+        status = ('>_ OpenAI Codex (v0.164.0)\n  Directory: ' + r['worktree']['path'] +
+                  '\n  Permissions: Workspace (Ask for approval)\n  Session: ' + data['nativeId'] + '\n')
+        for text in (status.replace(data['nativeId'],'22222222-2222-4222-8222-222222222222'),
+                     status.replace('0.164.0','9.9.9'), status+'  Session: '+data['nativeId']+'\n',
+                     status.replace(r['worktree']['path'],'/other/checkout')):
+            with self.subTest(status=text):
+                (self.server/'native-status').write_text(text)
+                self.bind(data,ok=False); self.assertIsNone(json.loads(self.record.read_text())['nativeId'])
+        (self.server/'native-status').write_text(status)
+        self.bind(data); self.finish(); (self.server/'late-process').unlink(); self.accept()
+        self.assertTrue(self.op('inspect')['observation']['quiet'])
+        self.assertEqual(self.snapshot(),self.baseline)
+
+    def test_changed_identity_binding_is_not_accepted(self):
+        self.late_launch(); data = self.binding_input()
+        (self.server/'public-native').write_text(data['nativeId']); self.bind(data); self.finish()
+        (self.server/'late-process').unlink()
+        binding = self.record.parent/'identity/binding.json'; binding.write_text(binding.read_text()+'\n')
+        self.assertEqual(self.accept(ok=False)['error']['code'],'changed_evidence')
+
+    def test_changed_public_identity_proof_is_not_accepted(self):
+        self.late_launch(); data = self.binding_input()
+        (self.server/'public-native').write_text(data['nativeId']); self.bind(data); self.finish()
+        (self.server/'late-process').unlink()
+        proof = self.record.parent/'identity/public-pane.json'; proof.write_text('{}\n')
+        self.assertEqual(self.accept(ok=False)['error']['code'],'changed_evidence')
 
     def test_finish_rejects_changed_server_and_wrong_caller(self):
         self.launch()

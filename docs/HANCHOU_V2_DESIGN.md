@@ -13,7 +13,7 @@ worker は割り当てられた範囲を実行する。全員から自己計測�
 
 Hanchou は4スキルと単発の2 shell のみ。`launch-sokkin.sh` は Git・Herdr・公式 CLI による
 fresh branch/worktree と専用 workspace の作成・検証、起動 receipt、所有 instance の単発
-inspect/finish/accept/resume/reap を扱う。mission 実行、常駐受信、再試行ループは実装しない。
+bind/inspect/finish/accept/resume/reap を扱う。mission 実行、常駐受信、再試行ループは実装しない。
 `measure-session.sh` は認定済み既存 usage tool と1 native session を厳密に照合する読取り専用
 外部 debug helper。観測用一時ファイルは終了時に消し、agent 起動・送信・予算判断・設定変更・
 削除・永続集計を持たない。今回その parser・対応版・scope 保証を緩めない。
@@ -84,6 +84,12 @@ identity/context を得るため固定 tool-free turn を一回送る。ccusage/
 0.163.0 の明示 `--manual-approvals` は workspace-write/on-request/user を native 値でも確認する。
 それ以外の版は既存通常 launch と認定済み公開 identity 操作を使い、未検証を合格と呼ばない。
 
+通常 owned launch が RUNNING でも任意 `agent_session` が null の場合、実割当前に
+one-shot `bind` で元 launch/process と現在の公開 native evidence を照合する。元 receipt を
+変更せず別 identity evidence と hash を保存する。Herdr native metadata または限定版の現在
+`/status` UI を shell 自身が読む。元 PID/birth/cwd/argv・server・branch/commit が不一致、
+古い証拠、元 process anchor 欠落、UNKNOWN は拒否し、成果の自己申告で ID を補わない。
+
 班長は viewer を現在の会話を移動せず background で開き、対象 host/session/workspace と
 tab label を確認する。Orca では `Herdr | <短い任務名>`。同じ側近では再利用し、接続不能を
 agent failure と混同しない。表示不能時は理由と接続先を示し、明示 headless 例外以外は割当を待つ。
@@ -109,7 +115,11 @@ launcher は親の fresh evidence と公開 pane/process を起動前後に照�
 
 起動 receipt の `peer_binding_required` は意図的な境界であり、両端の native effective settings と
 公式 ListAgents の現在 child ref を対応付けてから送信する。SendMessage + notify_when_idle を一回送り、
-receipt を確認して親 turn を終える。native notice が親を再開する。常駐 watcher は作らない。
+receipt を確認する。native idle/exit notice は結果通知であり、pending native approval の
+wake ではない。承認 wake/handler は未認定のため、manual 操作があり得る間（finish を含む）は
+親が有期限の公開 Herdr wait/read で blocked/idle/done/unknown と exact request を観測し、
+idle 通知だけを頼りに turn を終えない。この親側 capability は割当前に確認し、不可能なら
+未対応境界を明示して割当を保留する。外部試験担当への暗黙依存・常駐 watcher は作らない。
 受信は task success ではなく独立受入のきっかけ。古い idle、重複、hold/refuse、exit、期限切れ、
 同一 UUID の process/peer 再起動を成功へ流用しない。質問への peer answer は native approval ではない。
 

@@ -84,3 +84,12 @@ for mode in success no-hook child-native child-wrapper child-exit codex-parent w
  jq -se 'all(.[]; .[2:4]!=["agent","prompt"])' "$fixture/calls" >/dev/null
  printf 'claude native receive: %s ok\n' "$mode"
 done
+
+# The ordinary Herdr route may explicitly narrow Claude permissions locally;
+# it neither requires nor claims a peer parent or automatic approval wake.
+export MOCK_PEER_MODE=success
+printf '%s\n' '{"permissions":{"defaultMode":"manual"},"crossSessionInbound":"hold"}' > "$fixture/settings.json"
+bash "$root/skills/hanchou-orchestrator/scripts/launch-sokkin.sh" --project "$fixture/project" --mission local-settings --session fixture --worktree-root "$fixture/worktrees" --claude-settings "$fixture/settings.json" > "$fixture/receipt" 2> "$fixture/error"
+jq -e '.ok and .receive.route=="herdr" and .identityReadiness.status=="pending" and .usageReadiness.status=="not_required"' "$fixture/receipt" >/dev/null
+jq -e --arg path "$fixture/settings.json" 'index("--settings") as $i | .[$i+1]==$path and (index("--session-id")==null)' "$fixture/args" >/dev/null
+printf 'claude explicit non-peer settings: ok\n'
