@@ -14,6 +14,99 @@ from lifecycle_support import CALLER_BINDINGS, fixture_environment, require_life
 
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCH = ROOT / 'skills/hanchou-orchestrator/scripts/launch-sokkin.sh'
+
+NATIVE_ID = '11111111-1111-4111-8111-111111111111'
+
+def codex_status(directory_lines, native_id=NATIVE_ID, column=23):
+    # Synthetic 0.164.0 FieldFormatter rows, including the observed 94-column
+    # Directory continuation layout; no account or usage text from live evidence.
+    return ('  >_ OpenAI Codex (v0.164.0)\n\n' +
+            '  Directory:'.ljust(column) + directory_lines[0] + '\n' +
+            ''.join(' ' * column + line + '\n' for line in directory_lines[1:]) +
+            '  Permissions:'.ljust(column) + 'Workspace (Ask for approval)\n' +
+            '  Agents.md:'.ljust(column) + 'AGENTS.md\n' +
+            '  Session:'.ljust(column) + native_id + '\n\n')
+
+
+class NativeStatusLayout(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Exercise the shipped jq filter, not a second implementation of it.
+        source = LAUNCH.read_text().split('status_id=$(jq -Rser ', 1)[1]
+        cls.query = source.split("'\n", 1)[1].split("\n    ' \"$tmp/bind-status.txt\"", 1)[0]
+
+    def parse(self, text, cwd, provider='codex'):
+        return subprocess.run(['jq','-Rser','--arg','provider',provider,
+                               '--arg','cwd',cwd,'--arg','home','/home/fixture',self.query],
+                              input=text,text=True,capture_output=True,check=False)
+
+    def test_complete_paths(self):
+        for fragments, cwd in [
+            (['/workspace/native-status/fixture'], '/workspace/native-status/fixture'),
+            (['~'], '/home/fixture'),
+            (['~/research/native-status/fixture'], '/home/fixture/research/native-status/fixture'),
+            (['/workspace/native-status/', 'task-worktrees/fixture'], '/workspace/native-status/task-worktrees/fixture'),
+            (['~/orca/research/hanchou-status-wrap-fixture-20261105/',
+              'task-worktrees/native-status-repro-0000000000000000'],
+             '/home/fixture/orca/research/hanchou-status-wrap-fixture-20261105/task-worktrees/native-status-repro-0000000000000000'),
+            (['/workspace/資料 with  spaces/実装'], '/workspace/資料 with  spaces/実装'),
+            (['~/資料 with  spaces/', '実装/e\u0301'], '/home/fixture/資料 with  spaces/実装/e\u0301'),
+            (['/workspace/long-component-', 'continued/', 'fixture'], '/workspace/long-component-continued/fixture'),
+        ]:
+            with self.subTest(fragments=fragments):
+                result = self.parse(codex_status(fragments), cwd)
+                self.assertEqual((result.returncode,result.stdout), (0,NATIVE_ID+'\n'), result.stderr)
+        result = self.parse(codex_status(['/workspace/child/', 'fixture'], column=19), '/workspace/child/fixture')
+        self.assertEqual((result.returncode,result.stdout), (0,NATIVE_ID+'\n'), result.stderr)
+
+    def test_reject_incomplete_or_ambiguous_layout(self):
+        fragments = ['/workspace/native-status/', 'task-worktrees/fixture']
+        cwd = ''.join(fragments); status = codex_status(fragments)
+        continuation = ' ' * 23 + fragments[1] + '\n'
+        cases = {
+            'duplicate directory': status + '  Directory:           '+cwd+'\n',
+            'duplicate permissions': status + '  Permissions:         Workspace\n',
+            'duplicate session': status + '  Session:             '+NATIVE_ID+'\n',
+            'missing continuation': status.replace(continuation, ''),
+            'misaligned continuation': status.replace(continuation, ' '+continuation),
+            'gap in directory': status.replace(continuation, '\n'+continuation),
+            'foreign continuation': status.replace('task-worktrees/fixture', 'task-worktrees/foreign'),
+            'extra continuation': status.replace(continuation, continuation+' '*23+'extra\n'),
+            'unicode ellipsis': status.replace('task-worktrees', '…'),
+            'ascii ellipsis': status.replace('task-worktrees', '...'),
+            'missing terminator': status.split('  Permissions:', 1)[0],
+            'misaligned terminator': status.replace('  Permissions:         ', '  Permissions:          '),
+            'foreign session': status.replace(NATIVE_ID, '22222222-2222-4222-8222-222222222222'),
+            'partial session': status.replace(NATIVE_ID, NATIVE_ID[:-1]),
+            'wrapped session': status.replace(NATIVE_ID, NATIVE_ID[:20]+'\n'+' '*23+NATIVE_ID[20:]),
+            'extra session continuation': status.replace(NATIVE_ID+'\n', NATIVE_ID+'\n'+' '*23+'extra\n'),
+            'unqualified version': status.replace('0.164.0', '9.9.9'),
+        }
+        for name, text in cases.items():
+            with self.subTest(case=name):
+                result = self.parse(text, cwd)
+                # A different valid UUID is rejected by bind_identity after parsing.
+                if name == 'foreign session':
+                    self.assertEqual(result.stdout, '22222222-2222-4222-8222-222222222222\n')
+                else:
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+        for fragments, expected in [
+            (['~/workspace/native-status'], '/workspace/native-status'),
+            (['~-sibling/fixture'], '/home/fixture-sibling/fixture'),
+            (['/workspace/space', 'name/fixture'], '/workspace/space name/fixture'),
+            (['/workspace/with  spaces/fixture'], '/workspace/with spaces/fixture'),
+            (['/workspace/…/fixture'], '/workspace/…/fixture'),
+        ]:
+            with self.subTest(fragments=fragments,expected=expected):
+                self.assertNotEqual(self.parse(codex_status(fragments), expected).returncode, 0)
+
+    def test_claude_status_unchanged(self):
+        status = ('Version: 2.1.317\nSession kind: interactive\ncwd: /workspace/with spaces\n'
+                  'Session ID: '+NATIVE_ID+'\n')
+        result = self.parse(status, '/workspace/with spaces', provider='claude')
+        self.assertEqual((result.returncode,result.stdout), (0,NATIVE_ID+'\n'))
+
+
 MOCK = r'''#!/usr/bin/env python3
 import sys, os, json, socket, signal, time, subprocess
 from pathlib import Path
@@ -70,9 +163,13 @@ elif args[:2]==['agent','start']:
  emit({'result':{'agent':{'agent':'codex','agent_status':'idle','pane_id':'w2:p1','cwd':(d/'cwd').read_text(),'agent_session':None if late else {'kind':'id','value':'test-native'}}}})
 elif args==['pane','get','w2:p1']:
  native={'kind':'id','value':(d/'public-native').read_text()} if (d/'public-native').exists() else None
- emit({'result':{'pane':{'pane_id':'w2:p1','workspace_id':'w2','agent':'codex','agent_status':'idle','cwd':(d/'cwd').read_text(),'agent_session':native,'scroll':{'offset_from_bottom':0}}}})
+ offset=int((d/'scroll-offset').read_text()) if (d/'scroll-offset').exists() else 0
+ emit({'result':{'pane':{'pane_id':'w2:p1','workspace_id':'w2','agent':'codex','agent_status':'idle','cwd':(d/'cwd').read_text(),'agent_session':native,'scroll':{'offset_from_bottom':offset}}}})
 elif args==['pane','read','w2:p1','--source','visible','--format','text']:
  print((d/'native-status').read_text())
+ if (d/'status-process-drift').exists():
+  argv=json.loads((d/'late-process').read_text()); argv.append('--unexpected')
+  (d/'late-process').write_text(json.dumps(argv))
 elif args==['api','snapshot']:
  if os.environ.get('MOCK_INSPECT_MUTATE'):
   record=Path((d/'record').read_text()); mode=os.environ['MOCK_INSPECT_MUTATE']
@@ -289,8 +386,8 @@ class Lifecycle(unittest.TestCase):
         evidence = self.tmp/'accept.json'; evidence.write_text(json.dumps(self.acceptance()))
         return self.op('accept','--evidence',str(evidence),**kw)
 
-    def late_launch(self):
-        r = self.launch(env=dict(self.env, MOCK_LATE_ID='1'))
+    def late_launch(self, *args):
+        r = self.launch(*args, env=dict(self.env, MOCK_LATE_ID='1'))
         self.assertIsNone(r['sokkin']['nativeThreadId'])
         self.assertIsNotNone(r['sokkin']['process'])
         self.assertEqual(r['sokkin']['process']['observedArguments'], ['--no-daemon'])
@@ -353,18 +450,43 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.snapshot(),self.baseline)
 
     def test_native_status_binding_without_herdr_metadata(self):
-        r = self.late_launch(); data = self.binding_input('native-status')
-        status = ('>_ OpenAI Codex (v0.164.0)\n  Directory: ' + r['worktree']['path'] +
-                  '\n  Permissions: Workspace (Ask for approval)\n  Session: ' + data['nativeId'] + '\n')
+        r = self.late_launch('--worktree-root', str(self.tmp/'資料 with  spaces'))
+        data = self.binding_input('native-status'); cwd = Path(r['worktree']['path'])
+        status = codex_status([str(cwd.parent)+'/', cwd.name], data['nativeId'])
+        original = self.record.read_bytes(); launch = Path(r['evidence']['receipt']).read_bytes()
         for text in (status.replace(data['nativeId'],'22222222-2222-4222-8222-222222222222'),
                      status.replace('0.164.0','9.9.9'), status+'  Session: '+data['nativeId']+'\n',
-                     status.replace(r['worktree']['path'],'/other/checkout')):
+                     status.replace(cwd.name,'other-checkout')):
             with self.subTest(status=text):
                 (self.server/'native-status').write_text(text)
-                self.bind(data,ok=False); self.assertIsNone(json.loads(self.record.read_text())['nativeId'])
+                self.bind(data,ok=False)
+                self.assertEqual(self.record.read_bytes(),original)
+                self.assertFalse((self.record.parent/'identity').exists())
         (self.server/'native-status').write_text(status)
-        self.bind(data); self.finish(); (self.server/'late-process').unlink(); self.accept()
+        (self.server/'scroll-offset').write_text('1')
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'native_identity_pending')
+        (self.server/'scroll-offset').unlink()
+        argv = (self.server/'late-process').read_bytes()
+        (self.server/'status-process-drift').touch()
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'instance_mismatch')
+        (self.server/'status-process-drift').unlink(); (self.server/'late-process').write_bytes(argv)
+        self.assertEqual(self.record.read_bytes(),original)
+        self.edit(status='UNKNOWN')
+        unknown = self.record.read_bytes()
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'invalid_transition')
+        self.assertEqual(self.record.read_bytes(),unknown)
+        self.record.write_bytes(original)  # restore this isolated test fixture only
+        self.bind(data)
+        self.assertEqual(Path(r['evidence']['receipt']).read_bytes(),launch)
+        proof = self.record.parent/'identity/public-status.txt'; saved = proof.read_bytes()
+        self.assertEqual(saved.decode(),status+'\n')  # mock CLI print adds one newline
+        self.assertEqual(self.bind(data,ok=False)['error']['code'],'invalid_transition')
+        self.finish(); (self.server/'late-process').unlink()
+        proof.write_bytes(saved+b'changed\n')
+        self.assertEqual(self.accept(ok=False)['error']['code'],'changed_evidence')
+        proof.write_bytes(saved); self.accept()
         self.assertTrue(self.op('inspect')['observation']['quiet'])
+        self.assertEqual(Path(r['evidence']['receipt']).read_bytes(),launch)
         self.assertEqual(self.snapshot(),self.baseline)
 
     def test_changed_identity_binding_is_not_accepted(self):

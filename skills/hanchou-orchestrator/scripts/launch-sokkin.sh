@@ -362,12 +362,34 @@ bind_identity() {
     inspect_read "$tmp/bind-status.txt" pane read "$(jq -r .paneId <<<"$state")" --source visible --format text || fail observation_unavailable 'Cannot read current native status UI.'
     status_id=$(jq -Rser --arg provider "$provider" --arg cwd "$(jq -r .worktree.path <<<"$state")" --arg home "$HOME" '
       def field($key): [split("\n")[] | select(test("^ *"+$key+":")) | sub("^ *"+$key+": *";"") | sub(" *$";"")] | select(length==1) | .[0];
+      def codex_status:
+        # 0.164.0 FieldFormatter/content_lines: Directory is untruncated and its
+        # continuations share the value column. Permissions is the next field.
+        # Strip terminal right padding only; never guess whitespace lost at a wrap.
+        split("\n") | map(sub(" +$";"")) | . as $rows |
+        def row($key): [to_entries[] | select(.value|test("^ *"+$key+":")) | .key] | select(length==1) | .[0];
+        row("Directory") as $d | row("Permissions") as $p | row("Session") as $s |
+        select($d<$p and $p<$s) |
+        select(any($rows[0:$d][]; .=="  >_ OpenAI Codex (v0.164.0)")) |
+        ($rows[$d] | capture("^(?<label>  Directory: {2,})(?<value>[^ ].*)$")) as $first |
+        ($first.label|length) as $column |
+        ($rows[$p] | capture("^(?<label>  Permissions: {2,})(?<value>[^ ].*)$")) as $permissions |
+        select(($permissions.label|length)==$column) |
+        $rows[$d+1:$p] as $continuations |
+        select(all($continuations[]; test("^ {"+($column|tostring)+"}[^ ]"))) |
+        ([$first.value] + ($continuations|map(.[$column:])) | join("")) as $directory |
+        select($directory|test("…|\\.\\.\\.|[[:cntrl:]]")|not) |
+        select($directory==$cwd or
+          (($cwd==$home or ($cwd|startswith($home+"/"))) and $directory==("~"+($cwd|ltrimstr($home))))) |
+        ($rows[$s] | capture("^(?<label>  Session: {2,})(?<value>[^ ].*)$")) as $session |
+        select(($session.label|length)==$column) |
+        # A complete UUID must end its field, not prefix a clipped/wrapped value.
+        select($rows[$s+1]!=null and ($rows[$s+1]=="" or ($rows[$s+1]|test("^  Forked from: {2,}[^ ]")))) |
+        $session.value;
       . as $ui | if $provider=="claude" then
         select(field("Version")=="2.1.317" and field("Session kind")=="interactive" and field("cwd")==$cwd) | field("Session ID")
       elif $provider=="codex" then
-        select(test("OpenAI Codex \\(v0\\.164\\.0\\)")) |
-        select(field("Directory")==$cwd or field("Directory")==("~"+($cwd|ltrimstr($home)))) |
-        select((field("Permissions")|length)>0) | field("Session")
+        codex_status
       else empty end | select(test("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"))
     ' "$tmp/bind-status.txt") || fail native_identity_pending 'Native status identity/cwd/qualified format is incomplete or ambiguous.'
     [[ $status_id == "$candidate" ]] || fail instance_mismatch 'Requested native ID differs from the live official status UI.'

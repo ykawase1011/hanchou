@@ -55,6 +55,32 @@ finish/accept 全工程、任意 host、すべての再起動条件は実機認�
 result notification の証拠としてのみ保持する。追試で token/usage 計測や単独比較は行っておらず、
 一般的な効率比を主張しない。global install・設定変更・新 runtime は行っていない。
 
+### Codex status の Directory 折返し修正（2026-11-05）
+
+候補 `c1df477a986549a0c1222de4d3fcc4e6157742cc` の通常 Codex 0.164.0 起動は
+RUNNING になったが、94桁の公開 `/status` が Directory を2行に折り返し、割当前の
+bind が `native_identity_pending` で停止した。保存 frame に対する元の jq filter の
+offline 再現では、版・Permissions・UUID は通り、単一行の directory 比較だけが失敗した。
+
+固定 source は Codex `rust-v0.164.0` = `6aaac694803004a63c6f393d153c96d22521a6b9` の
+[status renderer](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/status/card.rs#L825)、
+[FieldFormatter](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/status/format.rs#L18)。
+Directory は省略せず、継続行は値の列へ揃え、次の field は Permissions になる。
+Herdr 0.9.5 の installed help と
+[公開契約](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/docs/next/website/src/content/docs/cli-reference.mdx#L246)
+では native metadata は integration 報告時だけで、`recent-unwrapped` は scrollback を含む。
+現在の visible read と元 process の照合を維持し、上記の連続・整列した Directory 行だけを
+復元する。絶対/正しい home 配下の tilde path、表示に残る空白・Unicode を完全一致で照合する。
+[native wrapping](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/wrapping.rs#L978)
+が落とす境界空白は推測せず拒否。省略・部分・重複・不整列、label/UUID の折返しも未対応。
+
+修正後 filter は同じ保存 frame を offline で照合できた。公開回帰には合成 frame だけを使い、
+空白/Unicode を含む実 Git worktree と mock public CLI で wrapped bind→finish→accept、
+stale/restarted/process 不一致・scroll・UNKNOWN・重複 binding・証拠改変の拒否を検査する。
+元 launch receipt と公開証拠の保全を維持し、Claude、no-daemon、計測 shell は変更しない。
+本修正では live actor/比較を再実行しておらず、実機成功や従来の **25.817x** の改善は主張しない。
+元の失敗証拠と lifecycle は書き換えていない。
+
 ### 公開承認経路の全文確認と到達境界（2026-11-05）
 
 PR #103 の候補 `9e635afdf8df8e47225a261df14e6135e5abee8c` に対する停止後調査と、

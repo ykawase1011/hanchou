@@ -131,6 +131,14 @@ uses [one-shot bind](lifecycle.md#bind-delayed-native-identity) against its capt
 original process and fresh public identity, before real assignment. Keep the
 original receipt; do not infer identity from the result or hand-edit the record.
 
+The Codex 0.164.0 status fallback accepts a complete Directory value on one line
+or contiguous continuations aligned with its first value, ending at Permissions.
+It preserves literal spaces and Unicode and compares the full absolute path or
+home-relative `~` path. Missing/misaligned rows, ellipses, duplicate identity fields
+and incomplete Session UUIDs fail closed. Whitespace discarded by native wrapping
+cannot be reconstructed; such paths and narrower layouts that wrap labels/UUIDs
+remain unsupported. Use the current unscrolled visible status, never join history.
+
 After identity/settings and viewer checks, send one bound mission with the fixed
 companion/policy references, criteria, authority, languages, resource limits and
 durable result destination. Receipt waiting and child-completion observation are
