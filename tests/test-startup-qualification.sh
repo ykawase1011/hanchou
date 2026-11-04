@@ -191,6 +191,9 @@ case "$1 $2" in
 esac
 MOCK
 chmod +x "$fixture/bin/"*
+rm "$fixture/bin/ccusage"
+printf '#!/bin/sh\nexit 98\n' > "$fixture/bin/ccusage"
+chmod +x "$fixture/bin/ccusage"
 launch() {
   bash "$root/skills/hanchou-orchestrator/scripts/launch-sokkin.sh" \
     --project "$fixture/source" --mission startup --session fixture \
@@ -216,20 +219,19 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
     launch > "$fixture/receipt" 2> "$fixture/error" || rc=$?
   fi
   jq -es 'length==1' "$fixture/receipt" >/dev/null
-  if [[ $mode == success || $mode == compact-shared || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == late-native || $mode == manual-success ]]; then
+  if [[ $mode == success || $mode == compact-shared || $mode == language-* || $mode == no-herdr-id || $mode == delayed-log || $mode == delayed-counts || $mode == late-native || $mode == manual-success || $mode == counters || $mode == missing-count || $mode == negative-count || $mode == timeout ]]; then
     [[ $rc == 0 ]]
-    jq -e '.ok and .stage=="startup_qualified" and .usageReadiness.status=="ready" and
+    jq -e '.ok and .stage=="startup_qualified" and .identityReadiness.status=="ready" and .usageReadiness.status=="not_required" and
       .sokkin.observedModel=="gpt-6-astra" and .sokkin.observedEffort=="medium" and
       .sokkin.process.argumentsMatchLaunch and .sokkin.process.pid==999999 and
       .sokkin.process.birth=="Tue Nov  3 01:00:00 2026" and
-      .usageReadiness.tool.totalTokens==103 and .usageReadiness.includedChildren==[]' "$fixture/receipt" >/dev/null
+      .identityReadiness.nativeId=="11111111-1111-1111-1111-111111111111"' "$fixture/receipt" >/dev/null
     # Inspect the actual prompt sent to the mock transport, not a separately
     # constructed prompt. Both audiences reach bootstrap without borrowing a
     # missing preference from the other. The machine protocol remains exact.
     jq -se --slurpfile config "$fixture/source/.hanchou/config.json" '
       [.[]|select(.[2]=="agent" and .[3]=="prompt")|.[5]] as $prompts |
       ($prompts|length)==1 and
-      ($prompts[0]|contains("Companion source: ")) and
       ([$prompts[0]|split("\n")[]|
         select(startswith("Communication language defaults (JSON data): "))|
         ltrimstr("Communication language defaults (JSON data): ")|fromjson] ==
@@ -285,12 +287,10 @@ for mode in ${HANCHOU_TEST_STARTUP_CASES:-success compact-shared language-both l
       (. | tostring | contains("sensitive-prompt-error") | not) and
       (. | tostring | contains("sensitive_extra") | not)' "$fixture/receipt" >/dev/null
   fi
-  if [[ $mode == timeout ]]; then
-    ! kill -0 "$(cat "$fixture/usage-pid")" 2>/dev/null
-  fi
+  [[ ! -f $fixture/usage-pid ]] # No operational path invokes ccusage.
   printf 'startup qualification: %s ok\n' "$mode"
 done
-for version in codex usage; do
+for version in codex; do
   export MOCK_MODE=success MOCK_CODEX_VERSION=$HANCHOU_TEST_CODEX_VERSION MOCK_USAGE_VERSION=20.0.37
   if [[ $version == codex ]]; then export MOCK_CODEX_VERSION=unknown; else export MOCK_USAGE_VERSION=unknown; fi
   : > "$fixture/calls"

@@ -1,12 +1,12 @@
 # Hanchou v2
 
-Hanchouは、班長が依頼・結果報告・使用量監督を担当し、Herdr内の側近（sokkin）が
+Hanchouは、班長が依頼・権限内の判断・結果報告を担当し、Herdr内の側近（sokkin）が
 作業・worker選択・検証・統合を担当するAgent Skillsです。**Orcaなしでも使えます。**
 
 ```mermaid
 flowchart TD
     Human["人間：目的・権限・完了条件"]
-    Leader["班長：依頼・結果報告・使用量監督"]
+    Leader["班長：依頼・権限内の判断・結果報告"]
     Human -->|依頼| Leader
     Leader -->|結果・判断の相談| Human
     Leader -->|起動要求| Launch["単発の起動シェル<br/>新規branch・worktreeを作成"]
@@ -14,11 +14,11 @@ flowchart TD
         Sokkin["側近：作業・worker選択・検証・統合<br/>専用workspace / 新規Git worktree"]
         Worker["必要に応じたworker：割り当てられた作業"]
         Sokkin -->|分担・権限内の承認判断| Worker
-        Worker -->|成果・承認要求・問題・使用量| Sokkin
+        Worker -->|成果・承認要求・問題| Sokkin
     end
     Launch -->|起動| Sokkin
-    Leader -->|任務・完了条件・予算・権限内の承認判断| Sokkin
-    Sokkin -->|成果・承認要求・検証・使用量| Leader
+    Leader -->|任務・完了条件・明示制約・権限内の承認判断| Sokkin
+    Sokkin -->|成果・承認要求・検証| Leader
     Human -.->|状況を見る| Viewer["Herdr閲覧タブ"]
     Viewer -.->|接続| Herdr
     Orca["任意のOrcaホスト<br/>対話・作業場所・閲覧タブをまとめて扱う"]
@@ -48,13 +48,13 @@ Herdr閲覧接続を[検証しています](docs/VALIDATION.md)。他ホスト�
 フォーカスを変えずに表示を確認できない場合も、理由と接続先を報告し、明示的な画面なし実行の指定がなければ割当を待ちます。
 タブは完了後も残し、閉じても実行中の側近は停止しません。
 検証済みCodex版では、同梱の`measure-session.sh`がnative sessionと既存usage toolを
-単発で照合します。計測値と予算判断を分け、未確定の処理を0には扱いません。
+外部debugとして単発で照合します。通常運用の必須条件ではなく、未確定の処理を0には扱いません。
 
 ## 導入と使い方
 
 [導入手順](docs/INSTALLATION.md)に従い、次の4スキルを用意します。
 
-- `hanchou-orchestrator`: 薄い班長。依頼、成果の受入、使用量監督。
+- `hanchou-orchestrator`: 薄い班長。依頼、成果の独立受入。
 - `hanchou-sokkin`: 実行担当。分解、worker・model選択、検証、統合。
 - `hanchou-init`: 対象projectの設定・方針とツール導入状況を確認。不足分は導入方法を選んでからインストール。
 - `hanchou-update`: 導入済みHanchouだけを明示的に更新。
@@ -73,7 +73,7 @@ modelと併せて設定し、起動後の実際値を確認します。既存設
 再初期化でテンプレートへ上書きしません。定型の小作業にはSol／low等も選べます。
 Claude Codeは本人の許可済みサブスク認証だけを使います。
 
-班長は目的・完了条件・権限・予算を整理し、解き方は側近に委ねます。
+班長は目的・完了条件・権限・ユーザーの明示制約を整理し、解き方は側近に委ねます。
 側近の判断品質を確保し、workerはSolなど承認済み候補から必要な品質を満たす
 低消費のモデルを選びます。側近と同じモデルを一律に使いません。
 最適化の対象は全階層の総使用量・完遂率・手戻りです。Astra既定による削減率は未測定です。
@@ -83,21 +83,23 @@ Codexへの依頼例:
 ```text
 $hanchou-orchestrator を使って、このrepositoryの対象機能を修正してください。
 完了条件は既存テストの成功です。変更のcommitまでを許可します。
-予算・並列数・再試行上限を確認し、側近の受領と使用量の計測準備が整ってから作業してください。
+権限・並列数・再試行上限を確認し、側近の native identity と実効設定を確認して作業してください。
 ```
 
-Claude Codeでは`/hanchou-orchestrator`を使います。依頼時に目的・完了条件・権限・予算を
+Claude Codeでは`/hanchou-orchestrator`を使います。依頼時に目的・完了条件・権限・明示制約を
 具体化します。導入や設定だけでは実作業を始めません。
 
-班長は起動結果の接続先とnative thread/session IDを照合し、使用量を計測できることを
-確認してから実作業を渡します。予算は実測から見直す目安とし、固定予算内の完遂は必須にしません。
-超過見込み・異常な消費・欠測は、実測と残量見積り、実行状態、次の判断を人間向け会話へ知らせます。
-欠測を0として扱わず、計測不能やユーザーが明示した停止上限では新規割当を止めます。
-会話への注意表示とOS/mobileへの通知到達は区別し、未検証の非同期到達は保証しません。
-完了は成果・検証・未解決事項・使用量で確認し、Herdrの待機表示だけで判断しません。
+班長は起動結果の接続先、native ID、実プロセスと権限を照合して依頼します。
+通常運用では参加者の自己計測・予算台帳・usage報告を要求しません。使用量は外部debugで調べ、
+欠測を0にせず、成果の受入とは分けます。ユーザーの明示停止・予算上限は引き続き尊重します。
+
+明示選択された同一machineのClaude root同士は、既成SessionStartと公式SendMessage／
+notify_when_idleを使えます。[適合条件](skills/hanchou-orchestrator/references/native-receive.md)を
+満たす場合だけnative通知で親を再開します。通知は成果・検証の独立受入を置き換えません。
+Codexは既存no-daemon起動を維持し、owned app-server案は[別の決定](docs/CODEX_NATIVE_RECEIVE_DESIGN.md)です。
 
 班長は専用serverの終了も管理します。側近が`.hanchou/instances`へ完了時刻を記録し、
-班長が成果・最終使用量・プロセス終了を確認します。完了から1日以上経過したものは、
+班長が成果・検証・権限・プロセス終了を確認します。完了から1日以上経過したものは、
 班長が次に記録を確認したときに実体と停止条件を再確認して閉じます。常駐タイマーはありません。
 明示的に既存共有sessionを選んだ場合は、そのserverを自動停止しません。
 詳しくは[ライフサイクル手順](skills/hanchou-orchestrator/references/lifecycle.md)を参照してください。
@@ -109,7 +111,7 @@ Claude Codeでは`/hanchou-orchestrator`を使います。依頼時に目的・�
 既存の設定・成果・実行中資源は自動削除しません。[移行手順](docs/MIGRATION.md)を参照してください。
 
 スクリプトの試験と実機受入は別です。利用前に[検証状況](docs/VALIDATION.md)を確認してください。
-未検証のproviderや計測経路を自律実行に使いません。
+native受信の未検証な組合せを対応済みとは扱いません。
 
 [仕様](HANCHOU_SPEC.md) / [設計と判断の経緯](docs/HANCHOU_V2_DESIGN.md)
 

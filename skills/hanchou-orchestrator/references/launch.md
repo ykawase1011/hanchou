@@ -1,37 +1,172 @@
 # Launch and handoff
 
-The bundled launcher is one-shot Bash 3.2+ with Git and jq. Use Herdr 0.9.5's
-public local-session contracts; verify compatibility before adopting a different
-version. Install the official `codex` or `claude` CLI in both the caller's PATH
-and Herdr's shell environment. The script does not install tools,
-change global agent settings, submit a mission, or install integrations.
+Use the one-shot Bash 3.2+ launcher with Git, jq, Herdr and the official selected
+agent CLI. Herdr 0.9.5 is the tested public contract. No usage tool is required
+for ordinary operation. The launcher neither installs tools/hooks nor sends a
+mission. Reuse installed-version help and supplied readiness; inspect source only
+for a concrete implementation problem, not routine preparation.
 
-Use this launch contract directly; inspect the script source only when diagnosing
-an actual failure or developing it. Do not load repository design/history or the
-companion's references as routine supervisor preparation. The qualified launcher
-reads its bundled companion once; manual bootstrap needs its exact content.
-Applicable project instructions still govern
-placement, authority and preservation.
+By default launch a dedicated local named server; `--session NAME` explicitly
+uses an existing shared server without ownership/auto-stop authority. Keep the
+returned host/session/pane IDs. Fixed policy/config sources remain the selected
+project, independent of execution cwd. The launcher copies no ignored settings.
+Check actual shell/process resolution; wrappers can change arguments or billing.
+Do not rewrite global shell, plugins, MCP or notification settings speculatively.
 
-By default the launcher starts an owned **local named Herdr session** for the
-attempt. See [owned lifecycle](lifecycle.md) for its record and delayed cleanup.
-Explicit `--session NAME` instead selects an already-running shared server.
-Keep the same executable and session for subsequent calls; workspace/pane IDs are scoped to that server.
-The launcher checks current connectivity/inventory. Never silently fall back to
-the default server or a remote host. Closing a viewer does not terminate the
-server's agents. Reuse the caller/init readiness handoff for
-tool paths/versions, log-home provenance and session configuration location;
-verify changed/mutable facts directly instead of touring the CLI command tree.
+## Configuration and call
 
-Use the selected session's notification configuration to limit routine progress.
-Check it at the known source and record its scope; do not inspect unrelated
-panes to infer the new agent's environment. After launch, inspect the returned
-pane's actual process/environment for unexpected wrappers, hooks or remote control.
-An installed hook is not evidence that it sends human alerts. Report unverified
-external notification behavior without claiming complete OS/mobile silence;
-only a specific conflicting behavior or an explicit all-alerts-off requirement
-needs resolution before work. Keep approvals and important results reachable.
-Do not rewrite shared/global settings or disable integrations speculatively.
+```json
+{"version":2,"sokkin":{"agent":"codex","model":"gpt-6-astra","effort":"medium"}}
+```
+
+Only `agent`, `model`, `effort` are supported inside `sokkin`. Agent is codex or
+claude; model null/omitted uses the official CLI default. Effort is low, medium,
+high or null. Root optionally accepts languages. Preserve existing choices.
+Keep action authority, finite concurrency/retries and explicit stop limits in
+policy/mission; do not add ordinary usage budgets or accounting configuration.
+
+### Communication languages
+
+Optionally add `"languages":{"human":"ja","agents":"en"}` to the version 2
+root. Only `human` and `agents` are accepted in this object. A tag must be an
+ASCII string of at most 63 characters: 2–8 letters followed by zero or more
+hyphen-separated groups of 1–8 letters/digits, with no whitespace (for example
+`ja`, `en`, `pt-BR`, `zh-Hant`). This is a language-tag-shaped subset, not a
+registry lookup or a guarantee of model fluency. Underscores, empty strings,
+free-form instructions and other types are rejected before creating resources.
+Tags are preserved as supplied; matching their meaning is case-insensitive.
+
+Omitted/null `languages`, `{}`, and omitted/null fields impose no preference
+for that audience: retain current conversation/mission/project behavior. Do not
+copy the other field as a fallback. Explicit user/mission language instructions
+override config defaults without changing the pinned file.
+
+`human` covers the supervisor's acknowledgement, progress, approval/escalation
+explanations and final summaries. `agents` covers supervisor→sokkin and
+sokkin↔workers, including returned questions/reports and new worker assignments.
+The supervisor conveys internal meaning in `human`, retaining commands, paths,
+IDs, numbers and quoted diagnostics exactly where necessary. Native CLI UI,
+JSON keys, protocol markers, source syntax and artifacts' requested/project
+language are unaffected. No permission or approval rule changes.
+
+The receipt preserves the effective fields and omissions. Pass them once with the
+mission and propagate explicit overrides to new workers; init/update never rewrites
+a live fixed configuration. Protocol markers are not translated.
+
+Invoke the resolved installed script with quoted `--project PATH --mission SLUG`.
+`--config` pins an explicit file; `--agent`, `--model`, `--effort` override this
+launch only. `--base` resolves once to a commit (default selected checkout HEAD).
+`--worktree-root` must be absolute and outside all existing checkouts. `HERDR_BIN`
+selects an executable, not shell code. See `--help` for the small option surface.
+
+Codex retains `--no-daemon`. An explicitly authorized `--skip-update-check` only
+adds a process-local Codex flag. No queue fallback/shared daemon is created.
+The [separate Codex design](https://github.com/ykawase1011/hanchou/blob/3e0ecf79bceef6e57436cef5440bd328e765c81e/docs/CODEX_NATIVE_RECEIVE_DESIGN.md) records
+why the owned app-server experiment cannot silently replace this mode.
+Claude requires first-party subscription auth in caller and actual pane; no
+API/extra-usage fallback or credential export. Auth alone does not prove every
+account-wide extra-usage setting. Report unresolved billing evidence.
+
+### Qualified startup
+
+`--qualify-startup` supports Codex 0.162.1/0.163.0 with a finite timeout. It sends
+one fixed tool-free identity bootstrap because this supported TUI path materializes
+native identity/context in its first turn. This is no longer a token-measurement
+ACK: there is no ccusage dependency, counter gate or budget bookkeeping. Fresh
+cwd/start time/marker, unique nonforked native ID, model/effort, exact response and
+process PID/birth/arguments remain checked. Bootstrap submission is once without
+Herdr's activity-gated `--wait`; the script checks completion within its deadline.
+No mission/retry/continuing observation is added.
+
+Use `identityReadiness.status: ready`, not legacy `usageReadiness`, for the stated
+identity boundary. `usageReadiness.status: not_required` is a compatibility field;
+old receipts keep their original optional usage fields. New observations never
+rewrite or certify those old counters. Missing/inconsistent native identity still
+fails closed. Unsupported provider/version must use its separately verified
+public identity route; a failed qualification cannot be bypassed by manual ACK.
+
+Claude's explicitly selected [native receive](native-receive.md) uses official
+SessionStart identity without an LLM ACK. `--claude-peer PATH` supplies the current
+local Claude parent evidence. For any Claude launch, optional `--claude-settings
+PATH` is an explicitly authorized process-local settings file, never silently
+installed/trusted; it can select manual permissions on the ordinary Herdr path.
+Read back actual native settings. This option does not claim that a Codex/Orca
+parent supports Claude peer tools or native wake.
+
+### Explicit manual approvals
+
+Codex 0.163.0 accepts `--manual-approvals --qualify-startup`, selecting
+workspace-write/on-request/user and checking those exact native values. No global
+settings change. Missing/mismatched evidence refuses qualification; do not use a
+manual mode to evade a provider denial. Claude peer startup selects manual mode
+and reports the exact-process evidence boundary; effective native gates still
+need corroboration before assignment.
+
+### Codex 0.164.0 public observation
+
+For this bounded route, official `rust-v0.164.0` source is pinned to
+`6aaac694803004a63c6f393d153c96d22521a6b9`. Bare `/permissions` showing
+**Ask for approval (current)** proves current `OnRequest`/`User` through the
+[current-item predicate](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/chatwidget/permissions_menu.rs#L258-L300).
+Combine it with complete current `/status` **Workspace (Ask for approval)**
+[effective summary](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/status/card.rs#L606-L707),
+including network/extra-root access, and the original process/pinned configuration.
+This establishes effective workspace/manual mode, not full policy serialization
+or reconstruction of a literal `sandbox_mode` assignment.
+
+To observe the actual clear binding, open bare `/keymap`, then search
+`clear_terminal` **inside the picker** and read Global / Clear Terminal; Esc closes
+without editing. The [picker resolves current bindings](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/chatwidget/keymap_picker.rs#L23-L42);
+the Ctrl+L default alone is not evidence. Bare `/debug-config` supplies
+[configuration-layer evidence](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/debug_config.rs#L122-L157),
+not effective field values. It supports no inline arguments or field-name query
+([argument contract](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/slash_command.rs#L171-L200)).
+
+### Native automatic approval review
+
+Explicit automatic review is separate from model/effort. Use only a qualified
+public provider mode and inspect its actual denial/input behavior. It does not
+create a Hanchou parent approval channel. Keep exact-request delegated authority,
+human-only gates and denial handling; never use bypass/blanket approval or weaker
+sandboxing. Missing reviewer usage is an external-debug limitation, not authority
+to relax review or a gate on otherwise qualified work.
+
+## Receipt and partial failure
+
+Capture exit status and complete stdout/stderr. Version 2 receipts retain
+config, source snapshot, worktree, Herdr, sokkin, lifecycle and resources. New
+`identityReadiness`, `requestId` and `receive` fields separate identity/delivery
+from optional legacy `usageReadiness`. Process details corroborate native identity;
+a PID alone never substitutes for it. Requested model/effort is not observed data.
+
+Owned launch preserves full receipt and Git blob hash in the instance directory.
+`--compact-receipt` keeps decision fields and the full evidence reference; shared
+and early-failure output stays full. Missing/colliding/symlink evidence fails
+closed and retains resources. STARTING/UNKNOWN has no promotion path. Inspect
+the same attempt and preserve unique work; do not relaunch blindly or claim a
+later ACK recovered the lifecycle. A separate retry needs a justified decision.
+
+A successful ordinary owned launch with pending optional native metadata instead
+uses [one-shot bind](lifecycle.md#bind-delayed-native-identity) against its captured
+original process and fresh public identity, before real assignment. Keep the
+original receipt; do not infer identity from the result or hand-edit the record.
+
+The Codex 0.164.0 status fallback accepts a complete Directory value on one line
+or contiguous continuations aligned with its first value, ending at Permissions.
+It preserves literal spaces and Unicode and compares the full absolute path or
+home-relative `~` path. Missing/misaligned rows, ellipses, duplicate identity fields
+and incomplete Session UUIDs fail closed. Whitespace discarded by native wrapping
+cannot be reconstructed; such paths and narrower layouts that wrap labels/UUIDs
+remain unsupported. Use the current unscrolled visible status, never join history.
+
+After identity/settings and viewer checks, send one bound mission with the fixed
+companion/policy references, criteria, authority, languages, resource limits and
+durable result destination. Receipt waiting and child-completion observation are
+separate. The native route supplies result/exit notices; all manual-approval paths
+still require the parent's bounded public waits/readback because pending approval
+wake is unqualified. Establish that capability before assignment. Idle or a
+timeout is never success or permission to resend.
+Finalization follows [lifecycle](lifecycle.md), without usage gates.
 
 ## Human-visible Herdr
 
@@ -109,346 +244,3 @@ agent exited when applicable. Normal owned-server lifecycle cleanup still applie
 The native TUI accepts input: viewing intent is not technical read-only access.
 A browser viewer is an alternative only when already configured and verified;
 do not install a web plugin or expose a new listener as part of this step.
-
-## Configuration and call
-
-Use the selected project's `.hanchou/config.json`:
-
-```json
-{"version":2,"sokkin":{"agent":"codex","model":"gpt-6-astra","effort":"medium"}}
-```
-
-This is the new-project `hanchou-init` template, not a launcher fallback.
-Existing values and explicit mission overrides take precedence.
-Optional `sokkin.effort` accepts `low`, `medium`, `high` or null. No other keys
-are supported inside `sokkin`. The root also accepts optional `languages` below.
-Agent is `codex` or `claude`; model is a native model identifier
-or null. Null delegates to the official CLI's configured
-default, so verify the observed model/effort before real work. Keep budgets,
-allowed model/effort choices, concurrency and retry limits in the pinned policy
-or mission, not speculative configuration fields.
-
-### Communication languages
-
-Optionally add `"languages":{"human":"ja","agents":"en"}` to the version 2
-root. Only `human` and `agents` are accepted in this object. A tag must be an
-ASCII string of at most 63 characters: 2–8 letters followed by zero or more
-hyphen-separated groups of 1–8 letters/digits, with no whitespace (for example
-`ja`, `en`, `pt-BR`, `zh-Hant`). This is a language-tag-shaped subset, not a
-registry lookup or a guarantee of model fluency. Underscores, empty strings,
-free-form instructions and other types are rejected before creating resources.
-Tags are preserved as supplied; matching their meaning is case-insensitive.
-
-Omitted/null `languages`, `{}`, and omitted/null fields impose no preference
-for that audience: retain current conversation/mission/project behavior. Do not
-copy the other field as a fallback. Explicit user/mission language instructions
-override config defaults without changing the pinned file.
-
-`human` covers the supervisor's acknowledgement, progress, approval/escalation
-explanations and final summaries. `agents` covers supervisor→sokkin and
-sokkin↔workers, including returned questions/reports and new worker assignments.
-The supervisor conveys internal meaning in `human`, retaining commands, paths,
-IDs, numbers and quoted diagnostics exactly where necessary. Native CLI UI,
-JSON keys, protocol markers, source syntax and artifacts' requested/project
-language are unaffected. No permission or approval rule changes.
-
-The receipt retains the validated config at `config.effective.languages`, with
-omissions/nulls preserved. Qualified bootstrap carries both fields (omissions
-represented as null). For manual bootstrap and every mission, the supervisor
-passes these receipt defaults plus any explicit overrides; sokkin propagates
-them to new workers. Qualified bootstrap accepts only the exact startup marker
-(surrounding whitespace is ignored), with no prose/commentary. Mission overrides
-therefore arrive before any language-bearing reply; markers are not translated.
-Install/select compatible launcher and companion code before enabling these
-keys for a fresh explicit invocation. Updating skills does not rewrite a live
-fixed config or change existing missions.
-
-Invoke the installed script by its resolved path, using quoted arguments:
-
-```bash
-bash "$LAUNCH_SCRIPT" \
-  --project "$PROJECT_ROOT" --mission "$MISSION_SLUG"
-```
-
-`--agent`, `--model` and `--effort` override only this launch. `--base` is resolved once to a
-commit (default: selected checkout HEAD). `--worktree-root` is an absolute
-destination outside existing checkouts; default is a sibling
-`.hanchou-worktrees/<project-name>`. Use `--help` for the full small interface.
-`HERDR_BIN` selects the executable, not a shell command.
-For an explicitly authorized update-notice skip (or centrally managed CLI updates),
-`--skip-update-check` passes Codex's process-local
-`-c check_for_update_on_startup=false`; it does not change global configuration.
-It is rejected for Claude. Keep the default check otherwise; see the official
-[Codex configuration reference](https://developers.openai.com/codex/config-reference/).
-
-The launcher always creates a new branch and Git worktree, verifies repository,
-branch and HEAD, creates a dedicated Herdr workspace using that cwd, then starts
-the agent in its first pane. It copies no ignored configuration or human edits.
-Codex starts with `--no-daemon` to avoid inheriting another host's shared daemon.
-Claude must report first-party subscription authentication both in the caller
-and in the actual pane. Authentication evidence does not prove account-wide
-extra-usage settings are disabled; do not enable or accept paid fallback.
-Herdr starts the canonical agent command through the pane's shell. Existing shell
-aliases/functions can add arguments; the pane auth check uses the same command
-resolution. Inspect the actual process arguments and observed model/effort during
-bootstrap. Unrequested billing, permission or notification behavior is a
-configuration discrepancy to resolve before work, not a reason to rewrite the
-user's shell files. The launcher does not set bypass-permission flags.
-Keep verified executable paths, versions and evidence in the mission report for
-reuse. The successful launcher receipt covers its current inventory/readiness
-checks. Use the bounded startup qualification below where supported; otherwise
-independently bind the new pane's native identity and settled usage.
-
-### Explicit manual approvals
-
-When the mission explicitly selects manual approval, Codex **0.163.0** supports
-`--manual-approvals --qualify-startup`. The launcher passes
-`--sandbox workspace-write --ask-for-approval on-request -c approvals_reviewer="user"`
-in addition to `--no-daemon`, preserving model/effort and global configuration.
-It rejects Claude, other Codex versions, missing startup qualification and
-lifecycle operations before creating resources. This is a one-launch selection;
-omitting the option keeps the existing provider configuration behavior.
-
-Qualified startup checks the exact process arguments and the tool-free native
-turn's sandbox type, approval policy and reviewer. A successful receipt has
-`sokkin.requestedManualApprovals == true` and
-`sokkin.observedPermissions == {"sandbox":"workspace-write","approvalPolicy":"on-request","approvalsReviewer":"user"}`.
-Missing or mismatched native values fail closed and retain the attempt for
-inspection, with no real assignment. They do not trigger another mode or launch.
-The permission evidence covers those three fields at bootstrap; it does not
-certify other configured writable paths, network access, hooks or future turns.
-Mission authority, exact-request checks and human-only gates still apply.
-This mode does not prove the worker → sokkin → supervisor approval chain works;
-that live validation remains tracked in Issue #79. Never use it to retry an
-action already denied by automatic review or to evade a human-only gate.
-
-### Native automatic approval review
-
-An explicit request for automatic permission review does not select an automatic
-model or effort. Preserve the configured model/effort and use only the installed
-provider's supported mode. Verify the actual native settings and a bounded
-disposable probe before adopting it for real work. Help text alone does not prove
-availability, review behavior, usage coverage or a route to the Hanchou parent.
-Do not change global security settings, reviewer policy or hooks to make a probe pass.
-
-The [Codex CLI contract](https://learn.chatgpt.com/docs/developer-commands?surface=cli)
-offers `--approve-for-me` with workspace-write and on-request approvals; it conflicts
-with explicit sandbox/approval flags. [Claude Code's `--permission-mode auto`](https://code.claude.com/docs/en/permission-modes)
-uses classifier review, while explicit ask rules and user-interaction gates can
-still prompt. Its noninteractive behavior differs. These are provider modes,
-not additional options accepted by `launch-sokkin.sh`. Do not replace either with
-bypass flags, `never`/`dontAsk`, broad future approvals or weaker protections.
-
-Preserve worker → sokkin → supervisor → human decisions wherever a request remains.
-Do not assume the native reviewer forwards a refusal to that chain. Inspect the
-same attempt and retain the exact action, target and rationale. An
-[automatic-review denial](https://learn.chatgpt.com/docs/sandboxing/auto-review)
-permits a materially safer alternative or the required human decision, not the
-same outcome through a different agent, tool or execution location. A human-only
-override remains for the human. A successful harmless approval does not qualify
-denials, cancellations, fallback behavior or other providers.
-
-Reviewer usage is part of the mission even when no worker was explicitly started.
-The ordinary agent's ready receipt does not include another native reviewer.
-Apply the [usage scope checks](usage.md#accounting) to those reviewers before real
-assignment. If their identity, model or tool scope is unqualified, retain the
-probe evidence and report the missing scope; do not treat it as zero or broaden
-the parser to make the mode pass. Continue independent work through an already
-qualified mode only when it does not evade a denied action.
-
-### Qualified startup
-
-For **Codex 0.162.1 or 0.163.0 / ccusage 20.0.37**, add `--qualify-startup` and a sufficient
-finite `--timeout-ms` (for example 60000). The mode checks dependency versions
-before creation, observes the pane's startup log home/version, sends exactly one
-fixed tool-free companion-role bootstrap, then corroborates native identity
-using fresh cwd/time/bootstrap evidence. It reconciles initial ccusage counters
-against native cumulative counters for that fresh, nonforked session.
-The bootstrap permits no tools or real work and its tokens count in the budget.
-Submission acknowledges ordered writes, not completion. Qualified startup sends
-without Herdr's state-based `--wait`, then checks native completion and usage
-within the same finite deadline. A late request still needs every native gate;
-absent or conflicting evidence fails. Nonzero submission fails without resending
-and preserves a valid bounded upstream error code when available. This does not
-recover an earlier failed `STARTING`/`UNKNOWN` invocation.
-The receipt also contains the actual foreground PID/birth/cwd and observed
-arguments, rechecked through bootstrap completion against this launch. Process
-birth is corroborating evidence, not a substitute for the qualified native log.
-Missing birth, replacement or unexpected arguments block qualification
-without copying their potentially sensitive values into the receipt. Reuse this
-evidence for assignment; do not run a separate process-discovery round unless a
-specific discrepancy remains. Process liveness must be checked again at cleanup.
-No arbitrary prompt/file argument, retry, cleanup or continued accounting is added.
-
-A `startup_qualified` receipt with `usageReadiness.status: ready` supplies the
-baseline needed for immediate assignment. Reuse its observed model/effort, log
-path and counters instead of writing another identification/ACK parser or
-resending bootstrap. It covers one observation boundary, not subsequent usage,
-wrapper permissions, notifications or final mission acceptance. After intervening
-activity or delay, refresh usage before assigning. Unsupported versions/provider
-are refused before creation; uncertain completion or conflicting evidence after
-creation retains the same resources and blocks work. Use the manual procedure
-for other already-qualified provider/tool combinations; never silently bypass a
-failed qualification. Claude subscription checks and default launch behavior
-remain unchanged.
-
-## Receipt and partial failure
-
-Capture stdout and exit status separately. Stdout contains one JSON receipt:
-
-| Field | Meaning |
-| --- | --- |
-| `version`, `ok`, `stage` | Schema version 2, readiness result, last launch stage |
-| `startedAt` | UTC launch start, for bounded native-log attribution |
-| `sourceSnapshot` | Pre-launch source HEAD/branch/common Git directory and Git diff/status hashes |
-| `missionId`, `attemptId` | Human mission slug and unique launch attempt |
-| `config.source`, `config.effective` | Pinned config path and effective values |
-| `worktree` | Source repository, new path/branch, fixed base and verified HEAD |
-| `herdr` | Local host, named session, returned workspace/tab/pane IDs |
-| `lifecycle` | Owned instance key/record and saved startup `status`; status is null for shared launches or before an owned record exists |
-| `sokkin` | Provider/name, requested model/effort/update-skip, observed model/native IDs and qualified process evidence |
-| `usageReadiness` | Default pending; opt-in qualified startup returns initial native/tool evidence and its boundary |
-| `error`, `resources` | Failure category and resources retained for reconciliation |
-| `receiptFormat`, `evidence` | Full or compact stdout, and the preserved full launch body when an owned instance exists |
-
-When returning from an owned launch that reached an instance record, the launcher
-saves its full final launch body once in `<instance>/launch/receipt.json`, on
-success or handled failure. An unhandled kill can leave STARTING without a final
-receipt. The private directory is created exclusively; existing directories or
-symlinks are never adopted or overwritten. The body is bounded to 65536 bytes
-before its trailing newline. It contains the defined receipt fields, not copied
-temporary files, auth replies, environment dumps, native message text or raw
-command transcripts. Its structured error is diagnostic evidence, not a complete
-transport log. Keep stdout/stderr/exit for the invocation as well.
-
-Default stdout remains the full receipt with additive `receiptFormat:"full"`
-and `evidence:{receipt,hashKind:"git-blob",hash}`. The saved body excludes these
-output-envelope additions. `hash` is the `git hash-object` blob ID for that file;
-it is not SHA-256. Verify it before using omitted evidence.
-`--compact-receipt` selects a smaller stdout projection when preservation
-succeeded. It retains identity, config, lifecycle, permission, readiness,
-counter, scope and resource decision fields. `sourceSnapshot`, full process
-arguments, duplicate native counters and tool detail remain in the referenced
-body. Read selected fields there when needed; a compact receipt does not waive
-any gate. Do not use it as the final settled measurement.
-
-Early failures before an owned record and explicit shared launches have
-`receiptFormat:"full",evidence:null`, even with the compact option. They create
-no extra evidence root. Lifecycle operations reject `--compact-receipt`; their
-existing output/storage contract is unchanged. Preservation failure returns
-nonzero, a full `launch_evidence_failed` receipt, unavailable usage, and an UNKNOWN
-owned startup state. Retain the same resources and inspect the failure; never
-assign real work or relaunch to hide it. No receipt is replaced on retry.
-
-`ok:true` means the selected startup mode succeeded, not that the mission finished.
-Default `agent_ready` does not qualify usage. Opt-in `startup_qualified` includes
-the settled bootstrap; a null native ID/model remains unknown.
-Reuse the successful receipt's configuration, fresh-worktree, pane-cwd and
-agent-readiness checks. Requested settings are not observed process arguments.
-The source snapshot hashes staged/unstaged binary diffs and NUL-delimited status
-using Git's object hash without writing objects. It is not a backup: untracked
-and ignored file contents are not covered. Pin policy/config content separately
-and preserve any additional content at risk. Compare at mission end as needed;
-the launch-time snapshot alone cannot prove preservation throughout execution.
-
-On failure after creation the script retains resources and returns known IDs.
-Inspect the same pane, inventory and process identity without sending real work
-or repeating bootstrap. Update notices, project trust, authentication or shell
-startup can block readiness. Answer only within existing authority; explicit
-denial and human-only decisions remain gates.
-
-An owned launch failure saves `UNKNOWN`; an interrupted launch may leave
-`STARTING`. Neither state has a supported promotion to `RUNNING`. Clearing a
-popup, observing a ready CLI, or obtaining native identity and settled usage
-manually does not repair that record. Do not bootstrap merely to try to recover
-it, edit the record, call `finish`/`resume` to bypass the state, or assign real
-work. `--skip-update-check` is an explicitly authorized process-local prevention
-option for a new launch, not recovery of an existing UNKNOWN instance.
-
-Preserve the failed receipt, record, any native usage and artifacts, including
-the failed attempt's cost. Establish which owned processes actually started;
-if cleanup is authorized, exit only those CLIs and verify termination. Before
-stopping a dedicated server, inspect every pane and server descendant for other
-owners, agents, foreground commands and background jobs. Retain it while any
-work or uncertain ownership remains; separately authorize and preserve any
-remaining owned work before ending it. Proceed only after the full inventory
-shows verified idle shells and no other descendant processes. Recheck the saved
-host/server PID, birth time and socket identity immediately before the targeted
-public stop. Verify disappearance of that server, socket and its pane processes
-afterward; a stop receipt alone is insufficient. Missing identity or unverifiable
-termination means retain/report, not success. Preserve separate cleanup evidence,
-server history and the unchanged failure record; do not report FINISHED,
-acceptance or timed reap.
-Remove a worktree only after preserving its contents and proving no remaining
-owner. If identity, activity or ownership is uncertain, retain resources and
-report the missing evidence. A separate, explicit decision within the user's
-authority may start a new attempt with a fresh branch/worktree after this
-reconciliation. Carry forward the failure and preserved results; do not silently
-replace an experiment's failed arm or bypass a denied operation.
-
-A shared launch has no owned lifecycle record. It still requires corroborated
-startup identity and usage before work; retain an uncertain or already-started
-agent, inspect the same pane, and never restart it blindly. A process proved
-never to have started may be started there only under the shared-session manual
-procedure. Replacing an actual sokkin requires a fresh launch and preserved results.
-
-If a CLI response or the whole receipt is lost, reconcile the unique attempt
-label/name, reported branch/path and current Herdr/Git state. No exactly-once or
-automatic rollback guarantee is offered. Never force-delete retained resources.
-
-## Bootstrap and mission
-
-Use the following manual bootstrap after a successful default `agent_ready`
-launch (owned record `RUNNING`), or for an explicitly selected shared-session
-manual startup after its identity is verified. It is not recovery from a failed
-qualification or an owned `STARTING`/`UNKNOWN` launch. Do not repeat it after
-`startup_qualified`.
-
-Allow one short bootstrap turn for role/instruction receipt only. Supply the
-already-verified launch metadata, `config.effective.languages` and explicit
-language overrides, and the exact pinned sokkin instructions in
-that message, and request an acknowledgment without tools, file reads or worker
-dispatch. The supervisor resolves native identity and measures the settled
-response before real work. This avoids repeated full-context responses and
-approval turns just to read instructions or run `pwd`. Estimate bootstrap from
-observed context costs and include actual usage in the mission total. Do not
-invent a separate hard limit smaller than the known initial context. Respect
-explicit user stop limits. A planning-estimate overrun calls for a human alert
-and an explicit continuation/reduction/decision state, not an automatic failure
-or silent budget increase. Qualify usage
-with [usage.md](usage.md).
-Match the assistant's acknowledgment/completion and settled counters, not a
-terminal substring that can merely echo the bootstrap prompt.
-
-Resolve native identity from Herdr's observed `agent_session`, if available, and
-cross-check provider and native log metadata. Without integrations, resolve the
-unique native log whose session metadata matches the **exact new physical cwd**,
-provider, startup time and bootstrap marker. Do not pick the latest log globally.
-Multiple matches, missing logs or mismatched IDs remain pending.
-
-Send a compact mission containing:
-
-- Explicit assignment to act as sokkin and follow the pinned skill's instructions,
-  not merely read or review the file.
-- Mission/attempt, returned connection IDs, cwd/branch/base and native identity.
-- Absolute pinned sokkin skill, policy and usage-reference paths (or their exact
-  contents when not readable from the execution environment).
-- Purpose, acceptance criteria, allowed actions and artifact destination.
-- Receipt language defaults and explicit overrides; require propagation to new
-  workers and internal reports/questions in the agent language.
-- Token budget, reserved verification/report capacity, finite concurrency/retry
-  limits, permitted provider/model/effort choices and measurement freshness.
-- Reporting conditions: completion, decision needed, budget or unrecoverable
-  problem. Include each independent session once and state native-child scope.
-
-Use installed Herdr help for prompt/read/wait commands. Set explicit wait
-timeouts. Read only the relevant subcommand help unless it leaves a concrete
-question unanswered. A timeout can follow successful input delivery; inspect the same
-attempt's report before resending. Terminal idle is not a mission receipt.
-
-On completion, receive evidence and session totals before stopping owned
-agent/worker processes. Workspace closure, server shutdown and preserved unused
-worktree removal are separate decisions. Owned servers follow [lifecycle](lifecycle.md): preserve
-the completion report, measure final settled usage, exit agents, accept, then reap
-on a later check at least a day after FINISHED. Do not stop a shared server or
-remove a dirty worktree.

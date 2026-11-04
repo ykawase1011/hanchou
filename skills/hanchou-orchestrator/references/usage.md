@@ -1,4 +1,10 @@
-# Native-session usage
+# External debug: native-session usage
+
+This reference is only for explicitly requested external diagnostics/comparisons.
+Ordinary Hanchou, sokkin and workers do not load it, self-measure, keep budget
+accounts or report usage. A missing measurement is a debug limitation, never a
+readiness/acceptance gate. Explicit user stop/budget instructions still apply.
+The two-shell boundary and strict measurement guarantees below are unchanged.
 
 Use native logs and a qualified existing tool; do not implement another collector
 or treat Herdr's display, context percentage, dollar estimate, or weekly quota as
@@ -52,7 +58,7 @@ Unsupported forks, compaction, resets or versions fail closed. Do not bypass a
 failure by inventing a less strict parser. The detailed contracts below remain
 the explanation and qualified manual route for other supported providers.
 
-## Supervisor preparation
+## External observer preparation
 
 Bind the supervisor too, before broad discovery. Use a host-supplied native ID
 when available and corroborate it with log metadata; otherwise search only the
@@ -79,34 +85,13 @@ the verified increase, not all earlier conversation usage. Keep session cumulati
 and mission delta distinct. If the start boundary is unavailable, label the
 cumulative scope rather than inventing a delta.
 
-Before launch or another discovery round, compare the budget with settled usage
-plus the estimated current in-flight request, remaining operational requests and
-`max(estimated end-work, required reserve)`. Count every request exactly once.
-Estimate from latest full request input (including cache), expected output and
-context growth. Count actual planned model boundaries, not CLI commands or
-checklist steps. Qualification needs evidence review; independent checks and
-mechanical dependent commands can share a tool batch. Consolidate avoidable
-rounds before declaring a small mission unaffordable. Do not invent a fixed
-minimum request count, or add a reserve on top of the same acceptance/reporting
-requests already counted. A small output or low effort does not make repeated
-cached input free.
-If projected total exceeds the planning estimate, alert the human with observed
-usage, remaining estimate/uncertainty, progress, execution state and proposed
-next action. Continue only within existing bounded authority and state the next
-checkpoint; pause new assignments when a decision is needed. A user-specified
-stop limit still blocks new assignments. Do not silently raise it. Completing
-within a fixed estimate is not the product acceptance criterion.
-When stopping before resources exist, save the evidence already collected and a
-short report in one batch. Mark unverified facts as unknown; do not continue
-optional environment discovery or chase a newer self-counter to fill the report.
-When resources do exist, retain the checks necessary for their safe disposition.
-
-A running supervisor can observe only its last completed request's counters;
-the current tool-using request and final reply can add usage afterwards.
-Report this boundary and reserve for it. Do not repeatedly query for a settled
-total of the still-running conversation. When host usage is unavailable, report
-the missing supervisor scope; if a supervisor/total budget requires measurement,
-do not launch under an uncheckable budget. Sokkin qualification remains mandatory.
+Observe attributable native data from outside the participants. Keep debug cost
+separate, and include startup, failed attempts, children/reviewers and acceptance
+when comparing whole tasks. Full input includes cache; short replies do not make
+repeated context free. Do not ask participants to measure themselves or certify
+their own final reply. Missing scope means an incomplete comparison, not failed
+product acceptance. Explicit stop limits are still honored through their actual
+supported enforcement route, without inventing a general budget ledger.
 
 ## Binding and read
 
@@ -221,7 +206,7 @@ the caller's preparation, control, cleanup and handoff. An unsupported caller's
 raw counters may expose that cost but cannot qualify it or authorize new work;
 retain discrepancies and do not claim a complete campaign total or savings.
 
-## Freshness and budget gate
+## Freshness and debug completeness
 
 Prefer request-complete snapshots at assignment/retry/report boundaries.
 Observe completion evidence, settled log writes and native usage counters;
@@ -240,14 +225,9 @@ check; don't copy entire transcripts into reports.
 Every report records observation time, last activity, native ID, source/tool
 version, total/input/output/cache breakdown, included children, freshness and
 status (`ready`, `pending`, `unavailable`). Initial bootstrap is part of the total.
-New assignments, workers and retries require ready usage within the mission's
-allowed freshness and applicable authority/stop limits. Reserve capacity for
-verification and reporting. Missing measurement or an explicit stop limit blocks
-assignment. Estimated overruns, threatened reserve, unexpected cost growth and
-no-progress consumption require a human-facing alert before further expansion;
-a JSON receipt or local file alone is not delivery. Active requests can overshoot;
-checkpoint supervision is not provider-enforced hard capping. Budget calibration
-uses measured comparable scopes, not a fixed universal token target.
+A debug report identifies missing scope explicitly. Measurement failure must not
+be disguised as zero or weakened parser success; it does not block operational
+acceptance supported by identity, authority, result and preservation evidence.
 
 Native session counts do not determine weekly subscription percentage. Report
 account quota separately only when the provider actually exposes it. No silent

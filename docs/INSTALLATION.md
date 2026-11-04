@@ -1,6 +1,6 @@
 # 導入
 
-Git、Bash、jq、Herdr、ccusage、利用する公式Codex／Claude Code CLIを用意します。
+Git、Bash、jq、Herdr、利用する公式Codex／Claude Code CLIを用意します。
 必要な版・起動オプションは同梱スクリプトと導入したCLIのhelpで確認してください。
 OrcaやOrcaのorchestrationスキルはv2製品の前提ではありません。
 Claude Codeは許可済みサブスク認証を確認し、API・追加課金経路へ切り替えません。
@@ -66,7 +66,7 @@ symlink、launcherの実行権限と`--help`を公開sourceと照合しました
 Homebrew版ccusageはnative binaryでNode不要、npm経由ではNode wrapperを使用します。
 Herdr 0.9.5／ccusage 20.0.37は検証基準であり、導入方法や最低版の固定ではありません。
 別版は必要なCLI契約・ログ集計の互換性を確認して採用します。
-認証・Herdr内PATH・native使用量の未確認事項は準備待ちとして報告し、
+認証・Herdr内PATH・native identityの未確認事項は準備待ちとして報告し、
 初期化だけでserver・agent・service・旧cronを起動しません。
 
 新規設定の既定値（[コピー用JSON](../skills/hanchou-init/assets/config-template.json)）:
@@ -100,9 +100,13 @@ launcherと側近スキルを選択した後、新しい明示的な利用の前
 
 導入・設定だけでは起動しません。[README](../README.md)の明示的な依頼から開始します。
 初回の採用判断や環境変更時は[検証状況](VALIDATION.md)の該当範囲を確認します。
-通常の依頼ではスキルの起動・計測手順を使い、検証履歴全文の再読は不要です。
-native ID・使用量・Claude認証の未確認項目が残る経路で自律実行を開始しません。
+通常の依頼ではスキルの起動・受入手順を使い、検証履歴全文の再読は不要です。
+native ID・権限・Claude認証の未確認項目が残る経路で自律実行を開始しません。
 
 更新は`hanchou-update`へ明示的に依頼し、導入済みsubset・scope・local変更を保全します。
 新しい内容の採用は次の明示的な起動で確認します。現在の会話を自動終了する契約はありません。
 削除は導入に使った仕組みで対象スキルだけを指定し、projectの設定や成果は別に保全します。
+
+ccusageは外部debugを依頼した場合のみ必要です。通常運用のusage欠測は起動・受入の障害ではありません。
+Claude native receiveは既成の公式integrationと両peerの実効capabilityを確認して明示選択します。
+インストールだけでhooks/trust/inbound設定を変更しません。

@@ -1,7 +1,209 @@
 # v2 検証状況
 
-検証日: 2026-10-20–21。旧版の検査結果はv2の合格根拠に流用しない。
-本書は実施済みの根拠と残件を分ける。設計上の出荷条件は[設計書](HANCHOU_V2_DESIGN.md)のR01–R15。
+検証日: 2026-10-20–2026-11-05。旧版の検査結果はv2の合格根拠に流用しない。
+本書は実施済みの根拠と残件を分ける。設計上の出荷条件は[設計書](HANCHOU_V2_DESIGN.md)のR01–R16。
+
+## 2026-11-04: 通常運用と外部 debug の分離
+
+採用契約は [改訂設計](HANCHOU_V2_DESIGN.md) と各 skill/reference を正本とする。
+以下の過去ログにある自己計測・usage 必須・予算会計は当時の検証条件であり、現在の
+起動/finish/accept の必須要件として復活させない。既存データは保持する。
+
+変更点は identity readiness と usage debug の分離、結果/権限/独立検証による受入、
+明示 Claude peer capability、通常指示の短縮である。`measure-session.sh` の内容・
+厳密な identity/counter/scope 検証は変更していない。Codex の既存 no-daemon 起動を維持する。
+新しい app-server mode は [別設計](CODEX_NATIVE_RECEIVE_DESIGN.md) として未実装。
+
+回帰試験は実 Git/process/socket と mock public CLI を使う。usage 無しの成功、
+legacy optional data の非破壊保持、native/mission/request/authority/result 欠落の拒否、
+old/wrong/held/refused/exit/duplicate notice と process/peer 再起動の誤受入防止を検査する。
+Claude startup fixture は unchanged SessionStart readback と exact process を要求し、
+Codex/古い親・hook欠落・wrapper/ID不一致・inbound hold などを拒否する。
+fixture は native wake の実証ではない。限定実機結果は本節の追記を参照する。
+
+初版修正後の `make check` は成功した（Claude capability 13ケース、lifecycle 31ケースを含む）。
+4 skill の `quick_validate.py` と構造・リンク検査も成功。計測専用 shell の回帰は
+Codex 0.162.1 / 0.163.0 の双方を維持し、shell 本体は基点と同一である。
+
+### 独立レビュー P1/P2 の修正・追試（2026-11-04）
+
+idle/exit 通知を pending approval wake と区別し、manual 操作があり得る間は親が
+公開 Herdr の有限 wait/read を続ける契約へ修正した。承認 wake/handler は未認定で、
+親の観測・回答 capability がない場合は割当前に保留する。通常 owned launch の
+optional native metadata が null のときは、元 process と現在の公開証拠を照合する
+one-shot `bind` を追加した。元 launch receipt は変更せず、binding と公開証拠を hash で保持する。
+
+変更した production code/test で `make check` は成功（lifecycle 36件、Claude 14ケース）。
+遅延 Herdr ID と限定版 `/status` からの binding → finish → 独立 accept、wrong/stale
+ID/request/launch/process、commit drift、証拠改変の拒否を実 Git/process/socket fixture で検査した。
+四 skill だけを配置した配布 fixture の全相対リンクも解決した。最初の targeted 試験で
+見つかった status parser の raw-output 不足と mock の inspect 順序不整合は修正・再検証した。
+
+実機は既存の Codex 親が候補 orchestrator skill を適用し、fresh owned Claude
+2.1.317 / Haiku 5.5 low / manual / subscription の側近1件を監督した。Claude peer ではなく
+既存 Herdr 経路を明示選択。起動の native ID は実際に null で、会話前の official `/status`
+を新しい bind が元 PID/birth/argv/cwd と照合して確定した。子は候補 sokkin skill を実際に Read。
+親の有限 wait が blocked を返し、親自身が exact native tool ID・process・対象・権限を照合し、
+skill/artifact/report Read、artifact/report Write、launcher inspection/finish Bash の計7件を
+各1回の Yes で処理した。外部 tester の通常承認、包括許可、親からの状態質問、子 worker は0件。
+子の実 Read、保存した finish stdout/stderr/exit、FINISHED を確認し、親が値と report を独立検証。
+実 CLI 退出後の inspect は quiet、owned accept も成功した。12分の割当期限は延長していない。
+
+これは direct parent の bounded Herdr approval supervision と通常 owned lifecycle の接続を
+示す1件の smoke である。Claude peer parent の自動 approval wake、peer route 固有の owned
+finish/accept 全工程、任意 host、すべての再起動条件は実機認定していない。後述の旧 peer 試験は
+result notification の証拠としてのみ保持する。追試で token/usage 計測や単独比較は行っておらず、
+一般的な効率比を主張しない。global install・設定変更・新 runtime は行っていない。
+
+### Codex status の Directory 折返し修正（2026-11-05）
+
+候補 `c1df477a986549a0c1222de4d3fcc4e6157742cc` の通常 Codex 0.164.0 起動は
+RUNNING になったが、94桁の公開 `/status` が Directory を2行に折り返し、割当前の
+bind が `native_identity_pending` で停止した。保存 frame に対する元の jq filter の
+offline 再現では、版・Permissions・UUID は通り、単一行の directory 比較だけが失敗した。
+
+固定 source は Codex `rust-v0.164.0` = `6aaac694803004a63c6f393d153c96d22521a6b9` の
+[status renderer](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/status/card.rs#L825)、
+[FieldFormatter](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/status/format.rs#L18)。
+Directory は省略せず、継続行は値の列へ揃え、次の field は Permissions になる。
+Herdr 0.9.5 の installed help と
+[公開契約](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/docs/next/website/src/content/docs/cli-reference.mdx#L246)
+では native metadata は integration 報告時だけで、`recent-unwrapped` は scrollback を含む。
+現在の visible read と元 process の照合を維持し、上記の連続・整列した Directory 行だけを
+復元する。絶対/正しい home 配下の tilde path、表示に残る空白・Unicode を完全一致で照合する。
+[native wrapping](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/wrapping.rs#L978)
+が落とす境界空白は推測せず拒否。省略・部分・重複・不整列、label/UUID の折返しも未対応。
+
+修正後 filter は同じ保存 frame を offline で照合できた。公開回帰には合成 frame だけを使い、
+空白/Unicode を含む実 Git worktree と mock public CLI で wrapped bind→finish→accept、
+stale/restarted/process 不一致・scroll・UNKNOWN・重複 binding・証拠改変の拒否を検査する。
+元 launch receipt と公開証拠の保全を維持し、Claude、no-daemon、計測 shell は変更しない。
+本修正では live actor/比較を再実行しておらず、実機成功や従来の **25.817x** の改善は主張しない。
+元の失敗証拠と lifecycle は書き換えていない。
+
+### Codex 0.164.0 の公開観測と bind 入力契約（2026-11-05）
+
+候補 `69f59f9aa5246705b3f581c68e965d31e0d0398b` の後続1試行では、元 process と
+自然な **94×39** geometry を照合し、bare `/permissions` の **Ask for approval (current)**、
+bare `/keymap` の picker 内 `clear_terminal` 検索による **Global / Clear Terminal = ctrl-l**、
+bare `/debug-config` の有効な固定 config layer を確認した。最初の bare `/status` は
+完全で整列した Directory 継続行、native ID・版・model/effort と **Workspace (Ask for approval)**
+を表示し、extra access の表示はなく scroll offset は0だった。
+[固定 source に基づく観測契約](../skills/hanchou-orchestrator/references/launch.md#codex-01640-public-observation)
+では current marker が OnRequest/User を示し、status・元 process・固定 config と合わせて
+実効 workspace/manual mode を裏付ける。完全な policy serialization や TOML の復元ではない。
+
+ただし親が作った `observedAt` は小数秒と `+00:00` を含み、唯一の bind は jq の
+`%Y-%m-%dT%H:%M:%SZ` 検査で `invalid_evidence` / exit 1 となり、status parser へ到達しなかった。
+現行 wire format は UTC 整数秒・literal `Z`。
+[訂正条件](../skills/hanchou-orchestrator/references/lifecycle.md#bind-delayed-native-identity) は
+既存コードの検証後保存順序と、拒否時の無変更・成功後の重複拒否を確認する fixture に基づく。
+この実機では訂正・再 bind を行わず、割当・課題実行・finish・accept は未実施のまま終了・清掃した。
+live binding 成功や wrapping parser の回帰を示す結果ではなく、失敗は失敗として保全する。
+
+clear 入力は0件。同一 session の clear→新しい `/status` は
+[source が支える候補](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/tui/src/app/input.rs#L742)
+にとどまり、表示回復としては未検証である。今回の追記は文書だけで、追加実機試行・token 比較は
+行わず、従来の **25.817x** と全失敗証拠を変更しない。
+
+### 公開承認経路の全文確認と到達境界（2026-11-05）
+
+PR #103 の候補 `9e635afdf8df8e47225a261df14e6135e5abee8c` に対する停止後調査と、
+隔離した1件の probe を根拠に、[承認監督手順](../skills/hanchou-orchestrator/references/supervision.md#handle-sokkin-approvals)
+だけを補足した。公式 release tag と installed help に対応する固定 source は
+Codex `rust-v0.163.0` = `83086188ae0614bd882818ff1aa23f3194962012`、
+Herdr `v0.9.5` = `2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01`。これは source/版の照合であり、
+binary の再現 build 証明や、後述する過去の入力後未遷移の原因特定ではない。
+
+- Herdr の [key handler](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/app/api/agents.rs#L383)
+  は対象 pane・foreground agent・key を確認して queue へ渡す。
+  `ok` は [queue admission](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/pty/actor/unix.rs#L114)
+  までであり、後続の PTY write 完了や native 承認の acknowledgment ではない。
+- Codex の [全文表示 shortcut](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/tui/src/bottom_pane/approval_overlay.rs#L541)
+  は元の request を渡し、[exec pager](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/tui/src/app/event_dispatch.rs#L3183)
+  が完全な command を表示する。表示 Ctrl+A、[既定の Ctrl+D/Ctrl+U と q](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/tui/src/keymap.rs#L1879)
+  を使う公開経路がある。ただし pager 自体は reason・全 permission fields・内部 request ID の表示を保証しない。
+- [Herdr の key parser](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/config/keybinds.rs#L1281)
+  の表記は `ctrl+a`、`ctrl+d`、`ctrl+u`。`ctrl-a` や `pagedown`、Home、End は未対応。
+  [visible read](https://github.com/herdrdev/herdr/blob/2ecf19a92fc3a7fff75b6ce3655ef04f4625ec01/src/app/api_helpers.rs#L119)
+  の行数や history を増やしても provider 自身の省略は展開しない。
+  blocked alternate-screen での `recent-unwrapped` は `agent_not_idle` となり、迂回経路ではない。
+
+過去の比較 pair 2 では正しい `ctrl+a`、Enter、`y`、Escape、Ctrl+C が `ok` でも、
+同じ server/pane/native/process に結び付く7回の公開 read は同一の pending dialog のままだった。
+保存 native 境界にも該当操作の結果・完了・abort はなく、単なる直後の古い snapshot とは扱えない。
+最初の `ctrl-a` は送信前に拒否されていたが、後の正しく解析された入力が未遷移だった原因は未解決。
+encoded bytes、実 PTY write、Codex 側の入力消費は記録されておらず、viewer、queue、provider 等の
+特定箇所を原因と断定しない。親は Enter 後の遷移未確認で `y` を追加し、既存の再回答禁止に違反した。
+公開表示の省略後に raw native records を参照し、後の読取りには usage counters も含まれた。
+これは参加者 context の手順逸脱であり、通常の承認確認に native log を必須化する根拠にはしない。
+
+隔離 probe は Herdr 0.9.5 / Codex 0.163.0 / Astra medium / no-daemon /
+workspace-write・on-request・user の1件。公開 `/status` と元 process/cwd を照合し、
+65行の無害な comment で省略される固定 marker 書込みを、12分の期限内に直接の親が監督した。
+Ctrl+A による実 pager 出現、3回の Ctrl+D と4つの重なる visible frame による全文再構成、
+`q` による同一 dialog への復帰を確認した。元の reason/permission と native/process/pane binding を
+保持し、選択済みの単発 Yes へ Enter を1回送った後、公開 working・実行結果と marker の内容を確認した。
+内部 request ID や native log を公開判断の必須条件にはせず、正確な現 dialog/操作と bound identity を使った。
+後の offline native 照合も結果・完了と一致したが、actor context に native log は入れていない。
+初めに `pagedown` を誤って指定した2回は `invalid_key` で送信前に拒否されており、失敗記録を保持する。
+その後に source を確認して Ctrl+D を使ったため、初手から無逸脱の試験とは数えない。
+Ctrl+U は source 確認であり、この probe の実ページ移動は Ctrl+D だった。
+
+先の Claude Code 2.1.317 子の追試は7件の単発回答と後続 Read/Write/Bash 成功を照合した限定根拠で、
+Codex 子や任意 reconnect、approval wake の認定ではない。今回の同版 Codex 成功も、過去の失敗を消さず、
+普遍的・安定的な配信や版更新による修復を証明しない。既定 installed 0.164.0 の probe は実施していない。
+startup/manual configuration の照合と、承認入力の到達・実行の信頼性は別の検証範囲である。
+production shell、identity/usage parser、permission defaults の機能修正を裏付ける証拠はなく変更しない。
+
+比較の外部記録では pair 1 は成果品質を満たしたが原期限・回復期限を超過し、全体 3,518,355 対
+単独 218,710 tokens（16.087倍）。pair 2 は失敗・context 汚染を含み、未完子を含む全体は
+少なくとも 6,195,050 対単独 231,856（26.7194倍）で、成功した完了費用ではない。
+これらは今回の再計測ではなく、失敗・cache・承認待ちを差し引かず保存した外部集計である。
+新手順の end-to-end 成功費用や1.2–1.3倍の目標達成を示す結果はない。
+raw native/process/config と詳細 receipt は非公開の検証資料に保持し、公開資料には含めない。
+
+### 候補の限定実機確認（2026-11-04）
+
+Herdr 0.9.5 / Claude Code 2.1.317、既存 subscription、native UI の
+Haiku 5.5 / low / manual で確認した。既存 plugins/MCP は継承し、専用 server と
+明示した一時 settings の official SessionStart hook だけを使った。候補 launcher が
+会話 ACK なしで native ID / cwd / process を返し、公開 native UI で双方の current peer を
+確認後、SendMessage + notify_when_idle で1件の JSON 作成課題を送った。
+実際の送信 receipt を回収して親の turn を終え、native idle notice による新 turn で
+親が成果を Read し、request/native と2つの計算結果を独立確認した。課題送信後の親の
+tool は SendMessage と Read だけで、定期的な親モデルによる完了確認は行っていない。
+
+子の Write と親の別 worktree に対する Read は native permission UI で停止した。
+外部の試験担当が exact tool_use_id / native / process / 対象ファイルを照合して
+各1回の Yes を選び、receipt と再開を確認した。peer message は許可を代替しなかった。
+これは外部 controller による単発承認の確認であり、親自身の approval supervision や
+native approval 自動転送の実証ではない。idle 通知は pending Write を起こさなかった。
+この結果を根拠に、manual 承認があり得る親へ turn 終了を指示してはならない。
+shared session で起動・通知・成果検証を通した試験で、native owned-instance の
+finish/accept や4 skill 全体のモデルによる遂行試験ではない。lifecycle は別の回帰と
+real Herdr server / agent fixture の試験で確認した。
+
+実機で MCP foreground process の `argv: null` が識別処理を失敗させ、failure receipt も
+空になる不具合を発見した。無関係な process を除外し、候補値を検証してから receipt の
+process へ代入する修正と、必ず1件の failure JSON を要求する回帰を追加した。
+失敗した子に課題は送らず保全・終了後に新しい attempt を使った。別の準備試行では
+版番号付き binary 名の未検出と、再利用 pane の古い native ID を観測し、不一致を成功と
+扱わず fresh pane で照合した。hook の exit 0 だけでは識別の保証にならない。
+
+同じ計算・JSON Write/Read 課題を同じ model/effort/manual/subscription/継承 tools 条件の
+単独 fresh root でも1回実行し、双方の成果を確認した。外部から exact native transcript の
+request/message ID を重複排除した観測では、候補の課題部分は親4 requests + 子2 requests、
+full input（cache込み）322,428 + output 3,389 = 325,817 tokens、単独は3 requests、
+154,201 + 1,504 = 155,705 tokens だった。候補の親の readiness を含めると482,706、
+さらに終了した準備再試行を含む候補側の観測分は640,034 tokens。役割・prompt/context・
+tool の並列化は同一ではなく、各1標本で、価格・quota・一般的な効率比を示さない。
+起動のみで transcript がない試行、外部 controller、背景 API 処理はこの観測に含まれず、
+欠測を0とは置いていない。Claude の観測は ccusage 照合済み計測ではない。
+
+raw native/UI/process receipts と成果を保全後、観測した所有61 PID、server socket の消失を
+確認した。3つの probe worktree は通常の Orca 削除を使い、実装 worktree はレビュー用に
+保持する。installed skills、global settings、main の固定設定を配備先として更新していない。
 
 ## 配布と起動スクリプト
 

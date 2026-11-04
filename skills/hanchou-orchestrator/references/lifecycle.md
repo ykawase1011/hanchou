@@ -37,12 +37,73 @@ not the disposable worktree. `STARTING`/`UNKNOWN` record a partial or uncertain
 launch; neither is eligible for timed cleanup. Preserve the receipt and inspect
 the same attempt instead of retrying a new launch blindly.
 There is no supported `STARTING`/`UNKNOWN` to `RUNNING` transition. Manual
-bootstrap, native identity/usage evidence and clearing an initial CLI popup do
+bootstrap, native identity evidence and clearing an initial CLI popup do
 not promote the record. `finish` requires `RUNNING`; `resume` requires an
-unaccepted `FINISHED` record. Withhold real work, preserve the failure and its
-cost, and use the [partial-failure procedure](launch.md#receipt-and-partial-failure)
+unaccepted `FINISHED` record. Withhold real work, preserve the failure, and use the [partial-failure procedure](launch.md#receipt-and-partial-failure)
 for explicit cleanup and a separate new-attempt decision. Do not edit lifecycle
 state or report cleanup of a failed attempt as successful finish/accept/reap.
+
+## Bind delayed native identity
+
+An ordinary successful launch may be RUNNING while optional Herdr
+`agent_session` is null. This is distinct from UNKNOWN: withhold assignment until
+the same original CLI's identity and effective settings are publicly established.
+The launcher captures exact PID/birth/cwd/argv when available even on the ordinary
+path. If that original process anchor is missing, retain the attempt; a later
+self-report or new process cannot supply it retroactively.
+
+For a resultContract 2 owned RUNNING instance, use `--lifecycle bind --instance KEY
+--evidence IDENTITY_JSON` before real work. One-shot means one successful immutable
+binding. Provide:
+
+```json
+{
+  "version": 1,
+  "missionId": "the-launch-mission",
+  "attemptId": "the-launch-attempt",
+  "requestId": "HANCHOU_REQUEST_the-launch-token",
+  "nativeId": "the-publicly-observed-native-id",
+  "source": "herdr",
+  "launchHash": "Git blob hash from the saved full launch receipt",
+  "observedAt": "2026-11-04T12:00:00Z"
+}
+```
+
+The shell itself reads current public pane/process evidence, matches the original
+server, process incarnation/arguments/cwd, worktree branch and launch commit, and
+requires the public native ID to agree. `observedAt` is the real public observation
+time in UTC whole seconds with literal `Z`: `YYYY-MM-DDTHH:MM:SSZ`. Capture it at
+that observation, for example with `date -u '+%Y-%m-%dT%H:%M:%SZ'`. Fractional
+seconds and numeric offsets are not supported by this contract. It must be within
+five minutes, no earlier than launch and not in the future. Never give a stale
+observation a newly generated timestamp; refresh the public observation instead.
+Optional local syntax check: `jq -e '.observedAt | . == (fromdateiso8601 | todateiso8601)' IDENTITY_JSON`.
+This checks format only; a caller's timestamp or ID alone is never sufficient.
+
+A caller-owned syntactic evidence-validation failure may be corrected on the same
+still-RUNNING, unbound original instance only after verifying no binding or state
+change, no partial `identity/` evidence, and the unchanged launch/original process.
+Retain the rejected input and complete receipt, refresh the public observation,
+and use a new corrected evidence file. An error code alone does not prove this
+condition. This permits no repeated approval/prompt input or replay after uncertain
+effect; all original identity, authority and lifecycle gates remain in force.
+
+If metadata remains absent, `source: native-status` reads the **current unscrolled
+official `/status` UI** in that same pane. Open it through public controls first;
+the bounded parser supports Claude 2.1.317 interactive Session ID/cwd and Codex
+0.164.0 Session/Directory/Permissions. Other formats, missing/duplicate fields,
+another cwd, mismatched public metadata or changed process fail closed. This
+does not certify model/effort/permission settings: corroborate them separately.
+Close the status UI before sending the task. No history scraping, usage tool,
+LLM acknowledgement, hook installation or record editing is needed.
+
+The immutable original launch receipt remains unchanged. A separate `identity/`
+directory preserves the binding and public observations with Git blob hashes;
+the record stores `nativeId` and `identityBinding`. Finish rechecks the original
+live process, and inspect/finish/accept/reap verify the preserved binding evidence.
+Do not switch threads in the process or reuse a restarted CLI. Binding cannot
+replace a known ID, overwrite earlier evidence, promote UNKNOWN/STARTING or repair
+legacy records without a captured launch anchor. Codex keeps `--no-daemon`.
 
 ## Read-only observation
 
@@ -60,7 +121,7 @@ and matching Git blob hash for FINISHED, owned pane shell PID/birth/foreground
 cwd, agent states, owned process identities and `quiet`. Read the report at that
 returned path for independent quality judgment. `quiet:false` is a busy
 observation; `quiet:true` describes this observation only. Neither certifies
-completion, settled usage, preservation, acceptance or permission to stop work.
+completion, preservation, acceptance or permission to stop work.
 
 The helper supports bound RUNNING/FINISHED records with a preserved successful
 launch receipt. It rejects missing/changed identity, unknown agent/process state,
@@ -81,134 +142,103 @@ live inspection keeps its failure and needs a separately declared new attempt.
 
 ## Completion and acceptance
 
-Sokkin preserves its artifacts and report, archives working receipts to the
-assignment's fixed durable destination and verifies their completeness/hashes,
-stops owned workers and verifies their exit, then records completion before its
-final reply. The completion receipt itself must also survive working-directory
-removal; the supervisor can preserve that final tail during acceptance:
-
-```sh
-"$LAUNCH_SCRIPT" --project "$PROJECT_ROOT" --lifecycle finish \
-  --instance "$INSTANCE_KEY" --evidence "$COMPLETION_REPORT"
-```
-
-This copies the report into the instance directory, sets `status: FINISHED` and
-UTC `finishedAt`. The same server incarnation must still be verifiable; any supplied
-pane environment binding (instance key/record, mission and attempt) must match.
-It does not imply that the final reply's usage is settled, that
-the supervisor accepted the result, or that the CLI has exited. Do not mark a
-paused, blocked, failed or still-running assignment FINISHED merely to reclaim it.
-Shared-session missions have no lifecycle record and use ordinary result reporting.
-
-For FINISHED-to-accept, read the record at the launch receipt's exact path and
-the preserved report beside it. Match mission/attempt, native ID, server/pane and
-worktree to that successful launch; require FINISHED, valid `finishedAt`, no
-lock, and the report's matching Git blob hash. Obtain the final reply's settled
-measurement using the current assignment marker and native binding. An active
-request or missing/changed evidence stops finalization; idle is insufficient.
-
-After independent quality judgment and artifact preservation, normally exit
-the owned CLI through its supported controls. For qualified Codex launches,
-match the current pane process PID, birth, cwd and arguments to the saved launch
-process binding, and check any reported Herdr native ID agrees. Missing Herdr
-metadata stays unknown; the independently qualified native log/marker and final
-usage remain required. Process attributes alone are not native identity proof.
-A missing process binding, mismatch, ambiguous owner or pending request requires
-diagnosis before exit, not an inferred match. Verify the observed process has
-actually terminated; do not signal a reused PID or treat connection loss as exit.
-
-Only after CLI exit, use `inspect` to recheck FINISHED/report and the current
-owned process inventory and idle shell cwd, then submit acceptance. Keep
-dependent mechanical checks in one bounded tool execution where supported, with
-assertions before each operation and each full receipt/exit status preserved.
-Retain a busy/unavailable result and inspect the same attempt.
-Batching does not replace the supervisor's judgment or the checks below. Missing
-evidence, active usage, a failed assertion or a pending approval stops dependent
-operations; inspect the same attempt instead of repeating completion or exit.
-Make that stop effective in the shell: explicitly propagate failed reads,
-JSON parsing and Python/assertion commands before any later mutation. An ordinary
-shell can continue after a failed child command. Handle expected nonzero results,
-such as an absent PID, separately from unexpected verification failures.
-Use installed help for unresolved command syntax, including pane selectors;
-do not guess positional arguments. Read back acceptance before the ordinary
-reap checkpoint; a retained server is not a failed acceptance or permission to
-force cleanup.
-
-The lifecycle record's `reportHash` and `acceptanceHash` are Git blob object IDs
-from `git hash-object`, not file SHA-256 checksums. Use that contract when checking
-the preserved report and acceptance; archive checksums are separate evidence.
-
-The supervisor checks acceptance criteria, preserves artifacts outside disposable
-panes/worktrees, obtains the final settled usage for sokkin and independent
-workers, exits their CLIs, and verifies process termination. If completed
-worktrees will be removed while the accepted server is retained, move every
-verified idle pane shell out of those worktrees to an owned durable directory
-through the public pane controls **before acceptance**. Check each shell's actual
-cwd and idle process state afterwards. This includes worker panes. Do not change
-an accepted pane later to make its worktree disposable; retain the worktree until
-ordinary lifecycle cleanup if that preparation was omitted.
-
-Only then record acceptance with a local JSON file containing:
+New owned launches use `resultContract: 2`. The report submitted to finish is one
+JSON object with the actual launch mission/attempt/native and current `requestId`:
 
 ```json
 {
   "missionId": "the-launch-mission",
   "attemptId": "the-launch-attempt",
-  "artifactsPreserved": true,
-  "workersStopped": true,
-  "usage": [{
-    "status": "ready",
-    "nativeId": "the-verified-native-id",
-    "currentRequest": {"state": "settled", "completedAt": "2026-10-21T12:00:00Z"},
-    "cwd": "/verified/sokkin/worktree",
-    "observedAt": "2026-10-21T12:00:00Z",
-    "tool": {
-      "inputTokens": 1000, "cacheReadTokens": 10000, "cacheCreationTokens": 0,
-      "outputTokens": 1345, "reasoningOutputTokens": 345, "totalTokens": 12345
-    },
-    "scope": {
-      "kind": "native session cumulative", "includedNativeIds": ["the-verified-native-id"],
-      "includedChildren": [], "missionDelta": false, "otherSessionsIncluded": false
-    }
-  }]
+  "requestId": "HANCHOU_REQUEST_the-current-token",
+  "nativeId": "the-verified-native-id",
+  "status": "succeeded",
+  "artifactRefs": ["durable artifact or commit reference"],
+  "verificationRefs": ["durable actual check result"],
+  "authority": {"approved": true, "source": "pinned policy or explicit delegation", "scope": "the concrete task"}
 }
 ```
 
-The `usage` entries above illustrate the required boundary fields: insert the
-**full real measurement receipts**, including counters, scope and freshness, not
-these placeholders. The shell checks unique native IDs, nonnegative integral counters,
-their sum, and a single-session cumulative scope without included children or other
-sessions. Supply separate, nonoverlapping receipts for independent workers. Counter
-fields use disjoint input/cache-read/cache-creation/output categories; reasoning is a
-subset of output, not an additional summand. Do not invent zeros for missing counters.
-The sokkin cwd/native binding must match. Each request completion must fall between
-instance creation and observation; sokkin completion must also be at or after
-`finishedAt`. A freshly observed pre-final receipt does not satisfy that boundary.
-UTC fractional seconds from native logs are accepted at the lifecycle clock's
-one-second precision. For other providers use their qualified settled accounting
-contract normalized to these fields; missing accounting blocks acceptance.
-Artifact locations and acceptance findings belong in the report/acceptance file.
-The booleans are supervisor attestations backed by those findings, not checks
-that the shell can independently perform.
+References must be real and readable by the accepting parent. Add criterion
+findings and limitations as useful fields. The booleans/authority are attestations,
+not a security boundary or independent proof the referenced work is good. The
+parent verifies content. Native-receive reports also include the exact `receive`
+binding from [that route](native-receive.md). Usage can be omitted entirely.
 
-```sh
-"$LAUNCH_SCRIPT" --project "$PROJECT_ROOT" --lifecycle accept \
-  --instance "$INSTANCE_KEY" --evidence "$ACCEPTANCE_JSON"
+Sokkin preserves artifacts and receipts, stops/verifies owned workers, writes the
+report and invokes `--lifecycle finish --instance KEY --evidence REPORT_PATH`.
+The shell binds environment mission/instance, server incarnation and required
+result fields, copies the report to `report.txt`, hashes it with Git blob hashing
+and sets FINISHED. Native receive additionally rechecks parent and child process/
+native identity. Held/refused/failed/exited/idle-only results fail. FINISHED means
+reported, not independently accepted or permission to stop resources. Read the
+receipt before the final reply; preserve this tail before deleting working files.
+
+The parent independently verifies the criteria, actual artifact and test evidence,
+authority and human-checkout preservation. Match the record/report/native identity
+to the successful launch. Verify the current process binding before normally
+exiting owned CLIs through public controls. Native peer replies are not native
+approvals. Unknown identity, pending requests, changed process birth or ambiguous
+ownership requires inspection of the same attempt. Confirm actual termination;
+connection loss/TUI disappearance alone is not proof of all server/thread exit.
+
+Only after exit, use one `inspect` if its report/inventory readback is useful;
+accept independently rechecks current server and quiet inventory. Prepare idle
+shells' durable cwd before acceptance if their worktree will be removed while
+the server remains. Stop a batch on failed reads/parses/assertions, and collect
+each submitted command's complete receipt before the next dependent action.
+
+Submit one acceptance JSON through `--lifecycle accept --instance KEY --evidence
+ACCEPTANCE_JSON`:
+
+```json
+{
+  "missionId": "the-launch-mission",
+  "attemptId": "the-launch-attempt",
+  "requestId": "HANCHOU_REQUEST_the-current-token",
+  "nativeId": "the-verified-native-id",
+  "artifactsPreserved": true,
+  "workersStopped": true,
+  "independentAcceptance": true,
+  "authority": {"approved": true, "source": "pinned delegation", "scope": "accepted task"},
+  "result": {
+    "status": "succeeded",
+    "reportHash": "actual Git blob hash of preserved report.txt",
+    "artifactRefs": ["verified artifact reference"],
+    "verificationRefs": ["independent check reference"]
+  }
+}
 ```
 
-The shell requires the same server incarnation, no agents, and only the observed
-pane shells among its descendants. Unknown shell kinds or shell command/script
-arguments are retained for inspection rather than treated as idle. It copies the acceptance receipt, hashes both
-evidence files, and records `acceptedAt` and the quiescent pane/process inventory.
-Do not manually edit lifecycle fields. An instance lock serializes transitions;
-an abandoned lock is a reason to inspect the interrupted operation, not steal it.
-Do not add commands/panes to an accepted session outside this protocol.
+The report hash is `git hash-object`, not SHA-256. The shell requires matching
+native/request identity, authority, result references and preservation attestations,
+unchanged report, same server incarnation, no agents and only verified idle shells
+among all descendants. It preserves acceptance.json, hash, time and exact inventory.
+Missing usage never blocks acceptance, while missing result/identity still does.
+Optional notification fields are checked as described in native receive; notices
+do not replace the result/independentAcceptance. A second acceptance is rejected,
+so a duplicate notice cannot replay acceptance. No exactly-once transport claim.
 
-Before assigning additional work to the **same still-live CLI**, use `--lifecycle
-resume --instance KEY` to change FINISHED to RUNNING and clear completion and
-acceptance. Acceptance has already verified CLI exit and cannot be resumed. If the CLI has
-already exited, launch a fresh attempt/worktree instead
-of restarting it in the old checkout. A later completion gets a new timestamp.
+Before another request to the same **still-live** unaccepted CLI, `--lifecycle
+resume --instance KEY` clears completion and generates a fresh `requestId` in the
+record. Read the returned marker before dispatch; the previous report/notice
+cannot finish the continuation. Accepted instances cannot resume. A stopped or
+restarted CLI needs a fresh attempt/worktree, not edited lifecycle data.
+
+## Compatibility
+
+Existing version-1 records without `resultContract: 2` are kept, not migrated or
+deleted. Their preserved text reports remain usable. Existing accepted evidence
+is still checked by its original hashes/inventory before ordinary reaping; it is
+not retroactively rewritten. A new acceptance of an unaccepted legacy result must
+supply native identity, independent result/authority/preservation evidence as above;
+old usage is insufficient. If its native ID was never bound, retain it for explicit
+inspection instead of inferring identity from usage. The shell does not promote
+UNKNOWN/STARTING or modify legacy records to invent that binding.
+
+Optional `usage`, counters and old `usageReadiness` fields are preserved verbatim
+in provided evidence; operational code neither validates nor certifies them as
+measurements. External debug continues to apply the strict original
+[measurement contract](usage.md). No installed history/settings/data is deleted.
 
 ## Opportunistic cleanup
 
