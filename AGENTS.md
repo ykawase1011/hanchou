@@ -2,8 +2,8 @@
 
 This repository distributes Hanchou v2 Agent Skills: `hanchou-orchestrator`,
 `hanchou-sokkin`, `hanchou-init`, and `hanchou-update`. Keep the orchestrator
-provider-neutral, explicitly triggered, and focused on requests, results, and
-usage supervision. Sokkin owns execution, workers, verification, and integration.
+provider-neutral, explicitly triggered, and focused on requests, delegated decisions, and
+verified results. Sokkin owns execution, workers, verification, and integration.
 
 The only production executables allowed are two narrowly scoped, one-shot shells.
 `skills/hanchou-orchestrator/scripts/launch-sokkin.sh` wraps existing Git,
@@ -30,8 +30,8 @@ This reading distinction does not waive the placement and preservation rules bel
 
 Preserve the human checkout, index, uncommitted changes, and existing resources.
 Pin project policy/config sources independently of execution placement; do not
-copy ignored files or silently change sources. Missing native identity or usage
-measurement blocks real work. Claude Code uses subscription authentication only.
+copy ignored files or silently change sources. Missing native identity or authority blocks real work. Usage is external debug,
+never participant self-accounting or an operational acceptance gate. Claude Code uses subscription authentication only.
 Do not revive removed cron, improvement publishing, status-view, Orca Run, or
 mandatory automatic handoff features. Existing installed data is not deleted
 merely because its old feature is removed from this repository.

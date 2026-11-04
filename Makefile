@@ -10,4 +10,5 @@ check:
 	HANCHOU_TEST_CODEX_VERSION=0.163.0 HANCHOU_TEST_STARTUP_CASES='success compact-shared pane-version native-version counters late-native late-native-tool late-native-ambiguous no-request prompt-stalled prompt-blocked prompt-malformed process-birth-missing process-birth-change process-final-args process-final-pid process-final-ambiguous manual-success manual-sandbox manual-policy manual-reviewer manual-missing' bash tests/test-startup-qualification.sh
 	bash tests/test-measure-session.sh
 	HANCHOU_TEST_CODEX_VERSION=0.163.0 bash tests/test-measure-session.sh
+	bash tests/test-claude-receive.sh
 	python3 tests/test-herdr-lifecycle.py

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in Herdr server/workspace smoke. Agent start and usage are explicit fixtures.
+"""Opt-in Herdr server/workspace smoke. Agent start is an explicit fixture.
 Usage: python3 tests/test-herdr-lifecycle-live.py /absolute/path/to/herdr
 No real agent, bootstrap or mission inference is run.
 """
@@ -58,17 +58,18 @@ os.execv(real,[real,*a])
     name=None; completed=False
     try:
         r=call('--mission','server-smoke');name=r['herdr']['session'];key=r['lifecycle']['instanceKey'];record=Path(r['lifecycle']['record'])
-        report=root/'report';report.write_text('Server-only fixture. No actual agent/usage qualification.\n')
+        result={'missionId':r['missionId'],'attemptId':r['attemptId'],'requestId':r['requestId'],
+                'nativeId':'server-only-fixture','status':'succeeded','artifactRefs':['server fixture'],
+                'verificationRefs':['real Herdr readback'],
+                'authority':{'approved':True,'source':'test invocation','scope':'owned server-only fixture'}}
+        report=root/'report';report.write_text(json.dumps(result))
         call('--lifecycle','finish','--instance',key,'--evidence',str(report))
-        now=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        acceptance=root/'accept.json';acceptance.write_text(json.dumps({'missionId':r['missionId'],'attemptId':r['attemptId'],
-              'artifactsPreserved':True,'workersStopped':True,'usage':[{'status':'ready','nativeId':'server-only-fixture',
-                      'currentRequest':{'state':'settled','completedAt':now},
-                      'cwd':r['worktree']['path'],'tool':{'inputTokens':0,'cacheReadTokens':0,'cacheCreationTokens':0,
-                          'outputTokens':0,'reasoningOutputTokens':0,'totalTokens':0},
-                      'scope':{'kind':'native session cumulative','includedNativeIds':['server-only-fixture'],
-                          'includedChildren':[],'missionDelta':False,'otherSessionsIncluded':False},
-                      'observedAt':now}]}))
+        state=json.loads(record.read_text())
+        acceptance=root/'accept.json';acceptance.write_text(json.dumps({
+            **{k:result[k] for k in ('missionId','attemptId','requestId','nativeId','authority')},
+            'artifactsPreserved':True,'workersStopped':True,'independentAcceptance':True,
+            'result':{'status':'succeeded','reportHash':state['reportHash'],
+                      'artifactRefs':result['artifactRefs'],'verificationRefs':result['verificationRefs']}}))
         import time
         for retry in range(10):
             try:
@@ -87,7 +88,7 @@ os.execv(real,[real,*a])
         result=call('--lifecycle','reap','--instance',key);assert result['status']=='CLOSED'
         assert Path(r['worktree']['path']).exists()
         completed=True
-        print(json.dumps({'ok':True,'session':name,'status':'CLOSED','scope':'real Herdr server/workspace/process cleanup; agent start and usage fixture only'}))
+        print(json.dumps({'ok':True,'session':name,'status':'CLOSED','scope':'real Herdr server/workspace/process cleanup; agent start fixture only; no usage gate'}))
     finally:
         if name is None:
             records=list((repo/'.hanchou/instances').glob('*/instance.json'))

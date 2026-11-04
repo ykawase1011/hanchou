@@ -37,3 +37,10 @@ file installation from adoption by a running conversation. Use a fresh explicit
 invocation to adopt v2; do not auto-close the current chat, rebind ownership or
 start a successor. Report installed version/paths, local changes, obsolete copies
 removed or retained and remaining manual adoption steps.
+
+Usage separation does not delete old counters, reports, readiness or lifecycle
+records. Preserve optional legacy fields verbatim; new missions use identity and
+result/authority evidence without requiring usage. Do not install native receive
+hooks, change peer inbound/trust settings, or turn a prior Codex no-daemon launch
+into an app-server/queue mode. Select the compatible launcher/companion together;
+see [compatibility](../hanchou-orchestrator/references/lifecycle.md#compatibility).

@@ -1,7 +1,69 @@
 # v2 検証状況
 
-検証日: 2026-10-20–21。旧版の検査結果はv2の合格根拠に流用しない。
-本書は実施済みの根拠と残件を分ける。設計上の出荷条件は[設計書](HANCHOU_V2_DESIGN.md)のR01–R15。
+検証日: 2026-10-20–2026-11-04。旧版の検査結果はv2の合格根拠に流用しない。
+本書は実施済みの根拠と残件を分ける。設計上の出荷条件は[設計書](HANCHOU_V2_DESIGN.md)のR01–R16。
+
+## 2026-11-04: 通常運用と外部 debug の分離
+
+採用契約は [改訂設計](HANCHOU_V2_DESIGN.md) と各 skill/reference を正本とする。
+以下の過去ログにある自己計測・usage 必須・予算会計は当時の検証条件であり、現在の
+起動/finish/accept の必須要件として復活させない。既存データは保持する。
+
+変更点は identity readiness と usage debug の分離、結果/権限/独立検証による受入、
+明示 Claude peer capability、通常指示の短縮である。`measure-session.sh` の内容・
+厳密な identity/counter/scope 検証は変更していない。Codex の既存 no-daemon 起動を維持する。
+新しい app-server mode は [別設計](CODEX_NATIVE_RECEIVE_DESIGN.md) として未実装。
+
+回帰試験は実 Git/process/socket と mock public CLI を使う。usage 無しの成功、
+legacy optional data の非破壊保持、native/mission/request/authority/result 欠落の拒否、
+old/wrong/held/refused/exit/duplicate notice と process/peer 再起動の誤受入防止を検査する。
+Claude startup fixture は unchanged SessionStart readback と exact process を要求し、
+Codex/古い親・hook欠落・wrapper/ID不一致・inbound hold などを拒否する。
+fixture は native wake の実証ではない。限定実機結果は本節の追記を参照する。
+
+最終修正後の `make check` は成功した（Claude capability 13ケース、lifecycle 31ケースを含む）。
+4 skill の `quick_validate.py` と構造・リンク検査も成功。計測専用 shell の回帰は
+Codex 0.162.1 / 0.163.0 の双方を維持し、shell 本体は基点と同一である。
+
+### 候補の限定実機確認（2026-11-04）
+
+Herdr 0.9.5 / Claude Code 2.1.317、既存 subscription、native UI の
+Haiku 5.5 / low / manual で確認した。既存 plugins/MCP は継承し、専用 server と
+明示した一時 settings の official SessionStart hook だけを使った。候補 launcher が
+会話 ACK なしで native ID / cwd / process を返し、公開 native UI で双方の current peer を
+確認後、SendMessage + notify_when_idle で1件の JSON 作成課題を送った。
+実際の送信 receipt を回収して親の turn を終え、native idle notice による新 turn で
+親が成果を Read し、request/native と2つの計算結果を独立確認した。課題送信後の親の
+tool は SendMessage と Read だけで、定期的な親モデルによる完了確認は行っていない。
+
+子の Write と親の別 worktree に対する Read は native permission UI で停止した。
+外部の試験担当が exact tool_use_id / native / process / 対象ファイルを照合して
+各1回の Yes を選び、receipt と再開を確認した。peer message は許可を代替しなかった。
+これは単発承認の確認であり、親への native approval 自動転送の実証ではない。
+shared session で起動・通知・成果検証を通した試験で、native owned-instance の
+finish/accept や4 skill 全体のモデルによる遂行試験ではない。lifecycle は別の回帰と
+real Herdr server / agent fixture の試験で確認した。
+
+実機で MCP foreground process の `argv: null` が識別処理を失敗させ、failure receipt も
+空になる不具合を発見した。無関係な process を除外し、候補値を検証してから receipt の
+process へ代入する修正と、必ず1件の failure JSON を要求する回帰を追加した。
+失敗した子に課題は送らず保全・終了後に新しい attempt を使った。別の準備試行では
+版番号付き binary 名の未検出と、再利用 pane の古い native ID を観測し、不一致を成功と
+扱わず fresh pane で照合した。hook の exit 0 だけでは識別の保証にならない。
+
+同じ計算・JSON Write/Read 課題を同じ model/effort/manual/subscription/継承 tools 条件の
+単独 fresh root でも1回実行し、双方の成果を確認した。外部から exact native transcript の
+request/message ID を重複排除した観測では、候補の課題部分は親4 requests + 子2 requests、
+full input（cache込み）322,428 + output 3,389 = 325,817 tokens、単独は3 requests、
+154,201 + 1,504 = 155,705 tokens だった。候補の親の readiness を含めると482,706、
+さらに終了した準備再試行を含む候補側の観測分は640,034 tokens。役割・prompt/context・
+tool の並列化は同一ではなく、各1標本で、価格・quota・一般的な効率比を示さない。
+起動のみで transcript がない試行、外部 controller、背景 API 処理はこの観測に含まれず、
+欠測を0とは置いていない。Claude の観測は ccusage 照合済み計測ではない。
+
+raw native/UI/process receipts と成果を保全後、観測した所有61 PID、server socket の消失を
+確認した。3つの probe worktree は通常の Orca 削除を使い、実装 worktree はレビュー用に
+保持する。installed skills、global settings、main の固定設定を配備先として更新していない。
 
 ## 配布と起動スクリプト
 

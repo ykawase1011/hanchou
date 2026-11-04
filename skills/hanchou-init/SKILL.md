@@ -16,17 +16,17 @@ external/shared destination must not be overwritten as if it were local.
 
 ## Tool readiness
 
-Check Git, Bash 3.2+, jq, Herdr, ccusage and the selected official agent CLI on
+Check Git, Bash 3.2+, jq, Herdr and the selected official agent CLI on
 the intended execution host. Record resolved executable paths, versions and
 existing package-manager ownership. A missing PATH entry is not proof that a
 tool is uninstalled; inspect existing installations before adding another copy.
 Reuse compatible installed tools. Do not silently upgrade, downgrade or replace
 an installation to match a version number.
 
-Herdr 0.9.5 and ccusage 20.0.37 are qualified baselines, not hard-coded minimum
+Herdr 0.9.5 is the qualified baseline, not hard-coded minimum
 versions or requirements to use a particular installer. For another version,
-check installed help and the required local-session/usage contracts; changed
-log or output formats need renewed qualification before real work.
+check installed help and the required local-session/identity contracts. Usage tools are optional external-debug dependencies;
+check ccusage 20.0.37 only when debug is requested.
 
 If a tool is missing, present the concrete tools, available versions, destination
 and installation method for the user to choose. Offer Homebrew when available
@@ -54,9 +54,10 @@ policy. Preserve existing records and use the project's ignore policy for them.
 If an authorized named local Herdr session already exists, check PATH and auth
 in an available shell pane without disturbing agents; otherwise report the
 in-session checks as pending. Do not create/start a server, service or agent just
-to pass initialization. Where existing identified logs are available, verify
-offline usage against native records. Missing identity/logs are pending, not
-zero usage, and tool installation alone does not establish mission readiness.
+to pass initialization. Tool installation alone does not establish mission readiness. For explicitly
+selected Claude native receive, record official SessionStart availability and
+both root peers' native tool/inbound capabilities factually; never install hooks
+or widen trust silently. Unavailable evidence remains pending.
 
 ## Project configuration
 
@@ -87,7 +88,7 @@ omissions during init/update. Explicit user/mission instructions override these
 defaults without writing them back. This does not translate policy/artifacts
 or change permissions. Select a compatible launcher and companion before enabling
 new keys; do not change a fixed config used by an older running mission.
-Budget and allowed model choices may be recorded in `policy.md` or the mission.
+Explicit stop/budget limits and allowed model choices may be recorded in `policy.md` or the mission.
 Optional `sokkin.effort` is `low`, `medium`, `high` or null; null/omission uses the
 CLI default. A bounded routine mission may explicitly choose a lighter sokkin,
 such as Sol/low. Worker selection is separate: prefer the least costly approved
@@ -95,10 +96,9 @@ model sufficient for the assigned work, with Sol as a candidate when available.
 Verify model availability before launch and observed model/effort after startup;
 do not silently substitute an unavailable default or start inference during init.
 
-Keep the supervisor focused on purpose, acceptance criteria, authority and budget.
+Keep the supervisor focused on purpose, acceptance criteria and authority.
 Sokkin owns the execution plan; do not make the supervisor pre-plan every worker
-assignment just to support a lighter sokkin. Evaluate total mission usage and
-rework, not just the sokkin's own token count.
+assignment just to support a lighter sokkin. Performance comparisons are external debugging, not participant self-accounting.
 
 Keep local configuration ignored by default through the repository's actual
 `git rev-parse --git-path info/exclude`; preserve an explicit versioned/shared
@@ -117,6 +117,6 @@ evidence. This records a route, not permission for future operations.
 When local setup is requested, keep this report at `.hanchou/readiness.md` under the
 same local-only policy; preserve unrelated/custom content. It is optional evidence,
 not a registry or a claim of future readiness: later missions verify actual
-placement, changed sources, live launcher state and new native identity/usage.
+placement, changed sources, live launcher state and new native identity/effective settings.
 Initialization does not create a worktree, start an agent, activate a schedule
 or delete old `.hanchou` artifacts.

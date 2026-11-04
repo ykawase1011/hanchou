@@ -180,7 +180,7 @@ for attempt in first second; do
   assert_json "$fixture/$attempt.json" '.version == 2 and .ok == true and .missionId == "sample" and (.attemptId | type == "string" and length > 0)'
   assert_json "$fixture/$attempt.json" '.lifecycle.owned == false and .lifecycle.status == null'
   assert_json "$fixture/$attempt.json" '.herdr.workspaceId == "fixture-workspace" and .herdr.tabId == "fixture-tab" and .herdr.paneId == "fixture-pane"'
-  assert_json "$fixture/$attempt.json" '.sokkin.agent == "codex" and .sokkin.nativeThreadId == "fixture-native-thread" and .sokkin.nativeSessionId == null and .usageReadiness.status == "pending"'
+  assert_json "$fixture/$attempt.json" '.sokkin.agent == "codex" and .sokkin.nativeThreadId == "fixture-native-thread" and .sokkin.nativeSessionId == null and .usageReadiness.status == "not_required"'
   assert_json "$fixture/$attempt.json" '.sokkin.requestedModel == "gpt-6-astra" and .sokkin.requestedEffort == "medium"'
   assert_json "$fixture/$attempt.json" '(.startedAt|test("Z$")) and .sourceSnapshot.untrackedContentVerified == false'
   [[ $(jq -r .sourceSnapshot.head "$fixture/$attempt.json") == "$base" ]] || fail 'source snapshot HEAD differs'

@@ -11,7 +11,7 @@
 4. 対象projectの`.hanchou/policy.md`を読み直し、Orca固有の配置・Run・cron前提を整理します。
    `.hanchou/config.json`にversion 2と側近のagent・modelを設定します。既存方針を無断で上書きしません。
 5. [検証状況](VALIDATION.md)の条件を満たした経路で、小さな依頼を明示的に開始します。
-   元checkout保全、受領、使用量、成果回収を照合してから運用範囲を広げます。
+   元checkout保全、native identity、権限、成果・検証回収を照合してから運用範囲を広げます。
 
 v2ではOrca Run／Task／Inbox、cron、改善メモ収集・公開helper、静的状況ビュー、
 自動更新確認と旧会話終了を伴う自動交代を配布対象から外します。既存の設定、メモ、HTML、
@@ -20,3 +20,6 @@ v2ではOrca Run／Task／Inbox、cron、改善メモ収集・公開helper、静
 未完の受入や旧環境の障害は、機能廃止だけで修正済みにしません。必要な後継追跡・
 維持担当・残存資源を記録します。Issueの整理方針と未解決事項は
 [設計書](HANCHOU_V2_DESIGN.md)にあります。外部Issueの変更はこの移行手順だけでは許可されません。
+
+usage分離は既存データを削除しません。旧report/usage/instanceは保持し、新しい任務は
+identity・権限・結果・独立検証で受け入れます。[互換契約](../skills/hanchou-orchestrator/references/lifecycle.md#compatibility)。

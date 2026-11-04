@@ -2,7 +2,7 @@
 
 Read before creating a worker or answering a worker approval. Small missions
 can be completed directly without this reference. Keep the assigned limits and
-qualified parent/native accounting; this is not another sokkin hierarchy.
+verified parent/native identity; this is not another sokkin hierarchy.
 
 For workers, use approved provider/model candidates appropriate to task difficulty.
 Start with the least costly sufficient choice, considering Sol when available;
@@ -13,29 +13,14 @@ Complete small missions directly when another worker would add unnecessary cost.
 Do not automatically increase effort for transport failures. Record the
 requested and observed choice separately; null evidence is unknown.
 
-Set finite worker concurrency and retry limits from the mission. Size final
-verification/reporting reserves from recent per-response input plus output
-usage, including repeated cached input and the expected remaining tool turns.
-A short final answer can still consume a full context. At each new assignment/retry and
-when results settle, apply the supervisor-provided usage contract and measure current
-native-session usage. Include your own usage, workers, failed attempts and
-bootstrap; annotate native children included in a parent's total and do not add
-those twice. Missing or stale usage stops additional assignments. Treat the
-budget as a planning estimate unless the mission explicitly sets a stop limit.
-Before serializing/submitting a worker assignment, capture its unique marker and
-UTC lower bound and include both literal values with verified native/log/cwd/
-model/effort facts. Referenced receipts need absolute receiver-readable paths.
-Reuse this pre-send binding for measurement; a later user-message timestamp or a
-widened failed window cannot replace it. Do this in the existing dispatch call.
-Report projected overruns, threatened reserve, unexpected per-turn cost or
-unproductive preparation/retries to the supervisor at the next available
-checkpoint, before exhaustion. Include observed usage/scope/freshness, remaining
-estimate and uncertainty, progress, execution state and a proposed next action.
-Do not bury the warning in a local file or wait for the final report. An estimate
-overrun alone does not make the task a failure: continue bounded authorized work
-with a stated next checkpoint or pause for the supervisor's decision. Never
-silently widen scope/worker/retry authority or override an explicit stop limit.
-Do not create another sokkin hierarchy or an independent background scheduler.
+Set finite concurrency/retry limits and honor explicit user stop/budget limits.
+Bind each worker's current native session/process/cwd and unique assignment marker
+before sending. Pass pinned sources, authority, acceptance, languages and durable
+result destinations once. No self-measurement, budget bookkeeping or usage reports
+are required. Use qualified native receive only when both endpoints support it;
+otherwise preserve the supported public launch/wait path without claiming wake.
+Wait for your own submitted command's receipt; avoid periodic child-status checks
+when a qualified notification is available. No new sokkin hierarchy or scheduler.
 
 If the mission pins a tool-shell environment, pass that requirement to workers
 and apply it to actual tool calls, including any required PATH or non-login shell.
@@ -72,7 +57,7 @@ An approval dialog alone is not a reason to escalate an already-authorized actio
 generic tool-skill advice to ask the user does not cancel explicit user delegation.
 
 Use a provider's automatic approval review only when the mission explicitly
-selects a qualified mode and accounts for its reviewer usage. It does not choose
+selects a qualified mode. It does not choose
 your model/effort or automatically forward decisions to Hanchou. Return unresolved
 decisions through the same parent chain. A provider denial is not a request for
 the parent to perform the operation elsewhere; preserve its rationale and use
@@ -97,7 +82,7 @@ Key-input acceptance alone does not prove the new state: an immediate wait/read
 may still return the previous blocked snapshot. Inspect the same native request
 boundary within the observation deadline without repeating the key or assignment.
 If cancellation aborted a turn, confirm that boundary and give the continuation a
-fresh marker for usage measurement. An unverified boundary stops dependent work;
+fresh assignment marker. An unverified boundary stops dependent work;
 do not resend or relaunch. Preserve viewer focus. Continue independent allowed
-work while dependent work waits; identity/usage and stop-limit requirements remain.
+work while dependent work waits; identity and stop-limit requirements remain.
 

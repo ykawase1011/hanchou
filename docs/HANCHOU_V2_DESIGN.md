@@ -1,577 +1,155 @@
 # Hanchou v2 設計書
 
-作成日: 2026-10-20
+状態: 採用済み設計。2026-11-04 の明示承認で通常運用と外部 debug を分離し、
+Claude native receive を限定 capability として追加した。以前の自己計測・usage 必須
+ゲートは本改訂で置き換える。過去の実測は [検証状況](VALIDATION.md) に履歴として保全する。
 
-状態: 採用済み設計。固定版・検証環境での技術受入と公開移行を完了。必須要件と採用方針を定義し、実施済み検証と適用上の限界の正本は[検証状況](VALIDATION.md)とする。全環境を実機検証済みとは扱わない。
+## 1. 責務と境界
 
-## 1. 設計の結論
+班長は明示された仕事を側近へ依頼し、委任された判断と独立受入、人間への結果報告を担う。
+Herdr 内の側近は作業・worker 選択・検証・統合を担う。小さい仕事は側近自身が完了する。
+worker は割り当てられた範囲を実行する。全員から自己計測、予算会計、usage 報告を外す。
+使用量調査・比較は外部 observer の仕事であり、通常の準備・割当・finish・accept と分離する。
 
-Hanchouを、実行環境に依存しない薄いスキルへ作り直す。班長は仕事を依頼し、結果を人間に伝え、使用量を監督する。作業の遂行はHerdr内の側近が担当する。
+Hanchou は4スキルと単発の2 shell のみ。`launch-sokkin.sh` は Git・Herdr・公式 CLI による
+fresh branch/worktree と専用 workspace の作成・検証、起動 receipt、所有 instance の単発
+inspect/finish/accept/resume/reap を扱う。mission 実行、常駐受信、再試行ループは実装しない。
+`measure-session.sh` は認定済み既存 usage tool と1 native session を厳密に照合する読取り専用
+外部 debug helper。観測用一時ファイルは終了時に消し、agent 起動・送信・予算判断・設定変更・
+削除・永続集計を持たない。今回その parser・対応版・scope 保証を緩めない。
 
-**新しい側近を起動するたびに、専用の新規Git worktreeと新規ブランチを先に作る。** この必須手順は小さな側近起動シェルスクリプトにまとめる。班長はスクリプトを呼び、作成されたworktree・Herdr workspace・側近の識別情報を戻り値で受け取って、その側近へ依頼する。
+runtime、daemon、DB、scheduler、汎用 launcher、独自 dashboard、private inbox/DB bridge、
+恒久 watcher、copied CLI catalog は追加しない。公式 Herdr と agent 自身の仕組みを再利用する。
+Orca はホストの一例で、製品依存ではない。旧 cron・改善公開・status-view・Orca Run・必須
+handoff は復活しない。機能撤去を理由に既存の設定・履歴・資源を削除しない。
 
-workspaceの最初のタブで起動する側近は、`.hanchou`内の設定でCodexまたはClaude Codeを選ぶ。側近はworkerのエージェント・モデルを選び、作業、検証、再試行、成果の取りまとめを行う。側近とworkerのプロセス管理をOrcaから外す。
+## 2. 受入要件
 
-この文書では、現在運用しているOrca中心のHanchouを比較上「v1」、今回の新設計を「v2」と呼ぶ。これは現行リポジトリのv3や過去のv2というリリース番号とは別の呼び方であり、連続性・互換性は前提にしない。既存のOrca Run／Task中心の仕様を維持する義務はなく、本書を承認しても現行スキルが自動的に切り替わるわけではない。
-
-側近の英語識別子は`sokkin`に統一する。設定キー、戻り値、スクリプト名でも同じ表記を使う。
-
-## 2. 目的と対象外
-
-目的は、班長の長い常駐コンテキストと細かなworker監視を減らし、作業に応じてモデルを選べるようにすること、worker由来の通知を人間への報告に集約すること、そしてOrca以外からも使えるようにすることである。
-
-階層化だけでトークン削減を保証しない。側近の追加コストも含め、同種の作業の完了率・品質・総使用量を比較して効果を評価する。
-
-Hanchouの中心はスキルとする。新規worktree作成を確実に実行するための、単発で終了する側近起動シェルスクリプトを同梱する。スクリプトは既存のGit・Herdr・公式エージェントCLIの操作をまとめる。常駐runtime、daemon、DB、scheduler、汎用agent launcher、独自dashboardへは拡張しない。企業利用の可否は組織の導入・認証・データ取扱方針に依存し、Herdr採用だけで承認済みとは扱わない。
-
-2026-10-21の追加承認により、既存usage toolとnative sessionを照合する計測専用の単発`measure-session.sh`も同梱する。本番実行ファイルはこの2本に限定する。同日の追加指定により、起動scriptは依頼専用Herdr serverの起動と、ローカルinstance記録に基づく単発の完了・受入・再開・回収も担う。計測scriptは読取りと一時観測ファイルの作成・終了時削除だけを行い、agent起動、mission送信、予算判断、設定変更、資源解放、永続集計を持たない。
-
-Hermes等を将来の実行先候補から排除はしないが、初版はHerdrを対象とする。未実装の汎用backend層やplugin frameworkは作らない。
-
-## 3. 必須要件
-
-以下はv2の受入条件である。「未検証」は任意要件への格下げではなく、満たすまで対象機能を本運用に出さないことを意味する。
-
-| ID | 必須要件 | 判定基準 |
+| ID | 必須要件 | 判定 |
 | --- | --- | --- |
-| R01 | スキルと薄い起動・計測スクリプトで構成する | 単発の2本が既存ツールを操作し、独自の常駐サービスを追加しない |
-| R02 | Orca非依存 | Orcaを起動していない環境から、依頼・実行・結果回収・使用量確認を完了できる |
-| R03 | 起動スクリプトが新規worktreeと新規ブランチを必ず作る | 元のcheckoutと異なる実体パス、branch、固定した起点commitを検証し、その後に側近を起動する。作成・検証失敗時は起動しない |
-| R04 | 人間の作業場所を変更しない | 元のbranchの切替・reset・stash・未コミット変更の移送・そこでの作業を行わない |
-| R05 | 側近1人に専用Herdr workspaceを割り当てる | 最初のタブが側近。別の依頼の側近とworkspaceを共用せず、起動結果から操作対象を取得できる |
-| R06 | 側近以下をHerdr管理下に置く | Orcaのworker起動・Run・通知基盤を必須にせず、viewerを閉じても実行を継続できる |
-| R07 | `.hanchou`の設定から側近を選べる | Codex／Claude Codeと任意のmodelを指定でき、設定元と実際の起動結果を照合できる |
-| R08 | エージェント単位で使用量を識別できる | mission、実行試行、provider、native thread/session、子エージェントの対応と計測対象範囲が確認できる |
-| R09 | セッション使用量を欠測・重複込みで扱う | 入出力・cacheを区別し、再開・fork・子実行で二重計上しない。欠測は0にしない |
-| R10 | 使用量を根拠に起動を制御する | 実測から予算目安を見直し、超過見込み・異常消費・欠測を人間へ知らせる。明示停止上限や計測不能時は新規割当を止める |
-| R11 | 承認済み範囲でモデルを自律選択する | 副作用、難度、検証結果、残予算をもとに選択し、選択理由と変更理由を残す |
-| R12 | Claude Codeはサブスク経路に限定する | 公式CLIと本人の許可済み認証を使い、API課金・追加課金経路へ黙って切り替えない |
-| R13 | 完了を成果で確認する | 待機状態だけで完了扱いせず、成果物、検証結果、未解決事項、使用量を回収する |
-| R14 | 人間への通知を班長に集約する | 通常のworker進捗では通知せず、完了・判断要求・予算問題・継続不能を報告する |
-| R15 | 成果を保全して解放する | プロセス停止、workspace閉鎖、worktree削除を分け、未保存の成果を消さない |
-| R16 | 側近起動ごとに人間向けHerdr表示を開く | 班長が起動結果の対象session/workspaceをviewerタブに表示・確認して残す。表示できなければ報告し、明示的な画面なし実行の指定がない限り実作業を渡さない |
+| R01 | 4スキルと単発2 shell | 独自常駐サービスを追加しない |
+| R02 | provider-neutral / Orca 非依存 | 依頼・実行・結果回収・保全が特定親ホストを必須としない |
+| R03 | 新しい側近ごとに fresh branch/worktree | 実 path、branch、固定 base、共通 Git directory を検証してから起動 |
+| R04 | 人間 checkout/index と並行変更の保全 | branch 切替、reset、stash、変更移送・復元をしない |
+| R05 | 側近ごとの専用 Herdr workspace | 最初の tab に側近、別依頼と共用しない |
+| R06 | 側近以下は Herdr 管理 | viewer と実行を分離し、Orca worker を製品前提にしない |
+| R07 | 固定 project 設定と実効設定 | Codex/Claude、model/effort、言語を設定し、要求と観測を区別 |
+| R08 | 実行 identity | mission/attempt/request、native ID、process incarnation と親子対応を照合 |
+| R09 | debug completeness と task success を分離 | 欠測を0にしない。usage 欠落は有効な結果を拒否する理由にしない |
+| R10 | 明示制約を守る | stop/budget・並列・再試行上限を尊重。通常の自己会計は持たず、未実装の厳密上限制御を約束しない |
+| R11 | 権限内の worker/model 選択 | 難度、副作用、必要品質、検証結果に応じて側近が選ぶ |
+| R12 | Claude subscription only | 公式 CLI と本人の許可済み認証。API/extra-usage fallback や資格情報抽出なし |
+| R13 | 完了と独立受入 | identity・権限・成果・検証参照・未解決事項・保全を確認。idle/notice だけで成功にしない |
+| R14 | 人間への報告を班長へ集約 | 通常の細かな進捗通知を抑え、完了・判断・継続不能を伝える |
+| R15 | 保全して解放 | agent/server/workspace/worktree の停止・削除を区別し所有と実停止を確認 |
+| R16 | 人間向け Herdr 表示 | 新側近ごとに対象 viewer を確認して残す。明示 headless 例外以外は表示不能時に割当を保留 |
 
-Git worktreeは作業場所の分離であり、ファイルアクセスの強制的な隔離ではない。Gitの管理情報も共有する。R04を守る指示・作業前後の照合に加え、親ディレクトリへの書込みを技術的に禁止する必要がある環境では、既存sandbox／権限制御を別途必須にする。
+worktree は filesystem sandbox ではない。厳密なアクセス制限が必要なら既存 sandbox を使う。
+明示権限はホスト/provider の本人必須 gate や拒否を回避する根拠ではない。
 
-## 4. 構成と責務
+## 3. 設定・起動・依頼
 
-```mermaid
-flowchart TD
-    Human[人間] <--> Leader[班長：任意のホスト上のスキル]
-    Leader -->|設定・起動要求| Launch[側近起動シェルスクリプト]
-    Launch -->|新規worktreeを作業場所にして側近を起動| Workspace
-    Launch -->|識別情報を返す| Leader
-    Leader -->|戻り値の接続先へ依頼| Workspace
-    Workspace -->|結果・使用量・判断要求| Leader
-    subgraph Herdr[Herdr管理]
-        Workspace["側近専用workspace<br/>最初のタブ：sokkin<br/>作業場所：新規Git worktree<br/>ここで作業・検証・成果の統合"]
-    end
-    Human -. 状況確認 .-> Viewer[Herdr viewerタブ]
-    Viewer -. 接続 .-> Herdr
-```
-
-新規worktreeは側近専用workspaceの作業場所であり、作業・検証・統合はHerdr内のsokkinが担当する。班長側へ別の統合環境を用意する構成ではない。図の枠は作業の管理範囲を示し、実ファイルは通常のGit worktreeとしてファイルシステム上に保存される。側近以下の配置の詳細はこの図で固定しない。
-
-| 担当 | 責務 |
-| --- | --- |
-| 班長 | ①目的・完了条件・権限・予算を側近へ渡す。②側近の結果を整理し人間へ報告する。③使用量と残予算を確認し、継続・縮小・停止を判断する |
-| 起動スクリプト | 設定検証、新規worktree作成、Herdr workspace作成、側近起動、起動情報の返却を一度実行して終了する。作業の分解・監督・継続的な会計は行わない |
-| 側近 | 分解、workerとモデルの選択、配置、実行、検証、統合、再試行、使用量の見積り・異常報告、班長への連絡を担当する |
-| worker | 渡された範囲の作業と検証を行い、成果・問題・使用量の識別情報を側近へ返す |
-| Herdr | 既存のworkspace／tab／paneとエージェントプロセスの操作・状態観測を提供する |
-| 計測元 | 公式CLIの利用情報・ログ、必要に応じた既存の集計ツール。Herdrの画面表示を会計の正本にしない |
-| ホスト | 班長との対話、ツール実行、利用可能な場合の復帰・通知・ブラウザ表示を提供する。Orcaはその一例 |
-
-班長はworkerの個別ログを常時読み込まない。側近から要約と成果への参照を受け、問題を解くために必要な範囲だけ詳細を確認する。初版では側近がさらに側近を作る再帰的な構成を禁止し、並列数を有限にする。
-
-## 5. 側近の設定と起動
-
-### 5.1 `.hanchou`の設定
-
-既存の`.hanchou/policy.md`は、人間が読む責務・権限・報告方針として継続する。機械が読む起動設定を`.hanchou/config.json`に追加する。設定はJSONのデータとして読み、シェルコードとして`source`や`eval`しない。
-
-最小設定例:
+固定対象 project の `.hanchou/config.json` と `policy.md`、存在する `readiness.md` を使う。
+実行 cwd から別設定を探したり ignored 設定をコピーしない。JSON を shell code として読まない。
+既存設定を保持し、明示した一時 override は今回だけ。設定なし/不正/未対応は起動前に止め、
+provider fallback はしない。新規 template は Codex Astra/medium、既存の値/null/省略を優先する。
 
 ```json
-{
-  "version": 2,
-  "sokkin": {
-    "agent": "codex",
-    "model": null
-  }
-}
+{"version":2,"sokkin":{"agent":"codex","model":"gpt-6-astra","effort":"medium"},
+ "languages":{"human":"ja","agents":"en"}}
 ```
 
-`sokkin.agent`は`codex`または`claude`とし、後者は公式Claude Codeを指す。`model`がnullまたは省略の場合はそのCLIの設定済み既定値を使い、要求した値と実際の値を区別して報告する。Claudeのサブスク限定要件は側近にもworkerにも適用し、設定でAPI課金へ解除する項目は設けない。任意の`sokkin.effort`には`low`・`medium`・`high`またはnullを指定できる。null／省略時はCLI既定値を使う。要求値と観測値を分け、対応しないmodel／effortで黙って別候補へ切り替えない。
-
-設定元は、依頼で選んだ対象project rootに固定する。新しく作ったworktreeのcwdから別の`.hanchou`を自動探索しない。実行時に確定した設定と元pathを側近へ渡すため、Git管理外の`.hanchou`を新規worktreeへコピーする必要はない。既存のローカルpolicy運用と同様に、共有・Git管理するかは明示的な選択とし、認証情報は保存しない。
-
-今回の依頼で明示された一時指定は設定値より優先するが、永続設定へ自動で書き戻さない。起動スクリプトは確定済み設定を受け取り検証する。設定未作成時は初期化でagentを選び、明示的な一時指定もないまま勝手に別agentを起動しない。壊れた設定や未対応agent／model指定は起動前にエラーとし、別providerへのfallbackを行わない。
-
-任意のroot設定`languages`は`human`（班長の人間向け説明・進捗・承認相談・最終報告）と
-`agents`（班長→側近、側近↔workerの依頼・質問・返却報告）を独立に指定する。
-例は`"languages":{"human":"ja","agents":"en"}`。object／fieldの省略・nullは
-その相手への既存の会話・mission・projectの言語を維持し、他方の値を継承しない。
-明示的なユーザー／mission指示を優先する。班長は内部報告の意味を人間向け言語で伝え、
-必要なコマンド・path・ID・数値・診断原文を保持する。native UI・JSONキー・protocol marker・
-コード構文・成果物自身の指定言語や権限は変更しない。
-値の形式と伝達契約は[起動契約](../skills/hanchou-orchestrator/references/launch.md#communication-languages)を正本とする。
-起動前に検証し、receipt／bootstrap／missionから新規workerまで渡す。旧設定は引き続き受理し、
-初期化・更新で既存値や省略を上書きしない。
-
-### 5.2 新規依頼の起動順序
-
-班長は対象・依頼・設定を確定し、スキルに同梱する`launch-sokkin.sh`を呼ぶ。以下の配置・起動処理はスクリプトにまとめ、新規worktree作成を省略するオプションは設けない。JSONの読取り・生成には`jq`を使い、文字列連結でJSONや実行コマンドを組み立てない。引数を適切に引用して既存CLIへ渡す。対応shellはBash 3.2以上とし、依存ツールは資源作成前に検証する。起動処理にPython／TypeScriptの実行環境は要求しない。
-
-1. 対象repository、実行host、起点commit、作業目的、権限、使用量予算を確定する。元のcheckoutのbranch・HEAD・差分状態を観測する。
-2. 一意なmission IDを付け、既存branch／既存directoryを再利用せず、新しいbranchとGit worktreeを作る。起点は動くbranch名だけでなくcommit IDとして固定する。
-3. `git worktree list`等の既存Git機能で登録されたpath、branch、HEAD、共通Git directoryを照合する。記録上の親依頼と実際の起点も一致させる。異なるpathだけで正しいrepository由来とは判断しない。
-4. 既定では依頼専用のnamed Herdr serverを起動し、設定元の`.hanchou/instances/<key>/instance.json`に所有・実プロセスの識別情報を保存する。新規worktreeをcwdとしてHerdr workspaceを作り、返されたworkspace／tab／pane IDを使う。初期タブに設定された公式CLIで側近を起動する。
-5. 実際のcwd・branch・HEAD、起動したagentを照合する。既定は`agent_ready`／usage pendingで終了する。検証済みCodex／ccusage版向けの任意`--qualify-startup`は、同梱側近指示のtool-free受領を1回だけ送信し、固有cwd・時刻・marker・native metadataと初回使用量を照合して`startup_qualified`／readyを返す。実作業・任意prompt・再送・継続集計は行わず終了する。不明・不一致は資源を残して失敗し、作業を許可しない。
-6. 班長は戻り値の接続先を使って人間向けHerdrタブを開き、対象workspaceの表示を確認する。観測範囲・鮮度・予算を確認してから実作業を渡す。qualified receiptの確認処理を毎回書き直さない。他provider等の手動bootstrapでも受領と計測可能性を先に確定する。起動時点からの使用量も含める。表示不能時は理由と接続先を報告し、明示的な画面なし実行の指定がなければ割当を待つ。
-
-qualified bootstrapの送信と完了確認を分ける。Herdrの状態変化を待つ`--wait`は使わず、
-固定指示を一度送信した後、同じ有限deadline内で厳密なnative完了・初回使用量を照合する。
-送信成功だけでreadyにはせず、遅延・未開始・不一致をnative証拠で区別する。送信操作自体の
-失敗は再送せず、取得できた限定形式の上流エラーコードを保存する。既存UNKNOWNの昇格は追加しない。
-
-認定起動ではforeground processのPIDだけでなく開始時刻も保存し、bootstrap照合後にも
-同じPID・開始時刻・pane・cwd・起動引数を確認する。これはprocessの照合であり、native
-identityや使用量を代替しない。欠測・置換・曖昧なprocess一覧は認定せず同じ試行を保持する。
-
-明示的な`--session NAME`は既存共有serverを使う互換経路であり、所有記録や自動停止の権限を付けない。専用serverのcwdは保存先instance directoryとし、削除可能な実行worktreeへ依存させない。
-専用serverは呼出し元toolと独立したprocess groupで起動し、PIDとPGIDの一致を確認する。`nohup`だけに依存せず、tool終了時のprocess group後片付けを越えて生存させる。
-
-Herdrはworkspace作成時に最初のtab／paneを作成し、`agent start`は既存paneを使う。この公開契約に沿って操作し、CLIの結果からIDを取得する。コマンド構文は導入した版のhelpを参照する。[Herdr agent automation](https://herdr.dev/docs/agent-automation/)
-
-途中失敗したら、元のcheckoutで代替実行しない。新規作成物のうち所有と状態を確認できるものだけを後片付けし、起動済みか不明なプロセスを二重起動しない。
-
-### 5.3 起動スクリプトの戻り値
-
-stdoutにバージョン付きJSONを1件返し、診断ログはstderrへ分ける。班長が自然文の起動ログからpathやIDを推測する必要をなくす。以下はHanchou側で定義する戻り値案であり、Herdrの既存レスポンス形式そのものではない。
-
-| 項目 | 内容 |
-| --- | --- |
-| `version`, `missionId`, `attemptId` | 返却形式の版、依頼と今回の起動試行の識別子 |
-| `ok`, `stage` | 起動処理の成否と到達段階。agent readyは仕事の完了や計測準備完了を意味しない |
-| `config` | 設定元pathと今回適用した設定。認証情報を含めない |
-| `worktree` | 実path、branch、固定base commit、起動時HEAD、元repositoryの識別情報 |
-| `herdr` | host／serverの接続先、workspace／tab／pane ID。共有server全体への所有権は意味しない |
-| `lifecycle` | 専用serverの所有区分、instance key、設定元に固定した記録の絶対path、起動時に保存したstatus。共有起動や記録作成前はstatusがnull |
-| `sokkin` | agent種別、実行名、要求modelと観測できたmodel、native thread/session ID。未取得値はnull |
-| `usageReadiness` | 計測準備の`ready`／`pending`／`unavailable`と理由。token値自体の正本にはしない |
-| `error`, `resources` | 失敗理由、今回作った資源と残存・削除済み・状態不明の区別。成功時も作成対象を特定できる情報を返す |
-
-専用instanceを作成した起動は、完全な起動receiptをinstance内へ一度だけ保存する。
-任意の`--compact-receipt`は通常stdoutの重複情報を減らし、完全receiptの絶対pathと
-Git blob IDを返す。identity・permission・usage・scope・資源状態の判断項目は残し、
-source snapshotや詳細process/native/tool証拠は保存先で確認する。保存先の衝突・symlinkや
-保存失敗は成功へ昇格せず、既存証拠と今回の資源を保持して停止する。
-一時auth/env/native本文やraw command transcriptは保存対象にしない。保存前の早期失敗と
-明示共有serverでは従来の完全stdoutを返す。計測shellやlifecycle遷移の責務は増やさない。
-
-班長はこの戻り値の接続先に対して依頼・状態取得・結果回収を行う。側近起動後、スクリプトは常駐しない。起動完了・計測準備完了の両方が確認できるまでは実作業を送らない。
-
-事前検証で失敗した場合は資源を作らない。部分失敗では作成済み資源を残して識別情報を返す。起動時は自動削除せず、班長が所有・実稼働・成果を照合して回収する。班長は失敗結果を照合せずに同じ起動を再送しない。強制終了で戻り値自体を失った場合は、試行IDと既存Git／Herdrの状態を照合する。永続DBによる完全な再実行保証までは持たせない。
-
-専用起動が失敗して保存した`UNKNOWN`、または中断で残った`STARTING`から`RUNNING`への昇格は提供しない。現在の記録は復旧に必要な元のbase・model・権限・process条件の全てを固定していないため、手動bootstrapやnative identity・usageの後付けだけで実作業を許可しない。`finish`は`RUNNING`、`resume`は未受入`FINISHED`に限る。失敗receipt・記録・成果・費用を保全し、所有と実稼働を照合して許可範囲で明示的に終了・回収する。失敗記録を手で変更せず、完了・受入・期限回収と表現しない。新規試行は照合後の別の明示判断でfresh branch/worktreeから開始し、失敗実験の有利な置換にはしない。`--skip-update-check`は新規起動のprocess-local予防指定であり、既存UNKNOWNの復旧ではない。
-
-### 5.4 再開
-
-側近以下の配置やworktree作成の要否は側近に委ね、本書でworkerのworktree・tab・workspace構成を固定しない。
-
-専用起動の部分失敗は5.3の停止条件に従い、以下の追加指示による再開の対象にしない。
-
-同じ生存中の側近へ追加指示を送ることは新規起動ではない。新しい側近への置換・再起動では、再試行でも新規worktree／branchを作成し、保全した成果を明示的に引き継ぐ。停止した側近を古いcheckout上で自動復活させる例外は設けない。viewerの再接続はエージェント起動ではない。
-
-## 6. 班長と側近の連携
-
-スキルで以下の文書形式を定める。専用API、永続queue、Hanchou独自DBを実装することを意味しない。依頼と報告は既存のファイル・会話に残し、Herdrには接続先を照合する最小限の識別情報を持たせる。
-
-| 文書 | 必須項目 |
-| --- | --- |
-| 依頼 | mission ID、試行ID、目的、完了条件、対象repo／host／固定base、行動権限・承認担当・人間確認条件、禁止事項、成果の保存先、許可するエージェント・モデル・認証経路、予算、並列・再試行上限 |
-| 受領 | 同じmission／試行ID、workspace／pane、実path・branch・HEAD、providerとnative thread/session、計測元、理解した完了条件 |
-| 中間報告 | 状態、進捗の要約、成果の参照、自己使用量とworker合計、計測時刻・欠測、残予算、次の処理、必要なら判断要求 |
-| 完了報告 | 完了条件ごとの結果、commit／diff／成果物、実行した検証、未解決事項、使用量の内訳、停止確認、保全・解放可否 |
-
-接続先はhost／Herdr server／workspace／paneとnative実行IDを組にして扱う。表示名だけで送信先を決めない。Codexではsession IDを共有するthread群があるため、個別実行の識別にはthread IDを使い、親子関係を別に持つ。
-
-依頼の状態は「準備→起動→受領→作業→検証→報告済み→受入済み→解放」とし、途中から「判断待ち」「予算停止」「実行状態不明」へ遷移できる。班長は目的を再送する前に受領済みか照合する。
-
-Herdrの待機状態や`agent prompt --wait`だけでは、その依頼の完了を証明できない。timeoutでも入力済みの場合があるため、報告ID・実行状態を読んでから再送を判断する。依頼には一意IDを付けるが、厳密なexactly-once実行をスキルだけで保証するとはしない。[Herdr agent automation](https://herdr.dev/docs/agent-automation/)
-
-### 6.1 承認と判断の委任
-
-承認要求はworker→側近→班長→人間の順に扱う。側近は子agent、班長は側近の
-要求を受け、依頼・固定policyですでに委ねられた権限と必要なチェックを照合して判断する。
-許可済みの具体的な操作は直属の親が承認し、禁止された操作は拒否する。
-側近が判断できない部分は班長へ、班長でも解決できない重要な仕様判断・権限追加・
-毎回確認条件は人間へ戻す。承認画面の出現だけで人間への再確認を必須にしない。
-一般的なtool skillの「ユーザーに確認する」という手順より、ユーザーが明示した
-承認判断の委任を優先する。ただし、host/providerが本人の操作を必須とするgate、
-明示的な拒否や上位の制約は回避しない。別の場所での実行による迂回も認めない。
-
-親はblocked agentの報告がなくても、接続先とnative実行IDを照合してpending操作・
-対象・効果を公開UIで確認する。委任回答が許された公開操作で当該要求だけに回答し、
-包括的な今後の許可やsandbox無効化は選ばない。同じ試行を読み戻して再開を確認し、
-判断と権限根拠を残す。blocked promptへの任務再送を回答の代用にしない。
-取消でturnがabortした場合は状態を照合し、新しい継続markerで計測を再開する。
-これはskillの判断手順であり、常駐の自動承認scriptは追加しない。
-
-人間への確認は具体的な操作、既存権限で決められない理由、選択肢と推奨を添える。
-本人操作が必要なgateにはviewerのtab／session／paneとpending操作を示し、
-フォーカスを移さない。回答待ちの処理は止め、独立した許可済み作業は続ける。
-identity・usage欠測や明示的な停止上限を承認委任で解除しない。
-
-## 7. セッション使用量の計測
-
-### 7.1 本運用の前提
-
-**CodexとClaude Codeのセッション使用量を安定して取得できることを、v2の最初の導入判定にする。** Herdrで起動できることだけを確認して先へ進めない。副作用のない小さな試験で計測・親子対応・重複除去を確認してから、自律的なworker起動を有効にする。
-
-「API上のトークン数」「サブスクの利用枠消費率」「API価格換算額」は別の指標である。週次利用枠が50%減ったことを、あるセッションのトークン数へ正確に配賦できるとは限らない。トークン数から週次残量を独自換算しない。
-
-### 7.2 計測元と確認状況
-
-| 対象 | 初版の候補 | 調査で確認したこと／残る確認 |
-| --- | --- | --- |
-| Codex | native threadに対応する利用記録。必要に応じ既存ログ集計ツール | 手元のCLI 0.162.1のログにresponse単位・thread累計の記録があった。安定した2 threadで一意responseの合計と最終累計が一致。全ケースへの保証ではない |
-| Codex公式API | app-serverのusage通知・usage取得 | 公開schemaにthread利用情報がある。一方、既存CLI threadへの読取り試験では`threadUsage: null`であり、APIだけで全実行を取得できるとは確認できていない |
-| Claude Code | native sessionのログ集計。将来は公式OpenTelemetryも候補 | 手元のCLI 2.1.299のログで同一requestのusageが複数行に重複した。request/message単位の識別が必要。内部ログ形式への依存は版ごとの検証が必要 |
-| Claude公式telemetry | 起動前に設定したOpenTelemetryのrequestイベント／metrics | セッション別計測の公式手段。ただし収集先の運用が必要。Hanchou独自collectorは作らず、既存の採用済み基盤がある環境で検証する |
-| ccusage | provider別sessionのJSON集計 | `ccusage@20.0.37`を限定受入。native usageとの照合結果・親子の計測範囲・未検証経路は[使用量検証](USAGE_TOOL_VALIDATION.md)を参照 |
-| Herdrのmetadata／viewerの使用量表示 | 表示・参考情報 | セッション会計の正本として採用しない。account単位の表示をpane単位の使用量と誤認しない |
-
-Codexの公開インターフェースは[App Server資料](https://learn.chatgpt.com/docs/app-server)、Claudeのtelemetryは[Monitoring資料](https://code.claude.com/docs/en/monitoring-usage)、集計ツール候補は[ccusage Codex](https://ccusage.com/guide/codex/)・[Claude](https://ccusage.com/guide/claude/)を参照する。手元の観測はローカル試料の確認であり、providerの課金仕様の保証ではない。
-
-### 7.3 集計契約
-
-検証済みCodex 0.162.1・0.163.0／ccusage 20.0.37の通常sessionでは、同梱`measure-session.sh`を使用する。正確なcwd・model/effort・開始時刻下限・現在依頼のmarker・実agentのlog homeを指定し、既知のnative ID/log pathは再利用する。scriptはnative identityと既存toolのscope・counterを照合し、観測時刻、最後に記録された使用量、現在依頼が進行中か完了済みかを返す。動作中の自己計測では未記録の推論を0と扱わず、最後に観測できたcounterと留保の境界を明記する。
-
-開始時刻下限はUTCを明示した`Z`と`+00:00`の両表記を受理し、小数秒を保持して同じ時点へ照合する。非UTC・unknown offset・存在しない日時を補正して受理しない。nativeログの形式・identity・counter判定を緩めるものではない。
-
-新しい依頼では送信者が本文の構築・送信前に開始下限を取得し、一意markerとともに
-literal値を依頼本文へ含める。既知のnative ID/log/cwd/model/effortと、受信者が読める
-絶対receipt pathを渡し、同じbindingで実行前計測・最終受入を行う。nativeのuser-message
-時刻は`task_started`より後になり得るため代用しない。欠落・矛盾なら依存作業を止め、
-失敗済みwindowを広げて救済しない。側近からworkerへの依頼にも適用し、追加の判断turnは設けない。
-
-同じsession内で、対応する`turn_aborted`の後に一意な新しい`task_started`が続く履歴は、最新依頼のmarker・開始下限・contextを改めて照合する。中断前の記録済み使用量も累積値に残し、再開前後の累積を加算しない。終了イベントの不一致・二重終了・順序逆転は拒否する。最新依頼自体が中断済みなら`current_request_aborted`として利用不能を返し、最終確定量や完遂の証拠にしない。これは同じ生存sessionの計測範囲であり、側近を古いworktreeで再起動する許可ではない。
-
-Codex 0.162.1の自己計測では、応答の`token_usage_record`がtool実行前、対応する
-`token_count`がtool終了後に書かれる場合がある。activeな現在依頼の未対応レコードが
-一つだけの場合、native identity・一意response・時刻・増分と累積の整合を確認し、
-記録済みcounterをccusage用の一時`token_count`行へ写像する。元ログは変更せず、
-`lastUsage.counterSource`と`scope.toolInput`に写像経路を明示する。値を推定せず、
-未記録の推論は引き続きunknownとする。settledな最終計測にはこの写像を使わず、
-実際の`token_count`との一致を必須とする。複数の未対応応答や不正な増分は拒否する。
-
-対応外のprovider/version、fork・compaction・reset、帰属が曖昧なログ、欠測・不一致は利用不能とする。限定した期限内で同じ観測の書込み待ちを行えるが、実作業の再送や継続集計は行わない。対応外を0にしたり、手動の緩い照合へ切り替えてgateを回避したりしない。Claudeなど既存の別経路は[使用量参照](../skills/hanchou-orchestrator/references/usage.md)の限定検証範囲を維持する。
-
-各記録にはmission／試行／worker、provider、native ID、親ID、model、計測元と版、観測時刻、対象期間、完全性を付ける。完全性は少なくとも「対象範囲を取得」「一部欠測」「不明」を区別する。生の本文や認証情報は報告へ載せない。
-
-| 論点 | 集計ルール |
-| --- | --- |
-| 累積値と差分 | 累積値を時系列で足さない。request単位の一意記録と累積値を混ぜて合算しない。更新途上の値の不一致は鮮度を確認する |
-| Codexのcache／reasoning | cached inputはinputの内数、reasoning outputはoutputの内数として扱い、再加算しない。追加フィールドは採用版の意味を検証する |
-| Claudeのcache | 通常input、cache creation、cache read、outputを分けて保持する。通常inputにcacheが含まれる前提で共通式を使わない |
-| 重複 | provider固有のrequest／response／message識別子で除去する。同じ本文かどうかで判定しない |
-| fork・resume・compaction | コピーされた過去の記録を新しい消費と数えない。再開でcounterやsequenceがリセットする場合を扱う。追加の圧縮処理も測定対象に含める |
-| 子エージェント | 子の全requestを対象とする。親の累計が子を含むか確認し、親子の単純加算を避ける。帰属不能な処理は未配賦として残す |
-| mission合計 | 班長の当該依頼分＋側近＋全worker＋再試行・補助処理。班長分を分離できなければ「側近以下の小計」と明示する |
-| 最終報告 | 入出力・cache内訳と、計測範囲・欠測・最終観測時刻を必ず添える。推定額は支払額やサブスク枠消費率と呼ばない |
-
-Claudeの公式telemetryでも、子処理の完了イベントの`total_tokens`を子の全履歴合計と見なさない。requestイベントとmetricsの二重集計や、resume後のsequence再使用を避ける必要がある。[Claude Monitoring](https://code.claude.com/docs/en/monitoring-usage)
-
-計測不能・対応するnative IDが不明・許容鮮度を超えた場合、側近は新規worker・追加依頼・自動再試行を止めて班長へ報告する。起動前に許容する計測遅延と欠測時の扱いを決める。すでに進行中のrequestを厳密なトークン境界で止める保証はしない。
-
-## 8. モデル選択と予算
-
-2026-10-21のユーザー判断により、**固定トークン予算内の完遂を製品受入条件にしない**。
-予算は実測から較正する計画値・注意の目安であり、ユーザーが明示した停止上限と区別する。
-比較可能な過去の実測と残り処理から仮の見積りを作り、根拠が少なければ暫定と明記する。
-起動・割当・再試行・受入の既存checkpointで、超過見込み、留保の不足、1往復の費用増大、
-進捗のない準備・再試行、計測欠測・不一致を検知し、使い切る前に人間へ注意を知らせる。
-見積りを超えるだけで実行済み成果を失敗扱いにせず、権限内の限定した継続と次の確認点、
-scope縮小、見積り改訂、判断待ちを明示する。無断のscope拡大や上限引上げはしない。
-判断が必要なら新規割当を保留する。native identity/usage不明、明示停止上限、worker/retry制限は維持する。
-
-班長自身の準備も予算へ含める。起動前にnative IDと使用量を帰属し、
-準備の区切りで確認する。残りの起動・受領・検証・解放に必要な往復数を、
-直近requestの入力全量（cache込み）と出力・context増分から見積もり、
-留保不足が見込まれるなら人間へ注意を知らせ、継続条件を明示する。実行中の班長が観測できる値は
-直前に完了したrequestまでであり、現在の処理・最終応答の分は留保と報告で区別する。
-ホストで班長を計測できない場合は欠測範囲を明示し、計測必須の班長／総量予算の
-もとでは新規起動を止める。
-
-起動時の読取りは、選択したprojectの方針・設定、利用中のスキルと必要な参照に絞る。
-読み込み済みの本文や、出典・版・host/session・観測時刻の明らかな固定情報は再利用する。
-現在のinventory・認証・通知設定などの変動状態は再確認する。設計書・過去の検証履歴の
-全文読取りを製品利用の前提にしない。開発時の配置・保全・受入条件は引き続き適用する。
-初期化済み環境では、任意のローカル`.hanchou/readiness.md`にツールpath・版・host・
-観測時刻・設定元・log homeの根拠と未確認項目を残し、会話間で再利用できるようにする。
-これは初期化の報告でありregistryや実行許可ではない。欠落しても再初期化を必須にせず、
-必要な不足事実だけをまとめて確認する。新規paneのnative identity/model/usageは毎回確認する。
-launcher成功receiptの接続・inventory・fresh worktree検証は重複せず再利用し、
-実processの確認は返された新規paneで行う。既存の別paneから推測しない。
-
-予算見積りはCLIコマンド数でなく実際のモデル往復数で数える。確定使用量に、
-未確定の現在requestと残りの通常往復、`max(終了処理の見積り, 指定留保)`を加え、
-検証・報告の往復を留保と二重計上しない。機械的な依存確認は同じtool batchで
-assertion付きで順次実行できる。往復の削減でidentity・権限・保全条件を弱めない。
-
-中間receiptは確認済みの専用実行worktree内に保存できる。作業用の保存先、固定の
-最終保存先、保全checkpointを依頼時に決め、明示された即時出力先は優先する。
-完全なstdout・stderr・終了値を保存してから、次の判断に必要な項目だけを返す。
-完了・受入・session終了などの依存checkpoint前に蓄積分を最終保存先へ保全し、
-一覧とhashを照合する。その後の最終receiptもworktree削除前に保全する。
-保存先変更は権限追加ではない。通常sandboxで可能な操作を行い、必要なhost承認は
-具体的な操作単位で受ける。拒否の迂回、保全失敗後の依存処理は認めない。
-
-班長は「何を達成するか」と権限・予算を明確にし、側近は「どう達成するか」を引き受ける。
-側近の判断品質を優先し、実行量の多いworkerは必要な品質を満たす低消費の候補を選ぶ。
-軽い側近を使うために班長へ詳細な分解・担当選定を戻さない。
-新規初期化の具体的な既定値は[設定テンプレート](../skills/hanchou-init/assets/config-template.json)
-で管理する。既存設定とユーザーの明示指定を優先し、定型の小規模依頼では軽い側近も選べる。
-この初期値は判断品質をどこで確保するかという設計方針であり、消費削減の実測結果ではない。
-班長・側近・workerを合わせた総使用量、完遂率、手戻りで比較する。
-
-側近自身のagent／modelは`.hanchou/config.json`と今回の明示的な指定で決める。側近がworkerを選ぶ方針はこれと分け、すべての仕事に側近と同じmodelを適用しない。モデル名は設計書へ恒久的に埋め込まず、環境で使える承認済み候補、認証経路、品質条件、推論設定を依頼時のpolicyとして渡す。
-
-| 作業 | 選択方針 |
-| --- | --- |
-| 定型の小変更・既知手順 | 許可された候補から、必要な品質を満たす低消費の設定を選ぶ |
-| 原因不明の障害・複雑な設計・検証失敗 | 問題を限定してから、理由を添えて上位候補へ切り替える |
-| レビュー | リスクと差分量に応じて必要な範囲だけ独立検証する。全タスクへの多重レビューを標準にしない |
-| 見積り超過・rate limit | 実測と残量見積りを知らせ、権限内継続・縮小・判断待ちを選ぶ。明示上限や計測不能は停止。別providerや有料経路への切替で制限を迂回しない |
-
-予算には、mission総量の目安、workerごとの割当、並列数、再試行回数、最終検証・報告用の留保を含める。側近が制御できる依頼の送信前後・worker追加前・再試行前・統合前に確認する。worker内部の個々のAPI requestをスキルが横取りして制限できるとはしない。短周期のLLMポーリングで監視コストを増やさない。実行中の監視を使う場合は、既存ツールの待機や通知能力で実現できる範囲を明記する。
-
-Claude Codeは公式CLIのサブスク認証を利用する。API keyや追加利用への自動fallbackを禁止し、認証経路を確認できない環境では起動しない。OAuth資格情報を抽出して別のagent libraryへ渡さない。公式CLIを使う場合でも、適用される利用条件と組織方針の確認は必要である。[Claude Code Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)
-
-週次／時間枠の利用率が公式の経路で取得できる場合は、トークン数とは別に観測時刻付きで表示する。他の会話による利用も混ざるため、missionへの正確な帰属は主張しない。取得できない値は「不明」とする。
-
-## 9. 通知とviewer
-
-旧版には任意の静的状況ビューのテンプレート`skills/hanchou-orchestrator/assets/status-view.html`と更新手順があり、調査時点では対象projectの`.hanchou/index.html`も存在する。旧テンプレートは自動更新されるライブdashboardではなく、v2の配布から削除する。**v2では班長独自の状況ビューを対象外とし、生成・更新・移行を必須にしない。** 利用者が生成済みのファイルは自動削除しない。以下のHerdr viewerはこの状況ビューとは別の任意機能である。
-
-使用量の注意は、mission・段階、実測と鮮度/対象範囲、残量見積りと不確実性、変化した根拠、
-実行中/停止中の状態、次の判断を添え、検知した時点の人間向け会話に表示する。
-生のJSONやローカル記録だけでは通知したと扱わない。同じ状態の再通知は抑え、悪化や判断待ちを隠さない。
-会話への表示、host通知の受付、OS/mobileへの実到達、人間の確認を区別する。
-採用hostの既存通知機能が利用・許可済みなら使うが、未検証の非同期到達は保証しない。
-会話終了後に復帰できない場合は有期限のforeground待機か、再接続情報を伴う停止を選ぶ。
-
-人間への通常の窓口は班長とする。側近からの細かな進捗、workerの開始・終了、試行ごとのログは集約し、完了、判断が必要な事象、予算問題、継続不能を報告する。重複した状態変化で繰り返し通知しない。
-
-Orcaのworkerとして起動しないことで、その経路の通知を構成から外す。ただしOS、Herdr、公式CLI、ブラウザ各自の通知設定は別であり、完全な無通知は実機確認なしに約束しない。
-通知hookの存在だけでは人間へのalert発生を示さない。既存integrationを推測で無効化せず、
-確認できた設定の範囲と未検証の外部通知を区別する。実際に競合する動作や明示的な全通知禁止条件が
-ある場合に解決を要求し、不明な全経路の無通知証明を通常起動の追加条件にしない。
-
-2026-10-23の追加指定により、側近を呼び出すたびに人間向けHerdr表示を開くことを既定とする。
-班長がホストの既存ターミナルタブで起動結果のnamed sessionへ接続し、対象workspaceの
-実表示を確認してから実作業を渡す。OrcaではOrcaのターミナル機能を使い、他ホストでは
-そのホストのタブ／ウィンドウを使う。起動シェルへOrca依存を加えない。
-作成・確認はバックグラウンドで行い、明示的な表示切替の依頼がない限り、現在の
-タブ／workspaceのフォーカスを保持する。Orcaの`--focus`・`--activate`・
-`terminal switch`・表示を伴う`--run-hooks`を単なる作成・確認に使わない。
-公開read/list/visual-layout等で照合し、他ホストも公開機能で可能な範囲で同じ原則とする。
-非操作での表示確認ができない場合は限界を報告し、勝手な前面化や既存会話への切替を
-行わない。画面なし実行の権限がなければ、以下の表示不能時の手順に従う。
-Orcaでは閲覧タブへ`Herdr | 短い任務名`という明示名を付け、同名試行の区別が必要な
-場合だけ短い試行識別子を添える。作成・再接続・既存shellの利用時に公開terminal操作で
-設定し、tab IDに対応する実際のタブラベルを確認する。Herdrが送るpaneの動的titleとは
-区別し、ユーザーの明示名は保持する。名前の確認失敗だけでタブやagentを増やさず報告する。
-他ホストの命名は利用可能な機能を使い、継続的なtitle更新処理は追加しない。
-同じ側近への追加指示は検証済みタブを再利用し、閉じられていれば再接続する。
-新しい側近はその試行の接続先を表示し、別試行のタブを無断で転用しない。
-表示不能・結果不明時は既存タブを照合し、失敗理由と接続先を報告する。viewerの失敗を
-側近の起動失敗と解釈して再起動しない。ユーザーまたは固定policyが画面なし実行を
-明示した場合に限り、viewerなしで実作業を渡せる。
-
-ブラウザ表示には既存の[herdr-web-ui](https://github.com/devswha/herdr-web-ui/blob/main/docs/guide.md)を候補とする。これはHerdr本体と別の第三者pluginであり、必須依存にはしない。導入済みで接続先表示を検証できる場合の代替とし、通常起動でplugin導入や新規listener公開を行わない。ブラウザ版のworkspace直接表示・導入手順・組織の許可は未検証である。
-
-viewerを閉じることと、Herdr側の仕事を止めることを分離する。完了後もタブを残し、側近終了済みならその状態を報告する。専用serverの通常の期限回収は妨げない。viewerに入力・承認機能がある場合、「閲覧用途」と「技術的なread-only」を混同しない。Hanchou独自のviewerは作らない。
-
-初版は班長の呼出しが継続している間の待機・結果回収を基本にする。班長の会話が終了した後も側近が動くことと、完了時に班長を自動起床させられることは別である。後者はホストの復帰機能・既存通知基盤が必要で、どのホストでも同じ非同期通知ができるとはしない。
-
-## 10. 保全と解放
-
-標準は、成果を受け入れた後の明示的な解放とする。解放の手順は次の順序で行う。
-
-1. 側近・workerの結果、検証、最終使用量、未解決事項を回収する。
-2. 成果をcommit、成果ファイル等として保全する。会話・viewer・一時worktreeだけを唯一の保存先にしない。
-3. 解放範囲に属するプロセスを停止し、実際の停止を確認する。接続不能を停止成功と扱わない。
-4. 明示選択した共有serverでは所有workspaceだけを閉じる。専用serverは下記の完了・受入記録に基づいて保持し、期限到来後の班長チェックで停止する。Git checkout削除とは別の操作として扱う。
-5. 保全済みで不要と確認したworktreeのみ削除する。dirty／untrackedを強制破棄しない。branch削除は別途、保全・統合状態を確認する。
-
-Herdrでもworkspaceの閉鎖とworktreeの削除は別の操作である。実際の削除挙動は採用版の公開契約を確認する。[Herdr CLI reference](https://herdr.dev/docs/cli-reference/)
-
-2026-10-21の指定により、班長が専用serverの寿命を管理する。側近は成果・報告を保全し、worker終了を確認して`FINISHED`とUTCの`finishedAt`を記録する。班長は最終応答後の確定使用量、成果、CLI終了を照合し、受入記録と停止前のpane/process一覧を保存する。側近の自己申告や端末のidleだけを受入にしない。
-
-班長の明示呼出しと受入・終了処理のチェック時に一度、設定元projectの記録を読む。`FINISHED`から86,400秒以上経過し、受入済み・証拠不変・同じhostとserver実体・pane一覧不変・稼働処理なしの場合に、公開Herdr CLIでその専用serverだけを停止する。PIDと開始時刻、socket identityを直前にも照合し、プロセスとsocketの消滅を確認して`CLOSED`と`closedAt`を残す。完了後に同じ生存CLIへ追加依頼する場合は先に`RUNNING`へ戻し、完了時刻と受入をクリアする。終了済みCLIの再起動は従来どおり新規試行とする。
-
-これはチェック時の回収であり、24時間後の定刻実行やcron、常駐監視、共有serverの移管を追加しない。班長を呼ばない期間は24時間を超えて残り得る。共有server、部分失敗・未受入・稼働中・識別不能・時刻不正の記録は自動停止しない。Herdr履歴・記録・Git worktree/branchは期限回収で削除しない。記録のlockと実体照合は協調する呼出しを対象とし、同じ権限で同時に外部からserverを差し替える操作を安全に原子化するものではない。具体的な更新契約は[ライフサイクル手順](../skills/hanchou-orchestrator/references/lifecycle.md)を参照する。
-
-反復する記録・report・所有processの手書き照合を置き換えるため、既存起動shellの
-`--lifecycle inspect --instance KEY`で1件を読取り専用観測できる。保存済み成功起動の
-identity、RUNNING/FINISHED記録、同じserver実体、完了reportの実pathとGit blob hash、
-所有pane/processとquiet状態を返す。lock取得やstate更新をせず、既存lock・途中変更・
-識別不能・未知状態を拒否し、一時観測は終了時に削除する。有限の観測結果であり、
-確定使用量・品質・保全・CLI終了の判断や受入・回収権限は与えない。受入処理は実体と
-証拠を再検証する。新たな常駐処理・実行ファイル・独自会計は追加しない。
-
-Herdrの稼働agentにnative metadataがない場合、`inspect`は引き続き利用不能とする。
-通常の完了処理では成功起動に結び付いたFINISHED記録・report hash・最終native使用量を
-先に確認し、成果保全と所有CLIの正常終了を経てから`inspect`でquiet inventoryを再検証する。
-metadata欠測を一致へ変換したり、既存の失敗試行をこの順序で成功へ変更したりしない。
-
-## 11. 実現可能性と残る制約
-
-| 項目 | 現時点の判定 | 本運用までに必要なこと |
-| --- | --- | --- |
-| Herdr workspaceの最初のタブに設定された側近を置く | 両CLIの起動とbootstrapを実機確認。詳しくは[検証状況](VALIDATION.md) | Codex／Claude Codeそれぞれで新規起動・受領・終了を通す |
-| 側近起動シェルスクリプト | Bash 3.2対応で実装、異常系を試験 | 対応shellと依存ツールの確認、設定検証、戻り値、途中失敗・二重起動防止の試験 |
-| `.hanchou`の側近設定 | 設定検証と起動時overrideを実装 | 設定元の固定、一時指定、未対応設定の拒否、実際のagent／modelとの照合 |
-| 新規worktreeへの配置と元branchの維持 | 実Git試験とnative競合統合・並行編集で確認 | 採用先でも元checkoutと操作対象を照合。worktreeはfilesystem sandboxではない |
-| Orca非依存の操作 | Orca CLI/API等を拒否した実行環境で一巡確認 | 採用ホストのHerdr接続と既存ツールを照合 |
-| Codex／Claudeのセッション集計 | 固定版を限定受入。実親子とoffline境界を照合 | native ID・log形式・計測範囲を採用時にも確認。未知のreset・親欠損はunavailableとして止める |
-| Claudeのサブスク限定運用 | 実Max認証、API/不明経路拒否を確認 | callerと実paneの公式認証を毎回確認し、追加課金へfallbackしない |
-| モデル自律選択と割当停止 | 実workerのSol low選択と欠測・予算・retry境界拒否を確認 | 利用者が候補・予算・並列数・retry上限を定め、変更理由と実際値を照合 |
-| 週次枠消費のセッション別正確な配賦 | 現時点で保証できない | providerが必要な会計情報を提供しない限り、token内訳とaccount枠を別表示 |
-| 厳密なトークン上限での即時停止 | スキルだけでは保証できない | provider／既存runtimeの強制上限が必要。初版は観測後の追加割当停止 |
-| 全ホストでの自動復帰・非同期通知 | 共通には保証できない | ホスト別の既存復帰機能。未対応ホストは継続中の待機・再照会 |
-| プロセス／server障害からの完全自動復旧 | 保証しない | 実行ID・成果・計測の再照合。画面の復元だけを実行再開と見なさない |
-| viewerの表示 | 側近起動ごとの班長手順。macOS / Orca / Herdr 0.9.5のnative TUI接続を確認 | 他ホスト・共有sessionのworkspace選択・ブラウザ連携は別途確認。read-only化は未提供 |
-| 完了24時間後の解放 | 班長チェック時の単発回収に対応。定刻実行は対象外 | 受入・証拠・実体・稼働処理を再照合し、専用serverだけを停止 |
-
-Herdrの状態復元や接続機能の詳細は[Session state and restore](https://herdr.dev/docs/session-state/)を参照する。表示の復元、エージェントの会話再開、未完了作業の安全な再実行はそれぞれ別に検証する。
-
-## 12. 導入順序と受入試験
-
-### 第1段階: 計測を成立させる
-
-Codexとサブスク認証のClaude Codeを小さな試験で起動し、native IDと使用量の対応を確認する。通常実行だけでなく、同一requestの重複、resume、fork、子エージェント、compaction、中断、ログ更新途中、欠測を確認する。親子で二重計上しないことと、不明値を0にしないことを合否条件にする。失敗したproviderの自律起動は解禁しない。
-
-### 第2段階: 班長と側近を接続する
-
-班長が起動シェルスクリプトを一度呼び、新規worktree→専用workspace→設定された側近のタブ→JSONの戻り値→受領→成果報告→使用量確認を一巡させる。Codex／Claude Codeの設定をそれぞれ試し、元checkoutがdirtyでもその内容を移送・変更しないこと、Herdr起動失敗時に元checkoutで実行しないこと、timeout後に二重依頼しないことを確認する。
-
-さらに、設定の欠損・不正値・一時指定、native ID取得待ち、各作成段階の部分失敗、戻り値を失った中断を試験する。起動スクリプトが終了した後も側近がHerdr上で動き、班長が戻り値を使って操作できることを確認する。
-
-元checkout保全の試験には、人間役がファイル・staged hunk・untracked成果を並行変更するケース、統合操作と共有refへの影響、途中のコマンド対象の確認を含める。開始・終了時のsnapshot一致だけで保全を認定せず、人間の変更や帰属不明な差分を勝手に巻き戻さない。これは既存Issue #40の残件から引き継ぐR03・R04の受入条件である。
-
-### 第3段階: workerと予算を追加する
-
-側近に作業を依頼し、側近が分解・配置・モデル選択・統合を担当することを確認する。見積り超過・異常消費で人間へ注意が伝わり、継続/縮小/判断待ちが明確なことを確認する。明示停止上限、計測欠測、再試行上限では新規割当が止まり、成果を保全して班長に戻ることを確認する。
-
-### 第4段階: ホスト非依存と運用を確認する
-
-Orcaを利用できない状態で一連の操作を通す。停止した環境、またはCLI/API等へのアクセスを明示的に拒否した隔離環境を使い、どちらで検証したかを記録する。viewerなしで作業が継続すること、班長への報告が集約されること、未保存成果を残したまま削除しないことを確認する。同種の作業について、班長・側近・workerを含む総使用量と完了品質を比較する。班長ホストの帰属可能な計測がない場合は実行小計と不足範囲を示し、総使用量の削減率を主張しない。
-
-初版の出荷条件はR01–R15の受入確認である。単にスキル文面を書き換えたことや、リポジトリの`make check`が通ったことを、実行環境を含む受入確認の代替にしない。
-
-## 13. 実装時の変更範囲
-
-本書に沿って変更するものは、班長のスキル、単発の側近起動・計測シェルスクリプト、`.hanchou/config.json`の定義と初期化手順、側近へ渡す指示、依頼・報告の形式、既存ツールの使い方に関する最小限の参照、受入用テストである。既存のOrca必須起動、Run／Task前提、workerへの直接介入を新設計へ置き換える。旧仕様への互換層は要求しない。production codeに関する指針・検査は、上記の単発2本を許す範囲に限定する。
-
-v2実装として4スキルと起動スクリプトへ置換し、旧配布物と検査を削除する。既存利用者のインストールや稼働資源は別の移行対象である。実施済み検証と出荷までの残件は[検証状況](VALIDATION.md)を正本とし、設計上の必須要件と実機で確認済みの範囲を区別する。
-
-## 14. v1から活かすもの・簡素化するもの・捨てるもの
-
-引き継ぐ単位は、役立つ判断基準と受入条件である。v1のスキル本文・参照文書・Orcaの操作手順を、そのままv2の常時コンテキストへ移さない。「捨てる」はv2初版の配布・実行経路から外すことであり、既存利用者のファイル・成果・実行中の資源を削除する意味ではない。
-
-### 14.1 活かすもの
-
-| v1の要素・参照元 | v2で活かす形 | 残す理由 |
-| --- | --- | --- |
-| 明示的な起動と非侵襲的な導入（[導入](INSTALLATION.md)） | インストールや設定だけでは実作業を始めない。通常のagent利用とHanchou利用を分ける | ホストが変わっても意図しない起動を避けるために必要 |
-| `.hanchou/policy.md`の責務・権限（[初期化](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/INITIALIZATION.md)） | 読む元を固定し、今回の依頼の権限と合わせてsokkinへ渡す。許可済みの内容を繰り返し質問しない | 自律実行の範囲を短い文書で共有できる |
-| 実行先と実結果の照合（[証拠・権限の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/POLICY_ACCEPTANCE.md)） | 起動要求、入力受領、実稼働、成果、停止を区別する。未知の状態は未知として返す | Herdrに移しても二重起動や誤った完了報告は起こり得る |
-| 元checkoutと成果の保全（[#40](https://github.com/ykawase1011/hanchou/issues/40)） | sokkin起動前の新規worktree、元branch・index・人間の変更の保護、部分失敗からの回収 | 今回の必須要件そのものであり、Orca固有ではない |
-| 秘密情報を出力へ載せない判断（[秘密情報の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/SECRET_INPUT_VALIDATION.md)） | 設定・戻り値・使用量報告から認証情報と不要な本文を除く。必要な作業だけに情報を渡す | agentやホストの変更で弱めてよい性質ではない |
-| 不明結果からの再試行と成果保全（[再利用の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/WORKER_REUSE_VALIDATION.md)） | 再送前に元の試行を照合する。未コミット成果・実行中処理を保全する | timeoutと未実行を取り違えないために必要。Orca固有のhandle判定は持ち込まない |
-| 検証済み範囲を限定する報告（[QA受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/QA_READINESS_VALIDATION.md)） | スクリプト試験、指示の評価、実機での業務成功を分ける | v1のテスト成功をv2の動作保証へ流用しないため |
-
-### 14.2 簡素化して活かすもの
-
-| v1の要素・参照元 | v2での変更 | 簡素化する理由 |
-| --- | --- | --- |
-| 班長による分解・委任・レビュー・統合（[構成](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/ARCHITECTURE.md)） | 作業遂行をsokkinへ移し、班長は依頼・結果報告・使用量監督に集中する | 班長が全workerの会話と細かな状態を抱えると、階層を増やしても消費が減らない |
-| model／effort方針（[モデル選択の受入](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/MODEL_ROUTING_VALIDATION.md)） | 方針の適用範囲と要求値／実際値の区別は残す。承認済み候補内の選択をsokkinに任せ、使用量を判断材料にする | 毎回人間へ選択を戻す運用や、親の高コスト設定を一律継承する運用を避ける |
-| `hanchou-init`（[初期化](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/INITIALIZATION.md)） | policyに加え、`config.json`の`sokkin.agent`・modelを設定できるようにする | 人間向け方針と機械向け起動値を分けると、起動スクリプトが短くなる |
-| レビュー・browser QA・データ移行QA（[受入方針](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/POLICY_ACCEPTANCE.md)） | 必要な案件でsokkinが該当する手順を参照する。全依頼の必須読込にはしない | 作業種別ごとの専門手順を班長の基本動作へ常に積み増さない |
-| 通知集約（[#10](https://github.com/ykawase1011/hanchou/issues/10)、[#22](https://github.com/ykawase1011/hanchou/issues/22)） | 重要な変化だけを人間へ報告する方針を残し、Orca Inboxを経由しないsokkinとの連携に置き換える | 通知問題は残るが、旧配送機構を再現する必要はない |
-| 成果保全とcleanup（[受入方針](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/POLICY_ACCEPTANCE.md)） | 所有と成果を確認して解放する基準を残し、sokkinの起動結果とHerdr／Gitの実状態を使う | Run／Dispatch／terminal別の旧分岐を持ち込まずに、必要な保全を維持できる |
-| 対象を限定した更新（[更新の検証](https://github.com/ykawase1011/hanchou/blob/9e2e4f9/docs/UPDATE_VALIDATION.md)） | 明示的な更新、導入先・local変更・版の確認を残す。更新版の採用は次の明示的な起動時に確認する | ファイル更新に、現ホストの会話終了と完全自動交代を必ず結び付けると複雑になる |
-
-### 14.3 v2初版では捨てるもの
-
-| v1の要素 | 判断と理由 | 代わりに残すもの／将来の扱い |
-| --- | --- | --- |
-| Orca Run／Task／Dispatch／DAG／gateを必須とする構成 | **Orca依存のため廃止。** Herdrと並行して管理すると状態・所有権が二重になる | mission／attemptと起動結果、依頼・報告という最小限の対応関係 |
-| Run Inbox、Delivery全件処理、ack／drainとcoordinator loop | **旧配送機構への依存のため廃止。** 独自queueとして再実装もしない | 依頼の受領・重要な判断・結果回収の確認。ホストの復帰機能は任意 |
-| Orcaの全役割・全起動経路へのchild lineage検証 | **旧配置体系への依存と複雑さのため廃止。** v2製品の配置条件をOrcaの親子IDで表さない | sokkin起動スクリプトによる新規worktreeと実path／branch／repo確認 |
-| Orca structured／PTY workerの再利用・release分岐 | **旧endpoint固有のため廃止。** Herdrの対応能力を個別に検証する | 不明結果を再送しないこと、置換時の保全・停止確認 |
-| `hanchou-cron`とOrca Automations設定・履歴管理 | **Orca依存のため初版から外す。** 汎用schedulerへの移植もしない | 定期実行や24時間解放は将来の別設計。既存運用の終了・引継ぎは移行作業として残る |
-| 会話終了後に同じ会話・同じRunを必ず起こす契約 | **全ホスト共通化が困難なため初版から外す。** sokkinの継続実行と班長の自動復帰を分ける | 自動復帰なしでも使える待機・再照会。完全な無人継続は実現済みと扱わない |
-| 起動・依頼のたびの自動更新確認と新タブへの自動交代 | **ホスト依存と状態移譲の複雑さのため初版から外す。** タブ可視化・old-self closeを基本依存にしない | 明示的な対象限定更新と次の起動時の版確認 |
-| 班長独自の静的状況ビュー | **表示・更新担当・同期の責務を減らすため外す。** 既存HTMLの自動移行も行わない | 人間への報告と起動ごとの既存Herdr viewer |
-| 常時の改善メモ収集、公開receipt管理を含む改善サイクル | **本筋と別の状態管理を増やすためcoreから外す。** `hanchou-kaizen`／`hanchou-publish-issues`をv2の必須helperにしない | 既存メモは保全し、必要時に明示的な記録・起票を行う。外部公開の権限・秘匿化は維持 |
-| Project／Cross-project／Temporaryという起動モードと複数Run管理 | **初版の設定・分岐を減らすため統合。** まず対象repoが明確な依頼として扱う | 異なる依頼を勝手に統合しない基準。複数repoの統括を第一版の出荷条件にしない |
-| v1の全参照文書・互換表・受入マトリクスの一括移植 | **文量・旧例外・依存を持ち込むため行わない。** 過去のPASSを引き継がない | 有効な試験観点だけをv2用へ書き直す。旧資料は履歴として参照可能にする |
-
-ここで外すのはv2の機能であり、ユーザーのGit履歴、未解決事項、設定、秘密情報保護、成果保全ではない。v1用の運用とv2用の製品受入を分けて整理する。
-
-## 15. v2移行に伴うIssueの整理とクローズ条件
-
-2026-10-20に`ykawase1011/hanchou`のOPEN Issue全7件をGitHubで確認した。以下は移行前の本文と追記を踏まえた判断条件であり、実際の移行結果は15.4に記録する。v1で使っているOrca自体の障害がv2設計によって修正されたとは扱わない。
-
-### 15.1 分類と推奨判断
-
-| Issue | v2での扱い | クローズの条件と理由 |
-| --- | --- | --- |
-| [#13 同じHanchouへの会話終了後の自動復帰](https://github.com/ykawase1011/hanchou/issues/13) | **初版の対象外としてclose候補** | 同一会話・同一Runの自動復帰を初版から外す決定を移行版へ反映し、待機・再照会という代替と無人継続の制約を明記したら`not planned`。Herdrでsokkinが動き続けるだけでは元要件の完了ではない |
-| [#39 Automationの実行先設定の不一致](https://github.com/ykawase1011/hanchou/issues/39) | **旧依存の廃止としてclose候補** | v2でOrca Automationsを使わず、影響を受けるv1運用を終了するか、明示した別の維持担当へ引き継いだら`not planned`。Orcaの設定不一致そのものは修正済みとしない |
-| [#44 更新確認と新セッションへの安全な引き継ぎ](https://github.com/ykawase1011/hanchou/issues/44) | **過剰な自動化を外すためclose候補** | 明示的更新・次回起動時の版確認へ簡素化し、ホストの旧会話を閉じる完全自動交代を初版から外したら`not planned`。既存PR #45／#46の成果を否定せず、未完のE2Eを完了扱いにしない |
-| [#40 子worktree配置と元checkout保全の実機受入](https://github.com/ykawase1011/hanchou/issues/40) | **残す要件をv2へ移す。今すぐは閉じない** | Orca固有の配置マトリクスを廃止し、元checkout保全の残件をR03・R04と第12節へ引き継ぐ。旧Issueをcloseするなら、具体的な後継追跡先と未実施ケースを先に残して`not planned`。同じIssueをv2受入へ改題・再定義する場合は、実機試験が通るまでOPEN |
-| [#41 無人起動・失敗時のタブ増殖](https://github.com/ykawase1011/hanchou/issues/41) | **既存運用の問題として保留** | cronを捨てるだけでは残存端末は消えない。既存運用の停止／移管、所有者・唯一の成果・残存資源の照合、回収または保持理由と担当の確定が必要。運用終了・移管で旧開発課題を終える場合は`not planned`。原因修正や回収完了を意味するcloseとは区別する |
-| [#10 workerのモバイル／OS通知集約](https://github.com/ykawase1011/hanchou/issues/10) | **v2でも解決すべき問題として維持** | R14・第9節のv2経路で、通常通知が増えず判断要求・障害・全体完了が失われないことを実機確認する。対象をv2経路へ明示的に更新して受入できたら`completed`。旧Orca経路のIssueとして終了させるなら、v2追跡先を残して`not planned` |
-| [#22 内部Inbox通知と空確認の実況](https://github.com/ykawase1011/hanchou/issues/22) | **v2の報告品質として維持** | 旧Inbox処理は外すが、no-opの確認が会話を埋めず、実際の質問・障害・ユーザーの明示照会を落とさないことを確認する。対象をv2へ更新して受入できたら`completed`。旧経路廃止だけなら後継追跡を付けた`not planned` |
-
-推奨は、**#13・#39・#44を機能廃止に伴う整理候補とし、#40は受入条件の移管、#41は既存運用の収束、#10・#22はv2での問題解消を待つ**ことである。7件を一括で「解決済み」にしない。#39の旧運用条件と#41の運用問題は関連するため、同じ引継ぎ証拠を参照してよい。
-
-### 15.2 取り落とさない残件
-
-[#40の本文](https://github.com/ykawase1011/hanchou/issues/40)には、元checkoutに人間が並行変更するケース、統合時の共有ref、途中の操作対象の確認が追加されている。これはOrcaを外しても必要であり、第12節へ引き継いだ。単に「新規worktreeを作れた」だけでcloseしない。
-
-[#41の2026-10-20の追記](https://github.com/ykawase1011/hanchou/issues/41#issuecomment-6281243255)は、連続9回分の端末に認証入力要求が残存したと報告している。その後のv2移行では、これらを含む10端末の所有・成果・状態を再確認し、旧Automationとworkspaceを撤去した。操作と照合結果は[検証状況](VALIDATION.md)に記録する。設計書やIssueのcloseを停止・回収の代わりにせず、過去の「停止中」という記述だけで現在状態を推測しない。
-
-[#44の追記](https://github.com/ykawase1011/hanchou/issues/44#issuecomment-6183209029)ではPR #46のマージが完了している一方、導入済みスキルへの反映・旧会話終了等の受入が残っている。廃止するのは残る完全自動交代の要求であり、未マージと誤認して再実装することではない。
-
-### 15.3 close時に残す記録
-
-close直前にIssue本文・最新コメント・関連PRの状態を読み直す。各Issueに、次の短い記録を残してから理由を選ぶ。
-
-1. 何を終了するか：実装完了、旧経路の廃止、後継への移管のいずれか。
-2. v2設計と実装の参照：マージ済みの設計書／PR／commit等、他の人が確認できるリンク。ローカルworktreeのpathだけにしない。
-3. 残す要件と未検証事項：後継Issueまたは明示した維持担当・追跡先。未完の要件がある場合は追跡先なしで消さない。
-4. 運用への影響：既存schedule・会話・資源が停止／回収されたか、維持されるなら誰が扱うか。
-
-`completed`は、明示された現在の対象範囲で受入を満たした場合に使う。初版対象外・旧依存廃止・後継への置換は`not planned`とし、「修正済み」と報告しない。対象を変更する場合は旧受入条件を黙って消さず、変更理由と引継ぎ先を残す。上流のOrca Issue／PRは本リポジトリの整理と別であり、この一覧から自動でclose・投稿しない。
-
-### 15.4 移行時の処置
-
-PR #59のマージ後、最新の本文・コメント・状態を再照合して実施した。
-
-| Issue | 実施結果 |
-| --- | --- |
-| #13 / #44 | 自動復帰・自動交代を初版から外し、`not planned`でclose |
-| #39 / #41 | 停止済みAutomation、所有を確認した10失敗端末、cleanな旧cron worktreeとbranchを回収し、`not planned`でclose |
-| #40 | v2の新規worktree・元checkout保全へ対象を明示変更。native競合統合・並行編集・共有ref保全を受入後、`completed`でclose |
-| #10 / #22 | v2の採用環境での通知・報告品質としてOPENを維持。旧Orca更新待ちを解除 |
-
-各Issueに判断理由・検証範囲・未検証範囲・公開PRへの参照を残した。
-検証と導入・旧資源回収の根拠は[検証状況](VALIDATION.md)に集約する。
+`model` の null/省略は CLI 既定、`effort` は low/medium/high/null。
+言語は相手別に独立し、null/省略はその相手の従来言語を維持。他方から継承しない。
+明示した依頼言語が優先し、policy・成果物・native UI・ID の翻訳を意味しない。
+値の検証は [launch contract](../skills/hanchou-orchestrator/references/launch.md#communication-languages)。
+通常設定に receive の既定や予算台帳を追加しない。native receive は呼出しごとの明示 capability。
+
+launcher は対象・host・固定 base を確認し、元の HEAD/branch/diff/index/status を観測する。
+fresh branch/worktree を作成して共通 Git directory と実 path/HEAD を検証し、専用 named
+Herdr server と workspace/初期 pane を作る。Bash 3.2、Git、jq と既存 CLI だけで動作する。
+所有 server は durable instance directory を cwd とし、呼出し tool と別 process group を確認する。
+`--session NAME` は既存 shared server の互換経路で、所有や自動停止権限を与えない。
+
+version 2 receipt は既存の config/worktree/herdr/sokkin/lifecycle/resources に
+`identityReadiness`、`requestId`、`receive` を追加する。`usageReadiness: not_required` は互換欄。
+owned launch は完全 receipt と Git blob hash を保存し、`--compact-receipt` はその参照を残す。
+欠落・衝突・symlink・保存失敗では成功に昇格させない。STARTING/UNKNOWN の救済昇格はなく、
+同じ試行を保全して診断し、必要なら別の新規試行を判断する。
+
+Codex は既存 `--no-daemon` を維持。0.162.1/0.163.0 の `--qualify-startup` は対応 TUI で native
+identity/context を得るため固定 tool-free turn を一回送る。ccusage/counter/usage は使わない。
+そのためだけに側近 skill 全文を重複投入せず、実 mission で一度渡す。元の cwd/time/marker、
+一意 native ID、model/effort、完了、process PID/birth/argv の照合を維持する。
+0.163.0 の明示 `--manual-approvals` は workspace-write/on-request/user を native 値でも確認する。
+それ以外の版は既存通常 launch と認定済み公開 identity 操作を使い、未検証を合格と呼ばない。
+
+班長は viewer を現在の会話を移動せず background で開き、対象 host/session/workspace と
+tab label を確認する。Orca では `Herdr | <短い任務名>`。同じ側近では再利用し、接続不能を
+agent failure と混同しない。表示不能時は理由と接続先を示し、明示 headless 例外以外は割当を待つ。
+
+一つの依頼に mission/attempt/request、native/process/cwd/base、目的・基準・権限・人間必須条件、
+固定指示、言語、有限 worker/retry 制限と成果の durable 保存先を入れる。受領は最初の作業/質問へ
+統合し、自己計測だけの ACK は不要。自分が送った async tool command の receipt 待ちは必須。
+子の完了を周期確認することと混同しない。timeout で安易に再送しない。
+
+## 4. Claude native receive
+
+[限定 route](../skills/hanchou-orchestrator/references/native-receive.md) は同一 machine の独立
+Claude root 同士に限る。baseline は Claude Code 2.1.317 / Herdr 0.9.5 / subscription / manual。
+両端の SendMessage/notify_when_idle と inbound が対応することを公式 tool/native evidence で確認する。
+任意の Codex/Orca 親を Claude peer とみなさない。ホスト不対応なら既存の有期限 Herdr wait/read を使い、
+model-free wake を約束しない。hold/refuse・user-only 通知・設定不明は適合完了ではない。
+
+`--claude-peer PATH` は既存の親の current native/Herdr/process/peer と公開 capability 証拠を指定する。
+launcher は親の fresh evidence と公開 pane/process を起動前後に照合し、子に fresh UUID/name を付ける。
+既成の変更しない SessionStart integration が報告した native ID/cwd と実 process を照合するため、
+最初の model ACK は要らない。hook の exit 0 や指定 UUID だけでは足りない。
+明示 `--claude-settings PATH` は許可された process-local overlay のみ。hook install/trust bypass はしない。
+
+起動 receipt の `peer_binding_required` は意図的な境界であり、両端の native effective settings と
+公式 ListAgents の現在 child ref を対応付けてから送信する。SendMessage + notify_when_idle を一回送り、
+receipt を確認して親 turn を終える。native notice が親を再開する。常駐 watcher は作らない。
+受信は task success ではなく独立受入のきっかけ。古い idle、重複、hold/refuse、exit、期限切れ、
+同一 UUID の process/peer 再起動を成功へ流用しない。質問への peer answer は native approval ではない。
+
+## 5. 承認権限
+
+worker→側近→班長→人間の順に未解決判断を上げる。すでに委任された具体的な操作は直属の親が
+exact pending native request/tool ID、native/process/対象/効果と権限を照合して、公開 control で一度回答する。
+画面が出たことだけでは人間へ再確認しない。人間への escalation は新しい権限、重大な未決選択、
+明示した都度確認、本人操作が必要な provider gate。禁止は拒否し、別 agent/location へ回避しない。
+一括許可、yolo、sandbox 緩和、資格情報 export はしない。native automatic review は別の明示設定で、
+その拒否は親への自動承認委任ではない。reviewer usage 欠測も権限を変えない。
+
+## 6. 完了・互換性・解放
+
+[Lifecycle schema](../skills/hanchou-orchestrator/references/lifecycle.md) を正本とする。
+新規 instance は `resultContract:2`。finish は matching mission/attempt/request/native、succeeded、
+artifact/verification 参照と権限を要求する。native receive では親子 peer/process も保持・再確認する。
+FINISHED は報告保存のみ。親は成果・検証・権限・元 checkout 保全を独立に確認し、所有 CLI/worker の
+実停止後に accept。accept は report hash、native/request、独立判断、保全と quiet 所有 inventory を確認する。
+usage 欠落だけで正しく識別され承認・検証・保全された成果を拒否しない。notice だけでも受入しない。
+重複 accept を拒否。生存中の未受入 FINISHED に限る resume は新 requestId を返し旧結果を無効化する。
+
+古い record/report/usage は破壊的移行しない。旧 accepted evidence は hash と inventory を保ったまま
+通常 reap できる。未受入の旧 report は新たな独立 acceptance を添えられるが native ID 未確定を usage
+から推測して補わない。任意の旧 usage fields は保全するだけで正しい計測として再認定しない。
+
+reap は明示 invocation/受入 checkpoint で一度だけ。FINISHED から 86,400 秒以上、accepted、証拠 hash・
+server PID/birth/socket・idle shell inventory が不変で live work がない場合だけ owned server を停止する。
+stop receipt だけでなく process/socket と shell の終了を確認する。未知・busy・変更は保持。自動 timer なし。
+履歴・record・branch/worktree は reap で削除しない。削除は別の保全判断。retained server の下で worktree を
+消すなら accept 前に verified idle shell を durable cwd へ移し、受入後 inventory を変更しない。
+
+## 7. 外部 debug と残る決定
+
+[外部 debug](../skills/hanchou-orchestrator/references/usage.md) は任意。native identity/format/scope を
+strict に照合し、cache・reasoning の内数、親子/再開/重複、未記録範囲を区別する。欠測を0にしない。
+比較は同じ model/effort/policy/品質/境界で、準備・失敗・受入・全 context を含め、debug 費用を別欄にする。
+応答数の削減だけで 1.2–1.3倍を約束せず、旧算術 probe を通常任務の比率へ一般化しない。
+
+[Codex の別設計](CODEX_NATIVE_RECEIVE_DESIGN.md) は owned app-server での queue 実証と、
+`queue --no-daemon` 拒否、TUI exit 後も server/thread が生存した境界を受ける。完全な server/thread/TUI
+所有、socket 承認、exact trust、startup identity、stop/cleanup と parent host wake が必要。
+新 runtime/control bridge が必要なら明示 scope decision として保留し、本変更へ潜り込ませない。

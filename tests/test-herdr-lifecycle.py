@@ -204,8 +204,8 @@ class Lifecycle(unittest.TestCase):
         for key in ('ok','stage','startedAt','missionId','attemptId','config','worktree','herdr',
                     'lifecycle','error','resources'):
             self.assertEqual(r[key], full[key])
-        self.assertEqual(r['usageReadiness']['status'], 'pending')
-        self.assertIsNone(r['usageReadiness']['tool'])
+        self.assertEqual(r['identityReadiness']['status'], 'pending')
+        self.assertEqual(r['usageReadiness']['status'], 'not_required')
         self.assertIsNone(r['sokkin']['process'])
         self.assertIn('sourceSnapshot', full)
         self.assertNotIn('sourceSnapshot', r)
@@ -232,7 +232,7 @@ class Lifecycle(unittest.TestCase):
                 self.assertEqual(r['receiptFormat'], 'full')
                 self.assertIsNone(r['evidence'])
                 self.assertEqual(r['error']['code'], 'launch_evidence_failed')
-                self.assertEqual(r['usageReadiness']['status'], 'unavailable')
+                self.assertEqual(r['identityReadiness']['status'], 'unavailable')
                 self.assertEqual((self.record.parent/'launch/receipt.json').read_text(),
                                  'unrelated evidence\n' if collision=='symlink' else 'prior evidence\n')
                 self.assertTrue(Path(r['worktree']['path']).is_dir())
@@ -254,23 +254,26 @@ class Lifecycle(unittest.TestCase):
         s=json.loads(self.record.read_text());s.update(updates)
         self.record.write_text(json.dumps(s))
 
+    def result(self):
+        r = json.loads(self.record.read_text())
+        return {'missionId':r['missionId'],'attemptId':r['attemptId'],
+                'requestId':r.get('requestId'),'nativeId':r['nativeId'],'status':'succeeded',
+                'artifactRefs':['fixture-artifact'],'verificationRefs':['fixture-test'],
+                'authority':{'approved':True,'source':'fixture policy','scope':'fixture task'}}
+
     def finish(self):
-        report = self.tmp/'report.txt'; report.write_text('Results and artifact locations preserved.\n')
+        report = self.tmp/'report.txt'; report.write_text(json.dumps(self.result()))
         self.op('finish','--evidence',str(report))
 
+    def acceptance(self):
+        r = json.loads(self.record.read_text()); result = self.result()
+        return {k:result[k] for k in ('missionId','attemptId','requestId','nativeId','authority')} | {
+            'artifactsPreserved':True,'workersStopped':True,'independentAcceptance':True,
+            'result':{'status':'succeeded','reportHash':r.get('reportHash'),
+                      'artifactRefs':result['artifactRefs'],'verificationRefs':result['verificationRefs']}}
+
     def accept(self, **kw):
-        evidence = self.tmp/'accept.json'
-        now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        evidence.write_text(json.dumps({'missionId':'fixture','attemptId':self.launch_receipt['attemptId'],
-                         'artifactsPreserved':True,'workersStopped':True,
-                         'usage':[{'status':'ready','nativeId':'test-native',
-                                   'currentRequest':{'state':'settled','completedAt':now},
-                                   'cwd':self.launch_receipt['worktree']['path'],
-                                   'tool':{'inputTokens':1,'cacheReadTokens':0,'cacheCreationTokens':0,
-                                           'outputTokens':0,'reasoningOutputTokens':0,'totalTokens':1},
-                                   'scope':{'kind':'native session cumulative','includedNativeIds':['test-native'],
-                                            'includedChildren':[],'missionDelta':False,'otherSessionsIncluded':False},
-                                   'observedAt':now}]}))
+        evidence = self.tmp/'accept.json'; evidence.write_text(json.dumps(self.acceptance()))
         return self.op('accept','--evidence',str(evidence),**kw)
 
     def test_finish_rejects_changed_server_and_wrong_caller(self):
@@ -305,44 +308,91 @@ class Lifecycle(unittest.TestCase):
             env = fixture_environment(PATH=self.env['PATH'],HERDR_BIN=self.env['HERDR_BIN'],
                                       MOCK_SERVERS=self.env['MOCK_SERVERS'])
             self.launch(env=env)
-            report = self.tmp/'parent-env-report'; report.write_text('Fixture evidence\n')
+            report = self.tmp/'parent-env-report'; report.write_text(json.dumps(self.result()))
             self.op('finish','--evidence',str(report),env=env)
             self.accept(); self.age(); self.op('reap')
             for key in CALLER_BINDINGS:
                 self.assertEqual(os.environ[key],'parent-instance')
 
-    def test_usage_requires_final_boundary_scope_and_counters(self):
+    def test_no_usage_and_legacy_optional_data(self):
         self.launch(); self.finish(); self.accept()
-        self.edit(createdAt=(datetime.now(timezone.utc)-timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'))
-        evidence = self.tmp/'accept.json'; original = json.loads(evidence.read_text())
-        # An observation made now can still contain a pre-final completion boundary.
-        changes = [
-            ('currentRequest', {'state':'settled'}),
-            ('currentRequest', {'state':'settled','completedAt':'2000-01-01T00:00:00Z'}),
-            ('currentRequest', {'state':'settled','completedAt':(datetime.now(timezone.utc)-timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')}),
-            ('currentRequest', {'state':'settled','completedAt':'2999-01-01T00:00:00Z'}),
-            ('currentRequest', {'state':'settled','completedAt':'2026-02-30T12:00:00Z'}),
-            ('scope', None), ('tool', {'totalTokens':1}),
-        ]
-        scope = original['usage'][0]['scope']; counters = original['usage'][0]['tool']
-        changes += [('scope',dict(scope,**{k:v})) for k,v in [
-            ('includedNativeIds',['foreign']), ('includedChildren',['child']),
-            ('missionDelta',True), ('otherSessionsIncluded',True)]]
-        changes += [('tool',dict(counters,**{k:v})) for k,v in [
-            ('inputTokens',-1), ('outputTokens',0.5), ('totalTokens',2),
-            ('cacheCreationTokens',1), ('reasoningOutputTokens',1), ('totalTokens',9007199254740992)]]
+        self.assertNotIn('usage',json.loads((self.record.parent/'acceptance.json').read_text()))
+        self.age(); self.op('reap')
+        # Legacy records are not migrated or deleted. Old debug data is preserved
+        # verbatim, even when unavailable; it cannot establish acceptance.
+        self.launch()
+        legacy=json.loads(self.record.read_text())
+        for key in ('resultContract','requestId','receive','process'): legacy.pop(key,None)
+        legacy['usage']={'status':'unavailable','total':None}
+        self.record.write_text(json.dumps(legacy))
+        report=self.tmp/'legacy-report';report.write_text('Legacy preserved text.\n')
+        self.op('finish','--evidence',str(report))
+        data=self.acceptance();data['usage']=[{'status':'unavailable','tool':None}]
+        evidence=self.tmp/'legacy-accept';evidence.write_text(json.dumps(data))
+        self.op('accept','--evidence',str(evidence));self.age();self.op('reap')
+        self.assertEqual(json.loads(self.record.read_text())['usage'],{'status':'unavailable','total':None})
+        self.assertEqual(json.loads((self.record.parent/'acceptance.json').read_text())['usage'],data['usage'])
+
+    def test_previously_accepted_legacy_receipts_reap_unchanged(self):
+        self.launch();self.finish();self.accept();self.age()
+        record=json.loads(self.record.read_text())
+        for key in ('resultContract','requestId','receive','process','completionPeer'):record.pop(key,None)
+        legacy={'missionId':record['missionId'],'attemptId':record['attemptId'],
+                'artifactsPreserved':True,'workersStopped':True,
+                'usage':[{'status':'ready','nativeId':record['nativeId'],'historicalFixture':True}]}
+        f=self.record.parent/'acceptance.json';f.write_text(json.dumps(legacy))
+        record['acceptanceHash']=subprocess.check_output(['git','hash-object',str(f)],text=True).strip()
+        self.record.write_text(json.dumps(record)); before=f.read_bytes()
+        self.op('reap');self.assertEqual(f.read_bytes(),before)
+        self.assertNotIn('resultContract',json.loads(self.record.read_text()))
+
+    def test_bound_completion_and_independent_acceptance(self):
+        self.launch(); report=self.tmp/'bad-result'; original=self.record.read_bytes()
+        good=self.result()
+        for field,value in [('missionId','wrong'),('attemptId','old'),('nativeId',None),
+                            ('nativeId','wrong'),('requestId','old'),('status','held'),
+                            ('status','refused'),('status','exited'),('status','idle'),
+                            ('artifactRefs',[]),('verificationRefs',[]),('authority',None)]:
+            with self.subTest(field=field,value=value):
+                report.write_text(json.dumps(dict(good,**{field:value})))
+                self.assertEqual(self.op('finish','--evidence',str(report),ok=False)['error']['code'],'invalid_evidence')
+                self.assertEqual(self.record.read_bytes(),original)
+        self.finish(); old=good['requestId']; self.op('resume')
+        self.assertNotEqual(json.loads(self.record.read_text())['requestId'],old)
+        report.write_text(json.dumps(good));self.op('finish','--evidence',str(report),ok=False)
+        self.finish();good=self.acceptance(); original=self.record.read_bytes()
+        for field,value in [('nativeId',None),('nativeId','wrong'),('requestId',old),
+                            ('authority',None),('independentAcceptance',False),('artifactsPreserved',False),
+                            ('result',None),('workersStopped',False)]:
+            report.write_text(json.dumps(dict(good,**{field:value})))
+            self.assertEqual(self.op('accept','--evidence',str(report),ok=False)['error']['code'],'invalid_evidence')
+            self.assertEqual(self.record.read_bytes(),original)
+        self.accept();self.assertEqual(self.accept(ok=False)['error']['code'],'invalid_transition')
+        self.age();self.op('reap')
+
+    def test_wrong_old_duplicate_held_refused_exit_notice_is_not_acceptance(self):
+        self.launch(); self.finish()
+        # Explicit notification fixture: no claim this mock establishes native wake.
+        process={'pid':12345,'birth':'owned-incarnation'}
+        self.edit(receive={'route':'claude-peer','parent':{'peer':'parent [abcdef]'},'childName':'child'},
+                  process=process,completionPeer='child [123abc]')
+        good=self.acceptance(); evidence=self.tmp/'notice.json'
+        notice={'kind':'idle','requestId':good['requestId'],'nativeId':good['nativeId'],
+                'process':process,'receiptId':'official-send-receipt',
+                'parentPeer':'parent [abcdef]','childPeer':'child [123abc]'}
+        changes=[('kind',v) for v in ['held','refused','exit','expired','duplicate']]+[
+            ('requestId','old'),('nativeId','wrong'),('process',{'pid':12345,'birth':'restarted'}),
+            ('childPeer','child [456def]'),('parentPeer','parent [654321]'),('receiptId',None)]
         for field,value in changes:
             with self.subTest(field=field,value=value):
-                data = json.loads(json.dumps(original)); data['usage'][0][field] = value
-                evidence.write_text(json.dumps(data))
-                before = self.record.read_bytes()
+                evidence.write_text(json.dumps(dict(good,notification=dict(notice,**{field:value}))))
+                before=self.record.read_bytes()
                 self.assertEqual(self.op('accept','--evidence',str(evidence),ok=False)['error']['code'],'invalid_evidence')
                 self.assertEqual(self.record.read_bytes(),before)
-        # Native logs use fractional UTC timestamps; preserve that supported form.
-        data = json.loads(json.dumps(original))
-        data['usage'][0]['currentRequest']['completedAt'] = data['usage'][0]['observedAt'].replace('Z','.000Z')
-        evidence.write_text(json.dumps(data)); self.op('accept','--evidence',str(evidence))
-        self.age(); self.op('reap')
+        evidence.write_text(json.dumps(dict(good,notification=notice)))
+        self.op('accept','--evidence',str(evidence))
+        self.assertEqual(self.op('accept','--evidence',str(evidence),ok=False)['error']['code'],'invalid_transition')
+        self.age();self.op('reap')
 
     def test_malformed_pane_inventory_is_retained(self):
         self.launch(); self.finish(); self.accept(); self.age()
@@ -434,7 +484,7 @@ class Lifecycle(unittest.TestCase):
         self.record.write_text(original)
         bad=self.tmp/'bad-accept.json';bad.write_text(json.dumps({'missionId':'fixture','attemptId':self.launch_receipt['attemptId'],
              'artifactsPreserved':True,'workersStopped':True,'usage':[{'status':'ready','nativeId':'test-native','currentRequest':{'state':'active'}}]}))
-        self.assertEqual(self.op('accept','--evidence',str(bad),ok=False)['error']['code'],'invalid_evidence')
+        self.assertEqual(self.op('accept','--evidence',str(bad),ok=False)['error']['code'],'invalid_transition')
         self.assertEqual(self.op('reap')['status'],'CLOSED')
 
     def test_record_symlinks_and_scan(self):
@@ -447,15 +497,11 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(p.returncode,0,(p.stdout,p.stderr))
         self.assertEqual(json.loads(self.record.read_text())['status'],'CLOSED')
 
-    def test_usage_scope_and_freshness(self):
-        self.launch();self.finish();self.accept()
-        evidence=self.tmp/'accept.json';original=json.loads(evidence.read_text())
-        for field,value in [('cwd','/wrong/worktree'),('nativeId','different-session'),('observedAt','2000-01-01T00:00:00Z'),('tool',{'totalTokens':-1})]:
-            data=json.loads(json.dumps(original));data['usage'][0][field]=value;evidence.write_text(json.dumps(data))
-            self.assertEqual(self.op('accept','--evidence',str(evidence),ok=False)['error']['code'],'invalid_evidence')
-        evidence.write_text(json.dumps(original)+'\n'+json.dumps(original))
+    def test_acceptance_multiple_documents_refused(self):
+        self.launch();self.finish();data=self.acceptance()
+        evidence=self.tmp/'many-accept';evidence.write_text(json.dumps(data)+'\n'+json.dumps(data))
         self.assertEqual(self.op('accept','--evidence',str(evidence),ok=False)['error']['code'],'invalid_evidence')
-        self.age();self.assertEqual(self.op('reap')['status'],'CLOSED')
+        self.accept();self.age();self.op('reap')
 
     def test_uncertain_launch_is_retained(self):
         self.launch(ok=False,env=dict(self.env,MOCK_START_FAIL='1'))
